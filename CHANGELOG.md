@@ -2,6 +2,24 @@
 
 ## 2026-11-23
 
+- Added repeat-fault Seen Before reporting and direct routing to the responsible maintenance section.
+- Added ranked troubleshooting with quick checks, confirmed/failed fix counts, recurrence and workaround warnings, and risky-fix supervisor flags.
+- Added critical-window minute-level handoff analytics and a repeat-versus-first-fault 60% improvement target baseline.
+- Added a SOCA-compatible contributor recognition leaderboard based on approved procedures, revisions and confirmed reuse.
+- Added a deferred SAP integration status model; read-only consideration is planned only after workflow stabilisation and write-back remains disabled.
+- Connected fault investigation to reusable work-procedure updates, including attributed diagnoses, failed/successful interventions and equipment history.
+- Added Chief Technician/Chief Engineer technical review, clarification-and-revision history, and separate Supervisor publication of approved versions.
+- Added colleague-attributed knowledge reuse and post-restoration outcome confirmation.
+- Added HR date-filtered employee contribution evidence with contextual response/restoration times and no fault narratives.
+- Added GM O&M section handoff funnel, timing baselines, wrong first assignments and repeat direct-routing analytics.
+- Added synthetic investigation, procedure-review and repeat-reuse history to the demonstration data.
+- Added end-to-end API coverage for the contribution, clarification, publication, reuse and appraisal cycle.
+- Normalized and refreshed older cached browser sessions to prevent missing role-permission data from crashing the React shell.
+- Added section-specific technician (ST/PT/CT) and engineer (Assistant/Engineer/Senior/Chief) roles.
+- Added HR directory, maintenance leadership, GM O&M and CEO visibility boundaries.
+- Added backend-protected account creation/status management for System Administrators.
+- Added an administrator-only audit history for account provisioning and status changes.
+- Added the role access matrix and synthetic demo accounts for each section/tier.
 - Verified Ubuntu 24.04 WSL Docker CLI and daemon connection through Windows Docker Desktop.
 - Added Docker build-context exclusions and documented WSL Compose startup.
 - Built both images and started the frontend/API with Docker Compose.

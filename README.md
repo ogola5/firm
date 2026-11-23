@@ -42,3 +42,5 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 Synthetic demo credentials are documented in [DEMO_GUIDE.md](DEMO_GUIDE.md).
+
+Role scope and account-management rules are documented in [ROLE_ACCESS_MATRIX.md](ROLE_ACCESS_MATRIX.md).
