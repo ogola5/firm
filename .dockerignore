@@ -1,0 +1,9 @@
+.git
+.venv
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/node_modules
+**/dist
+backend/kpc.db
+*.log
