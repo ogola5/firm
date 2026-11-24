@@ -20,6 +20,8 @@ import { getSyncEngine } from "./sync";
 type ServerConflict = {
   event_id: string;
   fault_id: string | null;
+  fault_reference?: string | null;
+  fault_symptom?: string | null;
   event_type: string;
   detail: string;
   client_timestamp: string;
@@ -148,7 +150,15 @@ export function SyncCentre({ user }: { user: User }) {
           {!serverConflicts && <p className="m-0 text-sm text-muted-foreground">Connect to review conflicts. {localConflicts} change(s) from this device are waiting.</p>}
           {serverConflicts?.length === 0 && <p className="m-0 text-sm text-muted-foreground">No offline changes are waiting for a decision.</p>}
           {serverConflicts?.map((conflict) => (
-            <div key={conflict.event_id} className="grid gap-2 border-t border-border pt-3 text-sm first:border-0 first:pt-0">
+            <div
+              key={conflict.event_id}
+              role="group"
+              aria-label={`Conflict on ${conflict.fault_reference ?? "breakdown"}`}
+              className="grid gap-2 border-t border-border pt-3 text-sm first:border-0 first:pt-0"
+            >
+              <span className="text-muted-foreground">
+                {conflict.fault_reference ?? "Breakdown not yet on the server"}{conflict.fault_symptom ? ` · ${conflict.fault_symptom}` : ""}
+              </span>
               <strong>{EVENT_LABELS[conflict.event_type] ?? conflict.event_type}: {describe(conflict)}</strong>
               <span className="font-semibold text-destructive">{conflict.detail}</span>
               <span className="text-muted-foreground">

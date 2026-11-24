@@ -354,6 +354,11 @@ def test_analytics_and_repeat_intelligence():
     equipment = client.get("/api/v1/equipment", headers=auth_headers(token)).json()[0]
     intelligence = client.get(f"/api/v1/intelligence/equipment/{equipment['id']}", headers=auth_headers(token))
     assert intelligence.status_code == 200
+    # The reporter sees the repeat warning while filling in the report.
+    operations = client.get(f"/api/v1/intelligence/equipment/{equipment['id']}", headers=auth_headers(login("operations")))
+    assert operations.status_code == 200
+    assert operations.json()["repeat_count"] == intelligence.json()["repeat_count"]
+    assert client.get(f"/api/v1/intelligence/equipment/{equipment['id']}", headers=auth_headers(login("hr"))).status_code == 403
 
 
 def test_hr_and_executive_visibility_boundaries():

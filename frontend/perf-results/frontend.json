@@ -1,0 +1,56 @@
+{
+  "measured_at": "2026-11-24T20:01:57.562Z",
+  "base_url": "http://localhost:5173",
+  "initial_load_to_login_ms": 161,
+  "initial_navigation": {
+    "dom_content_loaded_ms": 65,
+    "load_event_ms": 65,
+    "transferred_kib": 162
+  },
+  "cached_launch_offline_ms": {
+    "n": 8,
+    "p50": 93,
+    "p95": 109,
+    "max": 109
+  },
+  "cached_launch_online_ms": {
+    "n": 8,
+    "p50": 100,
+    "p95": 105,
+    "max": 105
+  },
+  "equipment_rows_on_device": 2030,
+  "local_equipment_search_ms": {
+    "tag_prefix": {
+      "n": 25,
+      "p50": 2.2,
+      "p95": 2.9,
+      "max": 3.6
+    },
+    "text_match": {
+      "n": 25,
+      "p50": 14.3,
+      "p95": 20.8,
+      "max": 51.4
+    },
+    "no_match": {
+      "n": 25,
+      "p50": 26.8,
+      "p95": 30.1,
+      "max": 45.2
+    }
+  },
+  "cached_investigations": 1,
+  "local_fault_history_ms": {
+    "n": 50,
+    "p50": 0.4,
+    "p95": 0.6,
+    "max": 0.7
+  },
+  "local_persistence_ms": {
+    "n": 50,
+    "p50": 2,
+    "p95": 2.7,
+    "max": 3.4
+  }
+}

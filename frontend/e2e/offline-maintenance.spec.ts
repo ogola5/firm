@@ -51,6 +51,37 @@ test("Operations reports a breakdown offline; it survives a restart and offline 
   expect(matches[0].reference).toMatch(/^KPC-DMO-/);
 });
 
+test("The installed app opens and navigates with no network at all", async ({ page, context }) => {
+  await signIn(page, "automation");
+  const controlled = await page.evaluate(async () => {
+    if (!("serviceWorker" in navigator)) return false;
+    await navigator.serviceWorker.ready;
+    for (let attempt = 0; attempt < 20 && !navigator.serviceWorker.controller; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return Boolean(navigator.serviceWorker.controller);
+  });
+  test.skip(!controlled, "The service worker only runs on a production build (vite preview / Docker)");
+
+  // Load the data this user needs while connected, then lose the network completely.
+  await page.goto("/faults?mode=history");
+  await expect(page.getByRole("heading", { name: "Breakdowns" })).toBeVisible();
+  await page.goto("/equipment");
+  await expect(page.getByRole("heading", { name: "Equipment" })).toBeVisible();
+  await context.setOffline(true);
+
+  // Cold reload: the shell and route chunks come from the precache, data from IndexedDB.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Equipment" })).toBeVisible();
+  await expect(page.getByText("Offline: showing equipment cached on this device")).toBeVisible();
+  await page.goto("/faults?mode=history");
+  await expect(page.getByRole("heading", { name: "Breakdowns" })).toBeVisible();
+  await expect(page.getByText("Offline: showing breakdowns cached on this device", { exact: false })).toBeVisible();
+  await page.goto("/knowledge");
+  await expect(page.getByRole("heading", { name: "Approved procedures and knowledge" })).toBeVisible();
+  await context.setOffline(false);
+});
+
 test("Systems Automation investigates offline; every step syncs exactly once with device timestamps", async ({ page, request, context }) => {
   const operations = await apiToken(request, "operations");
   const equipment = await apiGet<Array<{ id: string; section: string }>>(request, operations, "/api/v1/equipment");

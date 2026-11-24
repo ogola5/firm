@@ -17,7 +17,8 @@ router = APIRouter()
 
 @router.get("/api/v1/intelligence/equipment/{equipment_id}")
 def recurring_intelligence(equipment_id: str, user: User = Depends(current_user), db: Session = Depends(db_dep)):
-    require_roles(user, "systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
+    # Operations needs this while reporting, to see "seen before" for the asset.
+    require_roles(user, "operations", "systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
     equipment = db.get(Equipment, equipment_id)
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")

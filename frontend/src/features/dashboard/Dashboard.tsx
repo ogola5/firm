@@ -1,105 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { Suspense, lazy } from "react";
 import { type User } from "../../auth";
-import { RankedBars } from "../../components/charts/RankedBars";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { EmptyState, Page, PageHeader, Stat } from "../../components/ui/page";
-import { type WorkflowReport } from "../../lib/types";
-import { api } from "../../offline/api";
-import { People, PeopleSummary } from "../people/People";
+import { Page, PageHeader } from "../../components/ui/page";
+import { People } from "../people/People";
 import { ChiefTechnicianDashboard } from "./ChiefTechnicianDashboard";
 import { PersonalWorkspace } from "./PersonalWorkspace";
 import { RecognitionPanel } from "./RecognitionPanel";
-import { WorkflowPanel } from "./WorkflowPanel";
+
+// Charts are only needed by management roles; technicians never download them.
+const ManagementOverview = lazy(() => import("./ManagementOverview").then((m) => ({ default: m.ManagementOverview })));
 
 const WORKSPACE_ROLES = [
   "operations", "systems_automation", "technician_st", "technician_pt",
   "assistant_engineer", "engineer", "senior_engineer", "chief_engineer",
 ];
 
-type Overview = {
-  view_level?: string;
-  total_faults?: number;
-  open_faults?: number;
-  resolved_faults?: number;
-  resolved_rate_percent?: number;
-  approved_knowledge?: number;
-  knowledge_entries?: number;
-  mean_time_acknowledge_minutes?: number | null;
-  mean_time_restore_hours?: number | null;
-  by_category?: Record<string, number>;
-  workflow?: WorkflowReport;
-};
-
-function ManagementOverview({ user }: { user: User }) {
-  const executive = user.role === "managing_director" || user.role === "management";
-  const { data, isLoading } = useQuery({
-    queryKey: ["analytics", "overview"],
-    queryFn: () => api<Overview>("/api/v1/analytics/overview"),
-  });
-  const title = executive ? "Executive summary"
-    : user.role === "general_manager_om" ? "Operations & Maintenance workflow"
-      : user.section ? `${user.section} overview` : "Operational overview";
-
-  if (!data) {
-    return (
-      <Page>
-        <PageHeader eyebrow="Illustrative demonstration data" title={title} />
-        <EmptyState>{isLoading ? "Loading summary…" : "Summary data is unavailable. Reconnect and try again."}</EmptyState>
-      </Page>
-    );
-  }
-  const categories = Object.entries(data.by_category || {}).map(([label, value]) => ({ label, value }));
-  return (
-    <Page>
-      <PageHeader eyebrow="Illustrative demonstration data" title={title} description={`${data.view_level || "Summary"} · not verified operating performance`} />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Total faults" value={data.total_faults ?? 0} />
-        <Stat label="Open faults" value={data.open_faults ?? 0} />
-        <Stat label="Resolved faults" value={data.resolved_faults ?? 0} />
-        {executive
-          ? <Stat label="Resolved rate" value={`${data.resolved_rate_percent ?? 0}%`} />
-          : <Stat label="Approved knowledge" value={data.approved_knowledge ?? 0} />}
-      </div>
-      {!executive && (
-        <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-          <Card>
-            <CardHeader><CardTitle>Faults by category</CardTitle></CardHeader>
-            <CardContent><RankedBars title="Faults by category" data={categories} /></CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>Maintenance performance</CardTitle></CardHeader>
-            <CardContent>
-              <dl className="m-0 grid">
-                {[
-                  ["Mean acknowledgement", data.mean_time_acknowledge_minutes == null ? "—" : `${data.mean_time_acknowledge_minutes} min`],
-                  ["Mean restoration", data.mean_time_restore_hours == null ? "—" : `${data.mean_time_restore_hours} h`],
-                  ["Knowledge entries", String(data.knowledge_entries ?? 0)],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between border-b border-border py-3 last:border-0">
-                    <dt className="text-muted-foreground">{label}</dt>
-                    <dd className="m-0 font-extrabold">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-      {data.workflow && <WorkflowPanel workflow={data.workflow} />}
-      {["maintenance_manager", "general_manager_om", "system_administrator"].includes(user.role) && <PeopleSummary />}
-      {["maintenance_manager", "general_manager_om", "supervisor", "system_administrator"].includes(user.role) && <RecognitionPanel />}
-      {executive && (
-        <Card className="mt-4">
-          <CardHeader><CardTitle>Access level</CardTitle></CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Enterprise summary KPIs only. Individual fault timelines, equipment records, and employee directory details are restricted to operational and HR roles.
-          </CardContent>
-        </Card>
-      )}
-    </Page>
-  );
-}
-
+/** Role-specific home screen. */
 export function Dashboard({ user }: { user: User }) {
   if (user.role === "technician_ct") return <ChiefTechnicianDashboard user={user} />;
   if (WORKSPACE_ROLES.includes(user.role)) return <PersonalWorkspace user={user} />;
@@ -116,5 +31,9 @@ export function Dashboard({ user }: { user: User }) {
       </Page>
     );
   }
-  return <ManagementOverview user={user} />;
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-muted-foreground" role="status">Loading summary…</div>}>
+      <ManagementOverview user={user} />
+    </Suspense>
+  );
 }

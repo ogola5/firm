@@ -231,11 +231,22 @@ def _can_resolve(db: Session, user: User, record: SyncEvent) -> bool:
 
 
 def list_conflicts(db: Session, user: User) -> list[dict]:
+    """Open conflicts the user may resolve, newest first, with the breakdown they concern."""
     require_roles(user, *SYNC_ROLES)
     records = db.scalars(
-        select(SyncEvent).where(SyncEvent.status == "CONFLICT").order_by(SyncEvent.received_at, SyncEvent.sequence_number)
+        select(SyncEvent).where(SyncEvent.status == "CONFLICT")
+        .order_by(SyncEvent.received_at.desc(), SyncEvent.sequence_number)
     ).all()
-    return [event_view(record) for record in records if _can_resolve(db, user, record)]
+    views = []
+    for record in records:
+        if not _can_resolve(db, user, record):
+            continue
+        view = event_view(record)
+        fault = db.get(Fault, record.fault_id) if record.fault_id else None
+        view["fault_reference"] = fault.reference if fault else None
+        view["fault_symptom"] = fault.symptom if fault else None
+        views.append(view)
+    return views
 
 
 def resolve_conflict(db: Session, user: User, event_id: str, decision: str, note: str) -> dict:

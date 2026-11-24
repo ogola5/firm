@@ -34,10 +34,12 @@ Live checklist. A feature is ticked only when it works and is covered by tests.
 
 ## Stage 3 — Frontend stack and structure
 
-- [ ] Split `main.tsx` into routes, components, API and data layers
-- [ ] Tailwind CSS and shadcn/ui; TanStack Query; Recharts; React Hook Form and Zod
-- [ ] Workbox service worker; offline reload of a production build
-- [ ] Playwright Scenarios 1–3, 5–6; performance report
+- [x] Split `main.tsx` into app, feature, component, offline and lib modules; `FaultDetail` into panels
+- [x] Tailwind CSS and shadcn/ui-style primitives; TanStack Query; Recharts; React Hook Form and Zod
+- [x] Workbox service worker, web app manifest and icons; production build in Docker; cold offline start tested
+- [x] Playwright Scenarios 1–3, 5–6 (all six scenarios pass)
+- [x] Performance measurements and PERFORMANCE_REPORT.md
+- [ ] Server-side pagination for `GET /faults` (see performance report)
 
 ## Stage 4 — Missing modules
 

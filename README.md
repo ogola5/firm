@@ -5,8 +5,9 @@ This repository contains a synthetic, offline-capable prototype for digitally tr
 ## Stack
 
 - FastAPI, SQLAlchemy 2, Alembic and PostgreSQL 16
-- React, TypeScript and Vite
-- Dexie.js and a service worker for offline caching
+- React, TypeScript and Vite; Tailwind CSS with shadcn/ui-style components; TanStack Query; React Hook Form + Zod; Recharts
+- Installable PWA: Workbox service worker, Dexie.js (IndexedDB) caches and an offline outbox with conflict handling
+- Playwright end-to-end scenarios and Vitest unit tests
 - Docker Compose for a reproducible development stack
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the code layout.
@@ -17,7 +18,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the code layout.
 docker compose up --build
 ```
 
-The frontend runs on port `5173` and the API on port `8000`. API documentation is available at `http://localhost:8000/docs`. PostgreSQL is published on host port `5433` (set `POSTGRES_HOST_PORT` to change it). The backend container applies migrations and loads the demo data on first start.
+The frontend (production build, installable and usable offline) runs on port `5173` and the API on port `8000`. For frontend development with hot reload, run `npm install && npm run dev -- --port 5174` in `frontend/` against the Compose backend. API documentation is available at `http://localhost:8000/docs`. PostgreSQL is published on host port `5433` (set `POSTGRES_HOST_PORT` to change it). The backend container applies migrations and loads the demo data on first start.
 
 Reset the demonstration data at any time:
 

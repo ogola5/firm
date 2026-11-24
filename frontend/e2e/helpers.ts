@@ -20,10 +20,83 @@ export async function apiPost<T>(request: APIRequestContext, token: string, path
   return response.json() as Promise<T>;
 }
 
+export type Row = Record<string, unknown>;
+
+export const sectionSlug = (section: string) => section.toLowerCase().replace(/ /g, "-");
+
+export async function userId(request: APIRequestContext, username: string): Promise<string> {
+  const token = await apiToken(request, username);
+  return (await apiGet<{ id: string }>(request, token, "/api/v1/auth/me")).id;
+}
+
+export async function equipmentIn(request: APIRequestContext, section: string): Promise<Row> {
+  const token = await apiToken(request, "operations");
+  const rows = await apiGet<Row[]>(request, token, "/api/v1/equipment");
+  return rows.find((row) => row.section === section && !String(row.tag).startsWith("UNCONFIRMED"))!;
+}
+
+async function activeAssignmentId(request: APIRequestContext, token: string, faultId: string): Promise<string> {
+  const context = await apiGet<{ assignments: Row[] }>(request, token, `/api/v1/faults/${faultId}/context`);
+  return String(context.assignments.find((item) => item.is_active)!.id);
+}
+
+/**
+ * Drives a breakdown through the whole workflow via the API (fast setup for
+ * scenarios that start from a restored, closed fault).
+ */
+export async function closedFaultViaApi(
+  request: APIRequestContext,
+  { section, technician, symptom }: { section: string; technician: string; symptom: string },
+): Promise<{ faultId: string; equipment: Row }> {
+  const operations = await apiToken(request, "operations");
+  const automation = await apiToken(request, "automation");
+  const saChief = await apiToken(request, "ct-systems-automation");
+  const chief = await apiToken(request, `ct-${sectionSlug(section)}`);
+  const tech = await apiToken(request, technician);
+  const equipment = await equipmentIn(request, section);
+  const fault = await apiPost<{ id: string }>(request, operations, "/api/v1/faults", {
+    equipment_id: equipment.id, equipment_confirmed: true, symptom, operational_impact: "Synthetic test impact",
+  });
+  await apiPost(request, automation, `/api/v1/faults/${fault.id}/action?action=acknowledge`, {});
+  const escalation = await apiPost<{ assignment_id: string }>(request, automation, `/api/v1/faults/${fault.id}/assignments/escalate`, {
+    next_section: section, findings: "Control checks complete.", recommendation: `Continue in ${section}.`,
+  });
+  await apiPost(request, saChief, `/api/v1/faults/${fault.id}/assignments/${escalation.assignment_id}/review`, { decision: "APPROVE_ESCALATION" });
+  const sectionAssignment = await activeAssignmentId(request, chief, fault.id);
+  await apiPost(request, chief, `/api/v1/faults/${fault.id}/assignments/${sectionAssignment}/allocate`, {
+    assigned_user_id: await userId(request, technician), severity: "High", instructions: "Synthetic allocation.",
+  });
+  await apiPost(request, tech, `/api/v1/faults/${fault.id}/action?action=acknowledge`, {});
+  const diagnosis = await apiPost<{ id: string }>(request, tech, `/api/v1/faults/${fault.id}/diagnoses`, {
+    possible_cause: "Worn seal (synthetic)", diagnostic_method: "Visual inspection",
+  });
+  await apiPost(request, tech, `/api/v1/faults/${fault.id}/interventions`, {
+    diagnosis_id: diagnosis.id, corrective_action: "Replaced the seal", outcome: "SUCCESS",
+  });
+  await apiPost(request, tech, `/api/v1/faults/${fault.id}/action?action=restore`, {});
+  await apiPost(request, chief, `/api/v1/faults/${fault.id}/assignments/${sectionAssignment}/review`, { decision: "APPROVE_COMPLETION" });
+  await apiPost(request, operations, `/api/v1/faults/${fault.id}/operator-confirmation`, { confirmed: true, comments: "Service restored (synthetic)." });
+  return { faultId: fault.id, equipment };
+}
+
+export async function openFault(page: Page, faultId: string) {
+  await page.goto(`/faults?mode=history&fault=${encodeURIComponent(faultId)}`);
+  await expect(page.getByText("Work order context")).toBeVisible();
+}
+
+/** The card (Card root) that contains a heading with this exact text. */
+export function cardWithHeading(page: Page, heading: string) {
+  return page.locator("div.rounded-lg").filter({ has: page.getByRole("heading", { name: heading, exact: true }) }).last();
+}
+
 /** Signs in through the UI (online, or offline when the simulator blocks the API). */
 export async function signIn(page: Page, username: string) {
   await page.goto("/");
-  const accountSelect = page.locator("select").first();
+  // Switching user: sign the current one out first (offline data on the device is kept).
+  const logout = page.getByRole("button", { name: "Log out" });
+  const accountSelect = page.getByLabel("Demonstration account");
+  await expect(accountSelect.or(logout)).toBeVisible();
+  if (await logout.isVisible()) await logout.click();
   await expect(accountSelect).toBeVisible();
   // The account list loads from the server; offline it never arrives, so type the username.
   const option = accountSelect.locator(`option[value="${username}"]`);

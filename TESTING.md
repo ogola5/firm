@@ -48,10 +48,25 @@ scripts/e2e.sh -g offline # pass Playwright arguments
 scripts/e2e.sh --docker   # use the official Playwright image instead (about 2 GB download)
 ```
 
-The HTML report is written to `frontend/playwright-report/`.
+The HTML report is written to `frontend/playwright-report/`. The suite runs against the production build in the frontend container, so service-worker behaviour is real.
+
+## Performance
+
+```bash
+PERF=1 scripts/e2e.sh performance                  # browser: load, cached launch, local search/history/persistence
+cd backend && .venv/bin/python scripts/perf_api.py # API timings, sync throughput, PostgreSQL query plans
+```
+
+Results are written to `frontend/perf-results/` and `backend/perf-results/` and summarised in [PERFORMANCE_REPORT.md](PERFORMANCE_REPORT.md).
 
 ## Coverage
 
 - **API (pytest):** seed counts, authentication, role and section scope, fault reporting and unconfirmed assets, triage, Chief Technician allocation and review, section handoffs, evidence upload limits, operator confirmation, investigation-to-procedure review and reuse, HR/CEO visibility boundaries, analytics, repeat-fault ranking. Offline sync (`tests/test_sync.py`): ordered application of an offline lifecycle, exactly-once on resend, device timestamps on the timeline, concurrent-edit conflicts held and reconciled (apply/discard), and permission bypass attempts rejected.
 - **Frontend unit (Vitest):** outbox sequencing and optimistic updates, server acknowledgement mapping, backoff with jitter, retry on unreachable server or dropped connection, auth-expiry handling, malformed-event isolation, offline sign-in verifier and expiry, network simulator.
-- **End-to-end (Playwright):** Scenario 4, offline maintenance. An offline report survives closing the app and an offline sign-in, then syncs once. An offline acknowledgement, diagnosis and failed plus successful interventions survive a reload and reach the server exactly once, with device timestamps.
+- **End-to-end (Playwright)**, the six scenarios from the build brief:
+  - *1 First-time fault* (`fault-lifecycle.spec.ts`): Operations reports; Systems Automation acknowledges and hands off; both chiefs approve and allocate; the technician investigates; completion is reviewed; Operations closes; the procedure is reviewed, published and found in the library.
+  - *2 Recurring fault*: the same problem shows "SEEN BEFORE", earlier attempts, ranked causes and the approved procedure, which is reused; the recurrence count comes from the database.
+  - *3 Failed intervention*: the failed and successful attempts both stay in the log and are shown to the supervisor before publication.
+  - *4 Offline maintenance* (`offline-maintenance.spec.ts`): offline reporting survives restart and offline sign-in and syncs once; an offline investigation syncs exactly once with device timestamps; the installed app cold-starts with no network.
+  - *5 Concurrent edits* (`concurrent-edits.spec.ts`): a stale offline action is held as a conflict, nothing is overwritten, applying is refused, and discarding needs and records a reason.
+  - *6 Knowledge governance* (`knowledge-governance.spec.ts`): clarification requested, revision v2, technical approval, publication, then v3, with earlier versions kept.

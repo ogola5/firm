@@ -4,6 +4,7 @@ import { API_BASE as API } from "../offline/api";
 import { networkFetch } from "../offline/network";
 import { queryClient } from "../lib/query";
 import { Login } from "./Login";
+import { registerServiceWorker } from "./pwa";
 import { Shell } from "./Shell";
 
 export function App() {
@@ -17,14 +18,13 @@ export function App() {
       return null;
     }
   });
-  useEffect(() => {
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-  }, []);
+  useEffect(() => registerServiceWorker(), []);
   useEffect(() => {
     const token = localStorage.getItem("kpc-token");
     if (!user || !token) return;
     networkFetch(`${API}/api/v1/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (response) => {
+        if (localStorage.getItem("kpc-token") !== token) return null;
         if (response.status === 401) {
           localStorage.removeItem("kpc-token");
           localStorage.removeItem("kpc-user");
@@ -35,7 +35,8 @@ export function App() {
         return response.json();
       })
       .then((freshUser) => {
-        if (!freshUser) return;
+        // Ignore a late answer for a session the user has already left.
+        if (!freshUser || localStorage.getItem("kpc-token") !== token) return;
         const normalized = normalizeUser(freshUser);
         if (!normalized) throw new Error("The server returned an invalid user session");
         localStorage.setItem("kpc-user", JSON.stringify(normalized));

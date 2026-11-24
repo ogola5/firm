@@ -1,0 +1,126 @@
+{
+  "measured_at": "2026-11-24T20:02:04.916870+00:00",
+  "runs_per_endpoint": 30,
+  "api_ms": {
+    "GET /faults (Systems Automation)": {
+      "n": 30,
+      "p50": 82.9,
+      "p95": 96.0,
+      "mean": 84.2,
+      "bytes": 71490
+    },
+    "GET /faults/{id}/context": {
+      "n": 30,
+      "p50": 28.7,
+      "p95": 34.5,
+      "mean": 29.8,
+      "bytes": 11913
+    },
+    "GET /faults/{id}/timeline": {
+      "n": 30,
+      "p50": 4.7,
+      "p95": 5.6,
+      "mean": 4.8,
+      "bytes": 3898
+    },
+    "GET /equipment": {
+      "n": 30,
+      "p50": 5.0,
+      "p95": 5.8,
+      "mean": 5.1,
+      "bytes": 9196
+    },
+    "GET /intelligence/equipment/{id}": {
+      "n": 30,
+      "p50": 11.5,
+      "p95": 12.7,
+      "mean": 11.6,
+      "bytes": 2128
+    },
+    "GET /knowledge": {
+      "n": 30,
+      "p50": 5.0,
+      "p95": 5.9,
+      "mean": 5.1,
+      "bytes": 26868
+    },
+    "GET /analytics/overview": {
+      "n": 30,
+      "p50": 46.7,
+      "p95": 79.6,
+      "mean": 49.8,
+      "bytes": 3276
+    }
+  },
+  "dataset": {
+    "faults_visible_to_systems_automation": 111
+  },
+  "sync_throughput": {
+    "batch_1": {
+      "ms": 16.3,
+      "applied": 1,
+      "events_per_second": 61.4,
+      "resend_ms": 10.4,
+      "resend_duplicates": 1
+    },
+    "batch_50": {
+      "ms": 197.0,
+      "applied": 50,
+      "events_per_second": 253.8,
+      "resend_ms": 33.5,
+      "resend_duplicates": 50
+    },
+    "batch_200": {
+      "ms": 694.2,
+      "applied": 200,
+      "events_per_second": 288.1,
+      "resend_ms": 112.7,
+      "resend_duplicates": 200
+    }
+  },
+  "query_plans": {
+    "fault timeline by fault_id": [
+      "Sort  (cost=29.42..29.46 rows=15 width=137) (actual time=0.165..0.174 rows=258 loops=1)",
+      "  Sort Key: created_at",
+      "  Sort Method: quicksort  Memory: 124kB",
+      "  ->  Index Scan using ix_fault_events_fault_id on fault_events  (cost=0.28..29.13 rows=15 width=137) (actual time=0.017..0.078 rows=258 loops=1)",
+      "        Index Cond: ((fault_id)::text = 'cdd2e159-d3a0-4558-9e71-2cd69d17dbd9'::text)",
+      "Planning Time: 0.645 ms",
+      "Execution Time: 0.213 ms"
+    ],
+    "repeat lookup by equipment (90 days)": [
+      "Limit  (cost=5.30..5.31 rows=6 width=21) (actual time=0.037..0.038 rows=6 loops=1)",
+      "  ->  Sort  (cost=5.30..5.31 rows=6 width=21) (actual time=0.036..0.036 rows=6 loops=1)",
+      "        Sort Key: created_at DESC",
+      "        Sort Method: quicksort  Memory: 25kB",
+      "        ->  Seq Scan on faults  (cost=0.00..5.22 rows=6 width=21) (actual time=0.007..0.027 rows=6 loops=1)",
+      "              Filter: (((equipment_id)::text = 'EQ-003'::text) AND (created_at >= (now() - '90 days'::interval)))",
+      "              Rows Removed by Filter: 105",
+      "Planning Time: 0.578 ms",
+      "Execution Time: 0.053 ms"
+    ],
+    "open faults by status": [
+      "Aggregate  (cost=4.60..4.61 rows=1 width=8) (actual time=0.023..0.023 rows=1 loops=1)",
+      "  ->  Seq Scan on faults  (cost=0.00..4.39 rows=83 width=0) (actual time=0.004..0.020 rows=83 loops=1)",
+      "        Filter: ((status)::text <> ALL ('{RESTORED,CLOSED}'::text[]))",
+      "        Rows Removed by Filter: 28",
+      "Planning Time: 0.453 ms",
+      "Execution Time: 0.032 ms"
+    ],
+    "sync idempotency check": [
+      "Index Only Scan using sync_events_pkey on sync_events  (cost=0.27..8.29 rows=1 width=4) (actual time=0.014..0.014 rows=0 loops=1)",
+      "  Index Cond: (event_id = 'missing'::text)",
+      "  Heap Fetches: 0",
+      "Planning Time: 0.896 ms",
+      "Execution Time: 0.030 ms"
+    ]
+  },
+  "table_rows": {
+    "faults": 111,
+    "fault_events": 782,
+    "equipment": 34,
+    "sync_events": 257,
+    "diagnoses": 21,
+    "interventions": 28
+  }
+}

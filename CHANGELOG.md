@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-24 — Frontend stack and structure (Stage 3)
+
+- Split the 1,800-line `main.tsx` into app, feature, component, offline and lib modules; `FaultDetail` became a data hook and nine panels.
+- Adopted Tailwind CSS (design tokens keep the existing look), shadcn/ui-style primitives, TanStack Query, React Hook Form + Zod and Recharts; removed the legacy stylesheet.
+- Lazy-loaded routes; charts load only for management dashboards; paginated breakdown and knowledge lists.
+- Workbox service worker with precached app shell, web app manifest and icons; the Docker frontend now serves the production build.
+- Playwright Scenarios 1, 2, 3, 5 and 6 added; the installed app is tested cold-starting with no network.
+- Performance measured and reported (PERFORMANCE_REPORT.md); all build-brief budgets met on the development machine.
+- Fixed: the "seen before" warning never showed to Operations while reporting (the intelligence endpoint refused that role).
+- Fixed: a late session check could sign a user back in, or out, after they had changed user.
+- Fixed: Operations was offered the section hand-off form, which the server rejects.
+- Sync conflicts now show which breakdown they concern, newest first.
+
 ## 2026-11-24 — Offline-first (Stage 2)
 
 - Offline events are now applied to real records through shared service functions (`services/fault_operations.py`), with per-event `APPLIED`/`DUPLICATE`/`CONFLICT`/`REJECTED` acknowledgements. Previously they were only stored.
