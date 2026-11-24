@@ -5,18 +5,34 @@ import json
 import uuid
 from statistics import median
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
 import bcrypt
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./kpc.db")
 SECRET = os.getenv("DEMO_JWT_SECRET", "synthetic-demo-only-change-in-production")
+ATTACHMENT_STORAGE_DIR = Path(__file__).resolve().parents[1] / "storage" / "attachments"
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+ALLOWED_ATTACHMENT_TYPES = {
+    ".csv": "text/csv",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".json": "application/json",
+    ".log": "text/plain",
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".txt": "text/plain",
+    ".webp": "image/webp",
+}
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {})
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
@@ -44,6 +60,8 @@ class User(Base):
     section: Mapped[str] = mapped_column(String, default="")
     password_hash: Mapped[str] = mapped_column(String)
     active: Mapped[int] = mapped_column(Integer, default=1)
+    availability_status: Mapped[str] = mapped_column(String, default="AVAILABLE")
+    competencies: Mapped[str] = mapped_column(Text, default="[]")
 
 
 class UserAudit(Base):
@@ -57,12 +75,13 @@ class UserAudit(Base):
 
 
 SECTIONS = ("Systems Automation", "Electrical", "Instrumentation", "Mechanical")
+ACTIVE_ASSIGNMENT_STATUSES = ("OPEN", "ACKNOWLEDGED", "IN_PROGRESS")
 ROLE_DEFINITIONS = {
-    "operations": {"label": "Operations", "scope": "all fault summaries and asset identification", "permissions": ["faults.read", "faults.report", "equipment.read"]},
-    "systems_automation": {"label": "Systems Automation", "scope": "all fault triage; Systems Automation section work", "permissions": ["faults.read", "faults.triage", "equipment.read", "knowledge.read"]},
-    "technician_st": {"label": "Senior Technician (ST)", "scope": "assigned section", "section_required": True, "permissions": ["faults.read", "faults.report", "faults.update", "equipment.read", "knowledge.read", "knowledge.contribute"]},
+    "operations": {"label": "Operations", "scope": "fault reporting, progress, evidence and restoration confirmation", "permissions": ["faults.read", "faults.report", "faults.confirm", "equipment.read"]},
+    "systems_automation": {"label": "Systems Automation", "scope": "all fault triage; Systems Automation section work", "permissions": ["faults.read", "faults.triage", "faults.update", "faults.restore", "equipment.read", "knowledge.read", "knowledge.contribute"]},
+    "technician_st": {"label": "Senior Technician (ST)", "scope": "assigned section; shared technician work pool", "section_required": True, "permissions": ["faults.read", "faults.report", "faults.update", "faults.restore", "equipment.read", "knowledge.read", "knowledge.contribute"]},
     "technician_pt": {"label": "Principal Technician (PT)", "scope": "assigned section", "section_required": True, "permissions": ["faults.read", "faults.report", "faults.update", "faults.restore", "equipment.read", "knowledge.read", "knowledge.contribute"]},
-    "technician_ct": {"label": "Chief Technician (CT)", "scope": "assigned section; section coordination", "section_required": True, "permissions": ["faults.read", "faults.report", "faults.update", "faults.restore", "faults.close", "faults.triage.section", "equipment.read", "knowledge.read", "knowledge.contribute"]},
+    "technician_ct": {"label": "Chief Technician (CT)", "scope": "assigned section; technical supervision, work allocation and review", "section_required": True, "permissions": ["faults.read", "faults.report", "faults.triage.section", "faults.assign", "faults.review", "team.read", "team.manage", "equipment.read", "knowledge.read", "knowledge.contribute"]},
     "assistant_engineer": {"label": "Assistant Engineer", "scope": "assigned section", "section_required": True, "permissions": ["faults.read", "faults.report", "faults.update", "equipment.read", "knowledge.read", "knowledge.contribute"]},
     "engineer": {"label": "Engineer", "scope": "assigned section", "section_required": True, "permissions": ["faults.read", "faults.report", "faults.update", "equipment.read", "knowledge.read", "knowledge.contribute"]},
     "senior_engineer": {"label": "Senior Engineer", "scope": "assigned section; restoration authority", "section_required": True, "permissions": ["faults.read", "faults.report", "faults.update", "faults.restore", "equipment.read", "knowledge.read", "knowledge.contribute"]},
@@ -100,13 +119,42 @@ def require_roles(user: User, *roles: str) -> None:
         raise HTTPException(status_code=403, detail="This role does not have permission for this action")
 
 
+def current_assignment(fault: Fault) -> Optional[FaultAssignment]:
+    return next(
+        (item for item in reversed(fault.assignments) if item.status in ACTIVE_ASSIGNMENT_STATUSES),
+        None,
+    )
+
+
+def require_current_assignment(user: User, fault: Fault) -> Optional[FaultAssignment]:
+    assignment = current_assignment(fault)
+    if assignment is None:
+        return None
+    key = role_key(user)
+    if key == "systems_automation" and assignment.section != "Systems Automation":
+        raise HTTPException(status_code=404, detail="Fault not found")
+    if key in (
+        "technician_st", "technician_pt", "technician_ct", "assistant_engineer",
+        "engineer", "senior_engineer", "chief_engineer",
+    ) and assignment.section != user.section:
+        raise HTTPException(status_code=404, detail="Fault not found")
+    if key in ASSIGNABLE_TECHNICIAN_ROLES and not assignment.assigned_user_id:
+        raise HTTPException(status_code=409, detail="This section assignment is awaiting Chief Technician allocation")
+    if assignment.assigned_user_id and assignment.assigned_user_id != user.id and (
+        key == "systems_automation" or key in TECHNICAL_ROLES
+    ):
+        raise HTTPException(status_code=409, detail="This section assignment is owned by another employee")
+    return assignment
+
+
 def require_fault_scope(user: User, fault: Fault) -> None:
     key = role_key(user)
     if key in ("hr_officer", "managing_director", "management"):
         raise HTTPException(status_code=403, detail="This role cannot view individual fault records")
     if key in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
         equipment = fault.equipment or None
-        if fault.assigned_section != user.section and (not equipment or equipment.section != user.section):
+        has_section_assignment = any(item.section == user.section for item in fault.assignments)
+        if fault.assigned_section != user.section and (not equipment or equipment.section != user.section) and not has_section_assignment:
             raise HTTPException(status_code=404, detail="Fault not found")
 
 
@@ -128,6 +176,8 @@ def user_payload(user: User) -> dict:
         "role_label": role_definition(user)["label"],
         "section": user.section,
         "active": bool(user.active),
+        "availability_status": user.availability_status,
+        "competencies": json.loads(user.competencies or "[]"),
         "permissions": role_definition(user)["permissions"],
         "visibility_scope": role_definition(user)["scope"],
     }
@@ -160,13 +210,24 @@ class Fault(Base):
     severity: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text)
     operational_impact: Mapped[str] = mapped_column(String, default="")
+    operating_conditions: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String, default="REPORTED")
     assigned_section: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     restored_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    equipment_confirmed: Mapped[int] = mapped_column(Integer, default=1)
+    reported_equipment_text: Mapped[str] = mapped_column(Text, default="")
+    reported_location: Mapped[str] = mapped_column(Text, default="")
+    raised_by_text: Mapped[str] = mapped_column(String, default="")
+    suggested_equipment_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    assigned_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    closure_remarks: Mapped[str] = mapped_column(Text, default="")
     equipment = relationship("Equipment")
-    reporter = relationship("User")
+    reporter = relationship("User", foreign_keys=[reporter_id])
+    assigned_user = relationship("User", foreign_keys=[assigned_user_id])
+    assignments = relationship("FaultAssignment", back_populates="fault", order_by="FaultAssignment.created_at")
+    attachments = relationship("FaultAttachment", back_populates="fault", order_by="FaultAttachment.created_at")
 
 
 class FaultEvent(Base):
@@ -179,10 +240,54 @@ class FaultEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class FaultAssignment(Base):
+    __tablename__ = "fault_assignments"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    fault_id: Mapped[str] = mapped_column(ForeignKey("faults.id"))
+    section: Mapped[str] = mapped_column(String)
+    assigned_by_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    assigned_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    previous_assignment_id: Mapped[Optional[str]] = mapped_column(ForeignKey("fault_assignments.id"), nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    findings: Mapped[str] = mapped_column(Text, default="")
+    recommendation: Mapped[str] = mapped_column(Text, default="")
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    response_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    escalation_status: Mapped[str] = mapped_column(String, default="NONE")
+    requested_next_section: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    escalation_review_comments: Mapped[str] = mapped_column(Text, default="")
+    completion_review_status: Mapped[str] = mapped_column(String, default="NONE")
+    completion_review_comments: Mapped[str] = mapped_column(Text, default="")
+    review_previous_fault_status: Mapped[str] = mapped_column(String, default="")
+    status: Mapped[str] = mapped_column(String, default="OPEN")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    fault = relationship("Fault", back_populates="assignments")
+    assigned_by = relationship("User", foreign_keys=[assigned_by_id])
+    assigned_user = relationship("User", foreign_keys=[assigned_user_id])
+
+
+class FaultAttachment(Base):
+    __tablename__ = "fault_attachments"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    fault_id: Mapped[str] = mapped_column(ForeignKey("faults.id"))
+    assignment_id: Mapped[Optional[str]] = mapped_column(ForeignKey("fault_assignments.id"), nullable=True)
+    uploader_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    original_filename: Mapped[str] = mapped_column(String)
+    storage_key: Mapped[str] = mapped_column(String, unique=True)
+    content_type: Mapped[str] = mapped_column(String)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    fault = relationship("Fault", back_populates="attachments")
+    uploader = relationship("User")
+
+
 class Diagnosis(Base):
     __tablename__ = "diagnoses"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     fault_id: Mapped[str] = mapped_column(ForeignKey("faults.id"))
+    assignment_id: Mapped[Optional[str]] = mapped_column(ForeignKey("fault_assignments.id"), nullable=True)
     author_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     possible_cause: Mapped[str] = mapped_column(Text)
     diagnostic_method: Mapped[str] = mapped_column(Text)
@@ -201,6 +306,7 @@ class Intervention(Base):
     __tablename__ = "interventions"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     fault_id: Mapped[str] = mapped_column(ForeignKey("faults.id"))
+    assignment_id: Mapped[Optional[str]] = mapped_column(ForeignKey("fault_assignments.id"), nullable=True)
     diagnosis_id: Mapped[Optional[str]] = mapped_column(ForeignKey("diagnoses.id"), nullable=True)
     actor_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     corrective_action: Mapped[str] = mapped_column(Text)
@@ -299,6 +405,48 @@ class SyncEvent(Base):
 Base.metadata.create_all(engine)
 
 
+def ensure_fault_workbench_columns() -> None:
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as connection:
+        table_additions = {
+            "faults": {
+                "equipment_confirmed": "INTEGER DEFAULT 1",
+                "reported_equipment_text": "TEXT DEFAULT ''",
+                "reported_location": "TEXT DEFAULT ''",
+                "raised_by_text": "VARCHAR DEFAULT ''",
+                "suggested_equipment_id": "VARCHAR",
+                "assigned_user_id": "VARCHAR",
+                "operating_conditions": "TEXT DEFAULT ''",
+                "closure_remarks": "TEXT DEFAULT ''",
+            },
+            "users": {
+                "availability_status": "VARCHAR DEFAULT 'AVAILABLE'",
+                "competencies": "TEXT DEFAULT '[]'",
+            },
+            "fault_assignments": {
+                "instructions": "TEXT DEFAULT ''",
+                "response_due_at": "DATETIME",
+                "escalation_status": "VARCHAR DEFAULT 'NONE'",
+                "requested_next_section": "VARCHAR",
+                "escalation_review_comments": "TEXT DEFAULT ''",
+                "completion_review_status": "VARCHAR DEFAULT 'NONE'",
+                "completion_review_comments": "TEXT DEFAULT ''",
+                "review_previous_fault_status": "VARCHAR DEFAULT ''",
+            },
+            "diagnoses": {"assignment_id": "VARCHAR"},
+            "interventions": {"assignment_id": "VARCHAR"},
+        }
+        for table, additions in table_additions.items():
+            columns = {row[1] for row in connection.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()}
+            for name, definition in additions.items():
+                if name not in columns:
+                    connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
+ensure_fault_workbench_columns()
+
+
 def ensure_knowledge_legacy_columns() -> None:
     if not DATABASE_URL.startswith("sqlite"):
         return
@@ -382,12 +530,17 @@ class LoginRequest(BaseModel):
 
 
 class FaultCreate(BaseModel):
-    equipment_id: str
-    category: str
+    equipment_id: str | None = None
+    equipment_confirmed: bool = True
+    reported_equipment_text: str = ""
+    reported_location: str = ""
+    reported_on_behalf_of: str = ""
+    category: str = "Unconfirmed"
     symptom: str
     severity: str = "Medium"
     description: str = ""
     operational_impact: str = ""
+    operating_conditions: str = ""
     event_id: str | None = None
 
 
@@ -409,6 +562,42 @@ class KnowledgeCreate(BaseModel):
 class TriageRequest(BaseModel):
     assigned_section: str
     triage_comment: str = ""
+    confirmed_equipment_id: str | None = None
+
+
+class SectionEscalationCreate(BaseModel):
+    next_section: str
+    findings: str
+    recommendation: str
+
+
+class AssignmentAllocationRequest(BaseModel):
+    assigned_user_id: str | None = None
+    severity: str
+    response_due_at: datetime | None = None
+    instructions: str = ""
+
+
+class AssignmentReviewRequest(BaseModel):
+    decision: str
+    comments: str = ""
+
+
+class AvailabilityUpdate(BaseModel):
+    availability_status: str
+
+
+class CompetenciesUpdate(BaseModel):
+    competencies: list[str]
+
+
+class OperatorUpdateCreate(BaseModel):
+    note: str
+
+
+class OperatorConfirmationCreate(BaseModel):
+    confirmed: bool
+    comments: str = ""
 
 
 class UserCreate(BaseModel):
@@ -510,9 +699,14 @@ def add_event(db: Session, fault_id: str, event_type: str, actor_id: str, payloa
 
 
 TECHNICAL_ROLES = (
-    "technician_st", "technician_pt", "technician_ct", "assistant_engineer",
+    "systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer",
     "engineer", "senior_engineer", "chief_engineer",
 )
+INVESTIGATION_ROLES = (
+    "systems_automation", "technician_st", "technician_pt", "assistant_engineer",
+    "engineer", "senior_engineer", "chief_engineer",
+)
+ASSIGNABLE_TECHNICIAN_ROLES = ("technician_st", "technician_pt")
 PROCEDURE_AUTHOR_ROLES = TECHNICAL_ROLES + ("maintenance_manager", "supervisor")
 
 
@@ -724,6 +918,21 @@ def seed_database():
                 section=section,
                 password_hash=bcrypt.hashpw(b"demo123", bcrypt.gensalt()).decode(),
             ))
+    for section in SECTIONS:
+        section_slug = section.lower().replace(" ", "-")
+        placeholder_id = f"EQ-UNCONFIRMED-{section_slug}"
+        if not db.get(Equipment, placeholder_id):
+            db.add(Equipment(
+                id=placeholder_id,
+                tag=f"UNCONFIRMED-{section_slug.upper()}",
+                name="Asset not yet identified",
+                category="Unconfirmed",
+                station="Unknown",
+                location="Unknown",
+                section=section,
+                criticality="Unknown",
+                description="Routing placeholder only; this is not an identified physical asset.",
+            ))
     db.commit()
 
     for fault in db.scalars(select(Fault).where(Fault.id.like("FAULT-%"))).all():
@@ -889,6 +1098,23 @@ def seed_database():
                             confirmed_at=reuse_fault.created_at + timedelta(hours=4),
                         ))
         db.commit()
+    migration_actor_id = db.scalar(select(User.id).where(User.username == "admin").limit(1))
+    for fault in db.scalars(select(Fault).where(Fault.status.notin_(("RESTORED", "CLOSED")))).all():
+        if fault.assignments or not fault.assigned_section and not fault.equipment:
+            continue
+        equipment_section = fault.equipment.section if fault.equipment else ""
+        section = fault.assigned_section if fault.assigned_section in SECTIONS else equipment_section
+        if section not in SECTIONS:
+            continue
+        db.add(FaultAssignment(
+            id=str(uuid.uuid4()),
+            fault_id=fault.id,
+            section=section,
+            assigned_by_id=migration_actor_id or fault.reporter_id,
+            reason="Migrated active breakdown to section assignment",
+        ))
+        fault.assigned_section = section
+    db.commit()
     db.close()
 
 
@@ -1149,18 +1375,202 @@ def user_audit(user: User = Depends(current_user), db: Session = Depends(db_dep)
     return [{"id": item.id, "actor_id": item.actor_id, "action": item.action, "target_user_id": item.target_user_id, "details": item.details, "created_at": item.created_at.isoformat()} for item in entries]
 
 
+def section_technician_payloads(db: Session, section: str) -> list[dict]:
+    technicians = db.scalars(
+        select(User)
+        .where(User.section == section, User.role.in_(ASSIGNABLE_TECHNICIAN_ROLES))
+        .order_by(User.role, User.display_name)
+    ).all()
+    assignments = db.scalars(
+        select(FaultAssignment).where(
+            FaultAssignment.section == section,
+            FaultAssignment.status.in_(ACTIVE_ASSIGNMENT_STATUSES),
+        )
+    ).all()
+    workloads: dict[str, int] = {}
+    for assignment in assignments:
+        if not assignment.assigned_user_id:
+            continue
+        fault = db.get(Fault, assignment.fault_id)
+        if fault and fault.status not in ("RESTORED", "CLOSED") and current_assignment(fault) == assignment:
+            workloads[assignment.assigned_user_id] = workloads.get(assignment.assigned_user_id, 0) + 1
+    return [{
+        "id": item.id,
+        "display_name": item.display_name,
+        "role": role_key(item),
+        "role_label": role_definition(item)["label"],
+        "section": item.section,
+        "active": bool(item.active),
+        "availability_status": item.availability_status,
+        "competencies": json.loads(item.competencies or "[]"),
+        "active_workload": workloads.get(item.id, 0),
+    } for item in technicians]
+
+
+@app.get("/api/v1/chief/team")
+def chief_team(user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    require_roles(user, "technician_ct")
+    return section_technician_payloads(db, user.section)
+
+
+@app.patch("/api/v1/me/availability")
+def update_my_availability(
+    req: AvailabilityUpdate,
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
+    require_roles(user, *ASSIGNABLE_TECHNICIAN_ROLES)
+    if req.availability_status not in ("AVAILABLE", "UNAVAILABLE"):
+        raise HTTPException(status_code=422, detail="Availability must be AVAILABLE or UNAVAILABLE")
+    user.availability_status = req.availability_status
+    audit_user_change(db, user.id, "TECHNICIAN_AVAILABILITY_CHANGED", user, {
+        "availability_status": user.availability_status,
+    })
+    db.commit()
+    return {"id": user.id, "availability_status": user.availability_status}
+
+
+@app.patch("/api/v1/chief/team/{user_id}/competencies")
+def update_team_competencies(
+    user_id: str,
+    req: CompetenciesUpdate,
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
+    require_roles(user, "technician_ct")
+    target = db.get(User, user_id)
+    if not target or target.section != user.section or role_key(target) not in ASSIGNABLE_TECHNICIAN_ROLES:
+        raise HTTPException(status_code=404, detail="Technician not found in your section")
+    competencies = []
+    seen = set()
+    for value in req.competencies:
+        competency = value.strip()
+        key = competency.casefold()
+        if competency and key not in seen:
+            competencies.append(competency)
+            seen.add(key)
+    if len(competencies) > 20 or any(len(value) > 80 for value in competencies):
+        raise HTTPException(status_code=422, detail="Enter at most 20 competencies, each no longer than 80 characters")
+    target.competencies = json.dumps(competencies)
+    audit_user_change(db, user.id, "TECHNICIAN_COMPETENCIES_CHANGED", target, {
+        "competencies": competencies,
+    })
+    db.commit()
+    return {"id": target.id, "competencies": competencies}
+
+
+@app.get("/api/v1/chief/workspace")
+def chief_workspace(user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    require_roles(user, "technician_ct")
+    query = (
+        select(Fault)
+        .join(Equipment, Fault.equipment_id == Equipment.id)
+        .where(
+            (Fault.assigned_section == user.section)
+            | (Equipment.section == user.section)
+            | Fault.id.in_(select(FaultAssignment.fault_id).where(FaultAssignment.section == user.section))
+        )
+        .order_by(Fault.created_at.desc())
+    )
+    scoped_faults = db.scalars(query.limit(200)).all()
+    records = []
+    now = utcnow()
+    for fault in scoped_faults:
+        if fault.status == "CLOSED":
+            continue
+        assignment = current_assignment(fault)
+        section_history = any(item.section == user.section for item in fault.assignments)
+        if fault.assigned_section != user.section and (not fault.equipment or fault.equipment.section != user.section) and not section_history:
+            continue
+        due_at = assignment.response_due_at if assignment else None
+        is_current_section = bool(assignment and assignment.section == user.section)
+        escalated = bool(assignment and assignment.section != user.section and section_history)
+        awaiting_assignment = bool(
+            is_current_section and assignment and not assignment.assigned_user_id
+            and assignment.escalation_status != "PENDING"
+            and assignment.completion_review_status != "PENDING"
+        )
+        awaiting_review = bool(
+            is_current_section and assignment and (
+                assignment.escalation_status == "PENDING"
+                or assignment.completion_review_status == "PENDING"
+            )
+        )
+        overdue = bool(
+            is_current_section and assignment and due_at
+            and utc_datetime(due_at) < now
+            and fault.status not in ("RESTORED", "CLOSED")
+        )
+        records.append({
+            "id": fault.id,
+            "reference": fault.reference,
+            "equipment_tag": fault.equipment.tag if fault.equipment_confirmed and fault.equipment else (
+                fault.reported_equipment_text or "Asset not identified"
+            ),
+            "symptom": fault.symptom,
+            "severity": fault.severity,
+            "status": fault.status,
+            "severity": fault.severity,
+            "assigned_section": fault.assigned_section,
+            "assigned_user_id": assignment.assigned_user_id if assignment else None,
+            "assigned_user_name": assignment.assigned_user.display_name if assignment and assignment.assigned_user else "",
+            "assignment_status": assignment.status if assignment else "",
+            "response_due_at": due_at.isoformat() if due_at else None,
+            "awaiting_assignment": awaiting_assignment,
+            "awaiting_review": awaiting_review,
+            "escalated": escalated,
+            "overdue": overdue,
+            "created_at": fault.created_at.isoformat(),
+        })
+    active_section = [item for item in records if item["assigned_section"] == user.section and item["status"] not in ("RESTORED", "CLOSED")]
+    return {
+        "section": user.section,
+        "counts": {
+            "awaiting_assignment": sum(bool(item["awaiting_assignment"]) for item in active_section),
+            "active_section": len(active_section),
+            "investigating": sum(item["assignment_status"] in ("ACKNOWLEDGED", "IN_PROGRESS") for item in active_section),
+            "escalated": sum(bool(item["escalated"]) for item in records),
+            "awaiting_review": sum(bool(item["awaiting_review"]) for item in active_section),
+            "overdue": sum(bool(item["overdue"]) for item in active_section),
+            "critical": sum(item["severity"].casefold() == "critical" and item["status"] not in ("RESTORED", "CLOSED") for item in records),
+        },
+        "faults": records,
+        "technicians": section_technician_payloads(db, user.section),
+    }
+
+
 @app.get("/api/v1/equipment")
 def equipment_list(search: str = "", station: str = "", user: User = Depends(current_user), db: Session = Depends(db_dep)):
     require_roles(user, "operations", "systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
-    query = select(Equipment)
-    if search:
-        needle = search.lower()
-        query = query.where((Equipment.tag.ilike(f"%{needle}%")) | (Equipment.name.ilike(f"%{needle}%")))
+    query = select(Equipment).where(~Equipment.tag.like("UNCONFIRMED-%"))
     if station:
         query = query.where(Equipment.station == station)
     if role_key(user) in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
         query = query.where(Equipment.section == user.section)
-    return [{"id": e.id, "tag": e.tag, "name": e.name, "category": e.category, "station": e.station, "location": e.location, "section": e.section, "criticality": e.criticality, "operational_status": e.operational_status} for e in db.scalars(query)]
+    equipment = db.scalars(query).all()
+    if search.strip():
+        terms = [term for term in search.lower().replace("-", " ").split() if len(term) > 1]
+
+        def score(item: Equipment) -> int:
+            searchable = " ".join((
+                item.tag, item.name, item.category, item.station, item.location,
+                item.section, item.description, item.manufacturer, item.model,
+            )).lower().replace("-", " ")
+            return sum(term in searchable for term in terms)
+
+        equipment = sorted(
+            (item for item in equipment if score(item)),
+            key=lambda item: (-score(item), item.tag),
+        )
+    return [
+        {
+            "id": e.id, "tag": e.tag, "name": e.name, "category": e.category,
+            "station": e.station, "location": e.location, "section": e.section,
+            "criticality": e.criticality, "operational_status": e.operational_status,
+            "description": e.description,
+        }
+        for e in equipment[:100]
+    ]
 
 
 @app.get("/api/v1/equipment/{equipment_id}")
@@ -1185,38 +1595,103 @@ def equipment_history(equipment_id: str, user: User = Depends(current_user), db:
 @app.post("/api/v1/faults")
 def report_fault(req: FaultCreate, user: User = Depends(current_user), db: Session = Depends(db_dep)):
     require_roles(user, "operations", "systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
-    if not db.get(Equipment, req.equipment_id):
+    if not req.symptom.strip():
+        raise HTTPException(status_code=422, detail="Describe what was observed")
+    if not req.operational_impact.strip():
+        raise HTTPException(status_code=422, detail="Describe the immediate effect on operation")
+    candidate = db.get(Equipment, req.equipment_id) if req.equipment_id else None
+    if req.equipment_id and not candidate:
         raise HTTPException(status_code=404, detail="Equipment not found")
-    selected_equipment = db.get(Equipment, req.equipment_id)
-    require_equipment_scope(user, selected_equipment)
-    count = db.query(Fault).count() + 1
-    previous_recent = db.scalars(
-        select(Fault)
-        .where(
-            Fault.equipment_id == req.equipment_id,
-            Fault.symptom == req.symptom,
-            Fault.created_at >= utcnow() - timedelta(days=90),
+    if candidate and candidate.tag.startswith("UNCONFIRMED-"):
+        raise HTTPException(status_code=422, detail="Select a real equipment candidate or report the asset as unconfirmed")
+    if candidate:
+        require_equipment_scope(user, candidate)
+    confirmed_equipment = candidate if req.equipment_confirmed else None
+    if not confirmed_equipment and not (
+        req.reported_equipment_text.strip() or req.reported_location.strip() or candidate
+    ):
+        raise HTTPException(status_code=422, detail="Provide an equipment description or a known location")
+
+    unconfirmed = confirmed_equipment is None
+    if confirmed_equipment:
+        selected_equipment = confirmed_equipment
+        equipment_id = confirmed_equipment.id
+    else:
+        technical_roles = (
+            "technician_st", "technician_pt", "technician_ct", "assistant_engineer",
+            "engineer", "senior_engineer", "chief_engineer",
         )
-        .order_by(Fault.created_at.desc())
-        .limit(10)
+        placeholder_section = user.section if role_key(user) in technical_roles else "Systems Automation"
+        section_slug = placeholder_section.lower().replace(" ", "-")
+        equipment_id = f"EQ-UNCONFIRMED-{section_slug}"
+        selected_equipment = db.get(Equipment, equipment_id)
+        if not selected_equipment:
+            raise HTTPException(status_code=500, detail="Unconfirmed-asset routing is not configured")
+    assigned_section = "Systems Automation"
+
+    reported_equipment_text = req.reported_equipment_text.strip()
+    if not reported_equipment_text and candidate and unconfirmed:
+        reported_equipment_text = f"{candidate.tag} — {candidate.name}"
+    references = db.scalars(
+        select(Fault.reference).where(Fault.reference.like("KPC-DMO-%"))
     ).all()
+    sequence_numbers = []
+    for reference in references:
+        suffix = reference.rpartition("-")[2]
+        if suffix.isdigit():
+            sequence_numbers.append(int(suffix))
+    next_reference_number = max(sequence_numbers, default=0) + 1
+    previous_recent = []
+    if confirmed_equipment:
+        previous_recent = db.scalars(
+            select(Fault)
+            .where(
+                Fault.equipment_id == equipment_id,
+                Fault.equipment_confirmed == 1,
+                Fault.symptom == req.symptom,
+                Fault.created_at >= utcnow() - timedelta(days=90),
+            )
+            .order_by(Fault.created_at.desc())
+            .limit(10)
+        ).all()
     repeat_count = len(previous_recent)
     fault = Fault(
         id=str(uuid.uuid4()),
-        reference=f"KPC-DMO-{count:05d}",
-        equipment_id=req.equipment_id,
+        reference=f"KPC-DMO-{next_reference_number:05d}",
+        equipment_id=equipment_id,
         reporter_id=user.id,
         category=req.category,
         symptom=req.symptom,
         severity=req.severity,
         description=req.description,
         operational_impact=req.operational_impact,
-        assigned_section=selected_equipment.section if repeat_count else None,
-        status="ASSIGNED" if repeat_count else "REPORTED",
+        equipment_confirmed=0 if unconfirmed else 1,
+        reported_equipment_text=reported_equipment_text,
+        reported_location=req.reported_location.strip(),
+        raised_by_text=req.reported_on_behalf_of.strip(),
+        operating_conditions=req.operating_conditions.strip(),
+        suggested_equipment_id=candidate.id if candidate and unconfirmed else None,
+        assigned_section=assigned_section,
+        status="ASSIGNED",
     )
     db.add(fault)
     db.flush()
+    initial_assignment = FaultAssignment(
+        id=str(uuid.uuid4()),
+        fault_id=fault.id,
+        section=assigned_section,
+        assigned_by_id=user.id,
+        reason="Initial response to reported breakdown",
+    )
+    db.add(initial_assignment)
     add_event(db, fault.id, "FAULT_REPORTED", user.id, req.model_dump())
+    add_event(db, fault.id, "FAULT_ASSIGNED", user.id, {
+        "assignment_id": initial_assignment.id,
+        "assigned_section": assigned_section,
+        "suggested_section": selected_equipment.section if confirmed_equipment else "Systems Automation",
+        "routing_strategy": "SYSTEMS_AUTOMATION_FIRST",
+        "reason": initial_assignment.reason,
+    })
     if repeat_count:
         last_fixed = previous_recent[0].restored_at or previous_recent[0].created_at
         fixer_name = ""
@@ -1233,16 +1708,11 @@ def report_fault(req: FaultCreate, user: User = Depends(current_user), db: Sessi
         add_event(db, fault.id, "REPEAT_FAULT_ROUTED", user.id, {
             "repeat_count": repeat_count,
             "window_days": 90,
-            "assigned_section": selected_equipment.section,
-            "triage_skipped": True,
+            "assigned_section": assigned_section,
+            "asset_owner_section": selected_equipment.section,
+            "triage_skipped": False,
             "last_fixed_at": last_fixed.isoformat(),
             "fixed_by": fixer_name,
-        })
-        add_event(db, fault.id, "FAULT_ASSIGNED", "USER-automation", {
-            "assigned_section": selected_equipment.section,
-            "suggested_section": selected_equipment.section,
-            "repeat_count": repeat_count,
-            "repeat_routed_to_owner": True,
         })
     db.commit()
     return {
@@ -1252,29 +1722,121 @@ def report_fault(req: FaultCreate, user: User = Depends(current_user), db: Sessi
         "repeat_fault": repeat_count > 0,
         "repeat_count": repeat_count,
         "assigned_section": fault.assigned_section,
-        "triage_skipped": repeat_count > 0,
+        "triage_skipped": False,
         "seen_before_message": (
             f"SEEN BEFORE: Same fault {repeat_count} time(s) in 90 days."
-            f" Routed directly to {selected_equipment.section} standby."
+            f" Sent to Systems Automation first; prior findings remain linked to this report."
             if repeat_count else ""
+        ),
+        "active_assignment_id": initial_assignment.id,
+        "equipment_confirmed": not unconfirmed,
+        "asset_confirmation_required": unconfirmed,
+        "asset_confirmation_message": (
+            "Asset identification is unconfirmed. Systems Automation must confirm the equipment before normal routing."
+            if unconfirmed else ""
         ),
     }
 
 
 @app.get("/api/v1/faults")
-def fault_list(status_filter: str = "", user: User = Depends(current_user), db: Session = Depends(db_dep)):
+def fault_list(
+    status_filter: str = "",
+    queue: str = "",
+    history_scope: str = "",
+    search: str = "",
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
     require_roles(user, "operations", "systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
-    query = select(Fault).order_by(Fault.created_at.desc())
+    query = select(Fault).join(Equipment, Fault.equipment_id == Equipment.id).order_by(Fault.created_at.desc())
     if status_filter:
         query = query.where(Fault.status == status_filter)
     if role_key(user) in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
-        query = query.join(Equipment, Fault.equipment_id == Equipment.id).where(
-            (Fault.assigned_section == user.section) | (Equipment.section == user.section)
+        query = query.where(
+            (Fault.assigned_section == user.section)
+            | (Equipment.section == user.section)
+            | Fault.id.in_(select(FaultAssignment.fault_id).where(FaultAssignment.section == user.section))
+        )
+    if queue in ("mine", "section_open"):
+        query = query.where(Fault.status.notin_(("RESTORED", "CLOSED")))
+        if queue == "mine":
+            query = query.where(
+                (Fault.assigned_user_id == user.id)
+                | Fault.id.in_(select(FaultAssignment.fault_id).where(
+                    FaultAssignment.assigned_user_id == user.id,
+                    FaultAssignment.status.in_(ACTIVE_ASSIGNMENT_STATUSES),
+                ))
+            )
+        elif role_key(user) in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
+            query = query.where(
+                Fault.id.in_(select(FaultAssignment.fault_id).where(
+                    FaultAssignment.section == user.section,
+                    FaultAssignment.status.in_(ACTIVE_ASSIGNMENT_STATUSES),
+                ))
+                | (
+                    Fault.id.notin_(select(FaultAssignment.fault_id))
+                    & ((Fault.assigned_section == user.section) | (Equipment.section == user.section))
+                )
+            )
+        elif role_key(user) == "systems_automation":
+            query = query.where(
+                Fault.id.in_(select(FaultAssignment.fault_id).where(
+                    FaultAssignment.section == "Systems Automation",
+                    FaultAssignment.status.in_(ACTIVE_ASSIGNMENT_STATUSES),
+                ))
+                | (
+                    Fault.id.notin_(select(FaultAssignment.fault_id))
+                    & ((Fault.assigned_section == "Systems Automation") | (Equipment.section == "Systems Automation"))
+                )
+            )
+    if history_scope == "reported_by_me":
+        query = query.where(Fault.reporter_id == user.id)
+    elif history_scope == "worked_by_me":
+        query = query.where(
+            (Fault.assigned_user_id == user.id)
+            | Fault.id.in_(select(FaultAssignment.fault_id).where(FaultAssignment.assigned_user_id == user.id))
+            | Fault.id.in_(select(FaultEvent.fault_id).where(FaultEvent.actor_id == user.id))
+        )
+    if search.strip():
+        needle = f"%{search.strip()}%"
+        query = query.where(
+            Fault.reference.ilike(needle)
+            | Fault.symptom.ilike(needle)
+            | Fault.description.ilike(needle)
+            | Fault.reported_equipment_text.ilike(needle)
+            | Fault.reported_location.ilike(needle)
+            | Equipment.tag.ilike(needle)
+            | Equipment.name.ilike(needle)
+            | Equipment.location.ilike(needle)
         )
     faults = db.scalars(query.limit(200)).all()
     result = []
     for f in faults:
-        result.append({"id": f.id, "reference": f.reference, "equipment_id": f.equipment_id, "equipment_tag": f.equipment.tag if f.equipment else "", "category": f.category, "symptom": f.symptom, "severity": f.severity, "status": f.status, "assigned_section": f.assigned_section, "created_at": f.created_at.isoformat()})
+        suggested = db.get(Equipment, f.suggested_equipment_id) if f.suggested_equipment_id else None
+        assignment = current_assignment(f)
+        result.append({
+            "id": f.id, "reference": f.reference, "equipment_id": f.equipment_id,
+            "equipment_tag": f.equipment.tag if f.equipment_confirmed and f.equipment else (
+                f.reported_equipment_text or "Asset not identified"
+            ),
+            "category": f.category, "symptom": f.symptom, "severity": f.severity,
+            "status": f.status, "assigned_section": f.assigned_section,
+            "equipment_confirmed": bool(f.equipment_confirmed),
+            "reported_equipment_text": f.reported_equipment_text,
+            "reported_location": f.reported_location,
+            "suggested_equipment_tag": suggested.tag if suggested else "",
+            "reporter_name": f.reporter.display_name if f.reporter else "",
+            "assigned_user_id": f.assigned_user_id,
+            "assigned_user_name": f.assigned_user.display_name if f.assigned_user else "",
+            "active_assignment_id": assignment.id if assignment else None,
+            "active_assignment_section": assignment.section if assignment else "",
+            "active_assignment_status": assignment.status if assignment else "",
+            "active_assignment_elapsed_minutes": (
+                max(0, int((utc_datetime(assignment.completed_at or utcnow()) - utc_datetime(assignment.created_at)).total_seconds() / 60))
+                if assignment else None
+            ),
+            "created_at": f.created_at.isoformat(),
+        })
     return result
 
 
@@ -1284,7 +1846,24 @@ def fault_detail(fault_id: str, user: User = Depends(current_user), db: Session 
     if not f:
         raise HTTPException(status_code=404, detail="Fault not found")
     require_fault_scope(user, f)
-    return {"id": f.id, "reference": f.reference, "equipment_id": f.equipment_id, "equipment_tag": f.equipment.tag if f.equipment else "", "category": f.category, "symptom": f.symptom, "severity": f.severity, "description": f.description, "operational_impact": f.operational_impact, "status": f.status, "assigned_section": f.assigned_section, "created_at": f.created_at.isoformat()}
+    return {
+        "id": f.id, "reference": f.reference, "equipment_id": f.equipment_id,
+        "equipment_tag": f.equipment.tag if f.equipment_confirmed and f.equipment else (
+            f.reported_equipment_text or "Asset not identified"
+        ),
+        "equipment_confirmed": bool(f.equipment_confirmed),
+        "reported_equipment_text": f.reported_equipment_text,
+        "reported_location": f.reported_location,
+        "suggested_equipment_id": f.suggested_equipment_id,
+        "category": f.category, "symptom": f.symptom, "severity": f.severity,
+        "description": f.description, "operational_impact": f.operational_impact,
+        "reported_on_behalf_of": f.raised_by_text, "status": f.status,
+        "assigned_section": f.assigned_section, "assigned_user_id": f.assigned_user_id,
+        "operating_conditions": f.operating_conditions,
+        "closure_remarks": f.closure_remarks,
+        "active_assignment_id": current_assignment(f).id if current_assignment(f) else None,
+        "created_at": f.created_at.isoformat(),
+    }
 
 
 @app.get("/api/v1/faults/{fault_id}/timeline")
@@ -1315,6 +1894,19 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
     interventions = db.scalars(
         select(Intervention).where(Intervention.fault_id == fault_id).order_by(Intervention.created_at)
     ).all()
+    assignments = fault.assignments
+    attachments = fault.attachments
+    operator_updates = [
+        {
+            "id": event.id,
+            "event_type": event.event_type,
+            "actor_name": actors.get(event.actor_id, event.actor_id),
+            "payload": json.loads(event.payload or "{}"),
+            "created_at": event.created_at.isoformat(),
+        }
+        for event in timeline
+        if event.event_type in ("OPERATOR_UPDATE", "FAULT_OPERATOR_CONFIRMED", "FAULT_OPERATOR_REJECTED_RESTORATION")
+    ]
     current_updates = db.scalars(
         select(ProcedureUpdate).where(ProcedureUpdate.fault_id == fault_id).order_by(ProcedureUpdate.version)
     ).all()
@@ -1322,12 +1914,18 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
         select(KnowledgeReuse).where(KnowledgeReuse.fault_id == fault_id).order_by(KnowledgeReuse.used_at)
     ).all()
 
-    previous_faults = db.scalars(
-        select(Fault)
-        .where(Fault.equipment_id == fault.equipment_id, Fault.id != fault_id)
-        .order_by(Fault.created_at.desc())
-        .limit(10)
-    ).all()
+    previous_faults = []
+    if fault.equipment_confirmed:
+        previous_faults = db.scalars(
+            select(Fault)
+            .where(
+                Fault.equipment_id == fault.equipment_id,
+                Fault.equipment_confirmed == 1,
+                Fault.id != fault_id,
+            )
+            .order_by(Fault.created_at.desc())
+            .limit(10)
+        ).all()
     history = []
     for previous in previous_faults:
         prior_diagnoses = db.scalars(
@@ -1426,16 +2024,68 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             "id": fault.id,
             "reference": fault.reference,
             "equipment_id": fault.equipment_id,
-            "equipment_tag": equipment.tag if equipment else "",
-            "equipment_name": equipment.name if equipment else "",
+            "equipment_tag": equipment.tag if fault.equipment_confirmed and equipment else (
+                fault.reported_equipment_text or "Asset not identified"
+            ),
+            "equipment_name": equipment.name if fault.equipment_confirmed and equipment else "Asset not yet identified",
+            "equipment_confirmed": bool(fault.equipment_confirmed),
+            "reported_equipment_text": fault.reported_equipment_text,
+            "reported_location": fault.reported_location,
+            "suggested_equipment_tag": (
+                db.get(Equipment, fault.suggested_equipment_id).tag
+                if fault.suggested_equipment_id and db.get(Equipment, fault.suggested_equipment_id) else ""
+            ),
             "symptom": fault.symptom,
             "description": fault.description,
             "operational_impact": fault.operational_impact,
+            "operating_conditions": fault.operating_conditions,
             "status": fault.status,
             "assigned_section": fault.assigned_section,
-            "suggested_section": equipment.section if equipment else "",
+            "assigned_user_id": fault.assigned_user_id,
+            "active_assignment_id": current_assignment(fault).id if current_assignment(fault) else None,
+            "reporter_name": fault.reporter.display_name if fault.reporter else "",
+            "reported_on_behalf_of": fault.raised_by_text,
+            "closure_remarks": fault.closure_remarks,
+            "suggested_section": equipment.section if fault.equipment_confirmed and equipment else "Systems Automation",
             "created_at": fault.created_at.isoformat(),
         },
+        "assignments": [{
+            "id": item.id,
+            "section": item.section,
+            "assigned_by_name": item.assigned_by.display_name if item.assigned_by else "",
+            "assigned_user_id": item.assigned_user_id,
+            "assigned_user_name": item.assigned_user.display_name if item.assigned_user else "",
+            "previous_assignment_id": item.previous_assignment_id,
+            "reason": item.reason,
+            "findings": item.findings,
+            "recommendation": item.recommendation,
+            "instructions": item.instructions,
+            "response_due_at": item.response_due_at.isoformat() if item.response_due_at else None,
+            "escalation_status": item.escalation_status,
+            "requested_next_section": item.requested_next_section,
+            "escalation_review_comments": item.escalation_review_comments,
+            "completion_review_status": item.completion_review_status,
+            "completion_review_comments": item.completion_review_comments,
+            "status": item.status,
+            "is_active": item.status in ACTIVE_ASSIGNMENT_STATUSES,
+            "created_at": item.created_at.isoformat(),
+            "acknowledged_at": item.acknowledged_at.isoformat() if item.acknowledged_at else None,
+            "completed_at": item.completed_at.isoformat() if item.completed_at else None,
+            "elapsed_minutes": max(0, int((
+                utc_datetime(item.completed_at or utcnow()) - utc_datetime(item.created_at)
+            ).total_seconds() / 60)),
+        } for item in assignments],
+        "attachments": [{
+            "id": item.id,
+            "assignment_id": item.assignment_id,
+            "filename": item.original_filename,
+            "content_type": item.content_type,
+            "size_bytes": item.size_bytes,
+            "uploaded_by": item.uploader.display_name if item.uploader else "",
+            "created_at": item.created_at.isoformat(),
+            "download_url": f"/api/v1/faults/{fault.id}/attachments/{item.id}",
+        } for item in attachments],
+        "operator_updates": operator_updates,
         "timeline": [{
             "id": event.id,
             "event_type": event.event_type,
@@ -1446,6 +2096,8 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
         } for event in timeline],
         "diagnoses": [{
             "id": item.id,
+            "assignment_id": item.assignment_id,
+            "assignment_section": db.get(FaultAssignment, item.assignment_id).section if item.assignment_id and db.get(FaultAssignment, item.assignment_id) else "",
             "author_id": item.author_id,
             "author_name": db.get(User, item.author_id).display_name if db.get(User, item.author_id) else item.author_id,
             "possible_cause": item.possible_cause,
@@ -1462,6 +2114,8 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
         } for item in diagnoses],
         "interventions": [{
             "id": item.id,
+            "assignment_id": item.assignment_id,
+            "assignment_section": db.get(FaultAssignment, item.assignment_id).section if item.assignment_id and db.get(FaultAssignment, item.assignment_id) else "",
             "diagnosis_id": item.diagnosis_id,
             "actor_id": item.actor_id,
             "actor_name": db.get(User, item.actor_id).display_name if db.get(User, item.actor_id) else item.actor_id,
@@ -1474,10 +2128,10 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
         "previous_faults": history,
         "ranked_causes": ranked_cause_list,
         "repeat_routing": {
-            "seen_before": len(history) > 0,
+            "seen_before": bool(fault.equipment_confirmed and history),
             "repeat_count": len(history),
-            "triage_action": "DIRECT_TO_SECTION" if len(history) > 0 else "NORMAL_TRIAGE",
-            "suggested_section": equipment.section if equipment else fault.assigned_section,
+            "triage_action": "SA_FIRST_WITH_REPEAT_CONTEXT" if fault.equipment_confirmed and history else "SA_FIRST",
+            "suggested_section": equipment.section if fault.equipment_confirmed and equipment else fault.assigned_section,
         },
         "approved_procedures": approved_procedures,
         "legacy_knowledge": [{
@@ -1512,11 +2166,17 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
 
 @app.post("/api/v1/faults/{fault_id}/diagnoses")
 def record_diagnosis(fault_id: str, req: DiagnosisCreate, user: User = Depends(current_user), db: Session = Depends(db_dep)):
-    require_roles(user, *TECHNICAL_ROLES)
+    require_roles(user, *INVESTIGATION_ROLES)
     fault = db.get(Fault, fault_id)
     if not fault:
         raise HTTPException(status_code=404, detail="Fault not found")
     require_fault_scope(user, fault)
+    assignment = current_assignment(fault)
+    if not assignment:
+        raise HTTPException(status_code=409, detail="There is no active section assignment for this breakdown")
+    require_current_assignment(user, fault)
+    if assignment.escalation_status == "PENDING" or assignment.completion_review_status == "PENDING":
+        raise HTTPException(status_code=409, detail="This assignment is awaiting Chief Technician review")
     if not req.possible_cause.strip() or not req.diagnostic_method.strip():
         raise HTTPException(status_code=422, detail="A possible cause and diagnostic method are required")
     if req.confidence is not None and not 0 <= req.confidence <= 1:
@@ -1528,6 +2188,7 @@ def record_diagnosis(fault_id: str, req: DiagnosisCreate, user: User = Depends(c
     diagnosis = Diagnosis(
         id=str(uuid.uuid4()),
         fault_id=fault.id,
+        assignment_id=assignment.id,
         author_id=user.id,
         possible_cause=req.possible_cause.strip(),
         diagnostic_method=req.diagnostic_method.strip(),
@@ -1548,11 +2209,17 @@ def record_diagnosis(fault_id: str, req: DiagnosisCreate, user: User = Depends(c
 
 @app.post("/api/v1/faults/{fault_id}/interventions")
 def record_intervention(fault_id: str, req: InterventionCreate, user: User = Depends(current_user), db: Session = Depends(db_dep)):
-    require_roles(user, *TECHNICAL_ROLES)
+    require_roles(user, *INVESTIGATION_ROLES)
     fault = db.get(Fault, fault_id)
     if not fault:
         raise HTTPException(status_code=404, detail="Fault not found")
     require_fault_scope(user, fault)
+    assignment = current_assignment(fault)
+    if not assignment:
+        raise HTTPException(status_code=409, detail="There is no active section assignment for this breakdown")
+    require_current_assignment(user, fault)
+    if assignment.escalation_status == "PENDING" or assignment.completion_review_status == "PENDING":
+        raise HTTPException(status_code=409, detail="This assignment is awaiting Chief Technician review")
     if req.outcome not in ("SUCCESS", "FAILED", "IN_PROGRESS"):
         raise HTTPException(status_code=422, detail="Outcome must be SUCCESS, FAILED or IN_PROGRESS")
     if not req.corrective_action.strip():
@@ -1566,6 +2233,7 @@ def record_intervention(fault_id: str, req: InterventionCreate, user: User = Dep
     intervention = Intervention(
         id=str(uuid.uuid4()),
         fault_id=fault.id,
+        assignment_id=assignment.id,
         diagnosis_id=req.diagnosis_id,
         actor_id=user.id,
         corrective_action=req.corrective_action.strip(),
@@ -1791,7 +2459,7 @@ def procedure_library(user: User = Depends(current_user), db: Session = Depends(
 
 @app.post("/api/v1/faults/{fault_id}/procedure-reuse")
 def reuse_procedure(fault_id: str, req: KnowledgeReuseCreate, user: User = Depends(current_user), db: Session = Depends(db_dep)):
-    require_roles(user, *TECHNICAL_ROLES)
+    require_roles(user, *INVESTIGATION_ROLES)
     fault = db.get(Fault, fault_id)
     update = db.get(ProcedureUpdate, req.procedure_update_id)
     if not fault:
@@ -1817,7 +2485,7 @@ def reuse_procedure(fault_id: str, req: KnowledgeReuseCreate, user: User = Depen
 
 @app.post("/api/v1/procedure-reuse/{reuse_id}/outcome")
 def confirm_procedure_reuse(reuse_id: str, req: KnowledgeReuseOutcomeCreate, user: User = Depends(current_user), db: Session = Depends(db_dep)):
-    require_roles(user, *TECHNICAL_ROLES)
+    require_roles(user, *INVESTIGATION_ROLES)
     reuse = db.get(KnowledgeReuse, reuse_id)
     if not reuse:
         raise HTTPException(status_code=404, detail="Procedure reuse record not found")
@@ -1853,35 +2521,481 @@ def triage_fault(fault_id: str, req: TriageRequest, user: User = Depends(current
     if not f:
         raise HTTPException(status_code=404, detail="Fault not found")
     require_fault_scope(user, f)
-    if role_key(user) in ("technician_ct", "chief_engineer") and req.assigned_section != user.section:
+    if role_key(user) in ("technician_ct", "chief_engineer") and req.assigned_section != user.section and not (
+        not f.equipment_confirmed
+        and not req.confirmed_equipment_id
+        and req.assigned_section == "Systems Automation"
+    ):
         raise HTTPException(status_code=403, detail="Section leads may only assign work within their section")
+    active_assignment = current_assignment(f)
+    if active_assignment:
+        require_current_assignment(user, f)
+        if req.assigned_section != active_assignment.section:
+            raise HTTPException(status_code=422, detail="Use the section handoff action to transfer this assignment")
     if req.assigned_section not in SECTIONS:
         raise HTTPException(status_code=422, detail="Unknown maintenance section")
+    confirmed_equipment = None
+    if req.confirmed_equipment_id:
+        if f.equipment_confirmed:
+            raise HTTPException(status_code=409, detail="Equipment is already confirmed")
+        confirmed_equipment = db.get(Equipment, req.confirmed_equipment_id)
+        if not confirmed_equipment or confirmed_equipment.tag.startswith("UNCONFIRMED-"):
+            raise HTTPException(status_code=404, detail="Confirmed equipment not found")
+        require_equipment_scope(user, confirmed_equipment)
+        if not active_assignment and req.assigned_section != confirmed_equipment.section:
+            raise HTTPException(status_code=422, detail="Route the breakdown to the confirmed equipment section")
+    elif not f.equipment_confirmed and req.assigned_section != "Systems Automation":
+        raise HTTPException(status_code=422, detail="Confirm the asset before routing to an equipment section")
+    if confirmed_equipment:
+        f.equipment_id = confirmed_equipment.id
+        f.equipment_confirmed = 1
     repeat_count = db.query(Fault).filter(
         Fault.equipment_id == f.equipment_id,
+        Fault.equipment_confirmed == 1,
         Fault.id != f.id,
     ).count()
-    add_event(db, fault_id, "FAULT_TRIAGED", user.id, {"triage_comment": req.triage_comment})
-    f.assigned_section = req.assigned_section
+    add_event(db, fault_id, "FAULT_TRIAGED", user.id, {
+        "triage_comment": req.triage_comment,
+        "confirmed_equipment_id": confirmed_equipment.id if confirmed_equipment else None,
+    })
+    f.assigned_section = active_assignment.section if active_assignment else req.assigned_section
+    if not active_assignment:
+        db.add(FaultAssignment(
+            id=str(uuid.uuid4()),
+            fault_id=f.id,
+            section=req.assigned_section,
+            assigned_by_id=user.id,
+            reason="Initial triage assignment",
+        ))
     f.status = "ASSIGNED"
     add_event(db, fault_id, "FAULT_ASSIGNED", user.id, {
         **req.model_dump(),
         "suggested_section": f.equipment.section if f.equipment else "",
         "repeat_count": repeat_count,
-        "repeat_routed_to_owner": bool(repeat_count and f.equipment and req.assigned_section == f.equipment.section),
+        "repeat_routed_to_owner": bool(
+            not active_assignment and repeat_count and f.equipment and req.assigned_section == f.equipment.section
+        ),
     })
     db.commit()
     return {"reference": f.reference, "status": f.status, "assigned_section": f.assigned_section}
 
 
+@app.post("/api/v1/faults/{fault_id}/assignments/{assignment_id}/allocate")
+def allocate_section_assignment(
+    fault_id: str,
+    assignment_id: str,
+    req: AssignmentAllocationRequest,
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
+    require_roles(user, "technician_ct")
+    fault = db.get(Fault, fault_id)
+    assignment = db.get(FaultAssignment, assignment_id)
+    if not fault or not assignment or assignment.fault_id != fault_id:
+        raise HTTPException(status_code=404, detail="Section assignment not found")
+    require_fault_scope(user, fault)
+    if assignment.section != user.section or current_assignment(fault) != assignment:
+        raise HTTPException(status_code=404, detail="Active assignment not found in your section")
+    if assignment.escalation_status == "PENDING" or assignment.completion_review_status == "PENDING":
+        raise HTTPException(status_code=409, detail="Resolve the pending technical review before changing this assignment")
+    if req.severity not in ("Low", "Medium", "High", "Critical"):
+        raise HTTPException(status_code=422, detail="Priority must be Low, Medium, High or Critical")
+    if req.response_due_at and utc_datetime(req.response_due_at) <= utcnow():
+        raise HTTPException(status_code=422, detail="Expected response time must be in the future")
+    assignee = None
+    if req.assigned_user_id:
+        assignee = db.get(User, req.assigned_user_id)
+        if (
+            not assignee
+            or not assignee.active
+            or assignee.section != user.section
+            or role_key(assignee) not in ASSIGNABLE_TECHNICIAN_ROLES
+        ):
+            raise HTTPException(status_code=422, detail="Choose an active Senior or Principal Technician in your section")
+        if assignee.availability_status != "AVAILABLE":
+            raise HTTPException(status_code=409, detail="This technician is marked unavailable")
+    previous_assignee_id = assignment.assigned_user_id
+    assignment.assigned_user_id = assignee.id if assignee else None
+    assignment.instructions = req.instructions.strip()
+    assignment.response_due_at = utc_datetime(req.response_due_at) if req.response_due_at else None
+    fault.severity = req.severity
+    fault.assigned_section = assignment.section
+    fault.assigned_user_id = assignment.assigned_user_id
+    if previous_assignee_id != assignment.assigned_user_id:
+        assignment.status = "OPEN"
+        assignment.acknowledged_at = None
+        fault.status = "ASSIGNED"
+    add_event(db, fault.id, "SECTION_WORK_ALLOCATED", user.id, {
+        "assignment_id": assignment.id,
+        "section": assignment.section,
+        "previous_assigned_user_id": previous_assignee_id,
+        "assigned_user_id": assignment.assigned_user_id,
+        "priority": fault.severity,
+        "response_due_at": assignment.response_due_at.isoformat() if assignment.response_due_at else None,
+        "instructions": assignment.instructions,
+    })
+    db.commit()
+    return {
+        "assignment_id": assignment.id,
+        "assigned_user_id": assignment.assigned_user_id,
+        "priority": fault.severity,
+        "response_due_at": assignment.response_due_at.isoformat() if assignment.response_due_at else None,
+        "instructions": assignment.instructions,
+    }
+
+
+@app.post("/api/v1/faults/{fault_id}/assignments/{assignment_id}/review")
+def review_section_assignment(
+    fault_id: str,
+    assignment_id: str,
+    req: AssignmentReviewRequest,
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
+    require_roles(user, "technician_ct")
+    fault = db.get(Fault, fault_id)
+    assignment = db.get(FaultAssignment, assignment_id)
+    if not fault or not assignment or assignment.fault_id != fault_id:
+        raise HTTPException(status_code=404, detail="Section assignment not found")
+    require_fault_scope(user, fault)
+    if assignment.section != user.section or current_assignment(fault) != assignment:
+        raise HTTPException(status_code=404, detail="Active assignment not found in your section")
+    if req.decision not in (
+        "APPROVE_ESCALATION", "RETURN_ESCALATION",
+        "APPROVE_COMPLETION", "RETURN_COMPLETION",
+    ):
+        raise HTTPException(status_code=422, detail="Choose an escalation or technical completion review decision")
+    comments = req.comments.strip()
+    if req.decision.startswith("RETURN_") and not comments:
+        raise HTTPException(status_code=422, detail="A return decision requires instructions for further work")
+
+    now = utcnow()
+    if req.decision in ("APPROVE_ESCALATION", "RETURN_ESCALATION"):
+        if assignment.escalation_status != "PENDING" or not assignment.requested_next_section:
+            raise HTTPException(status_code=409, detail="This assignment has no escalation awaiting review")
+        if req.decision == "RETURN_ESCALATION":
+            assignment.escalation_status = "RETURNED"
+            assignment.escalation_review_comments = comments
+            fault.status = assignment.review_previous_fault_status or "DIAGNOSED"
+            add_event(db, fault.id, "SECTION_ESCALATION_RETURNED", user.id, {
+                "assignment_id": assignment.id,
+                "comments": comments,
+            })
+            result_assignment_id = assignment.id
+        else:
+            next_section = assignment.requested_next_section
+            if next_section not in SECTIONS or next_section == assignment.section:
+                raise HTTPException(status_code=409, detail="The requested receiving section is no longer valid")
+            assignment.status = "ESCALATED"
+            assignment.completed_at = now
+            assignment.escalation_status = "APPROVED"
+            assignment.escalation_review_comments = comments
+            next_assignment = FaultAssignment(
+                id=str(uuid.uuid4()),
+                fault_id=fault.id,
+                section=next_section,
+                assigned_by_id=user.id,
+                previous_assignment_id=assignment.id,
+                reason=assignment.recommendation,
+            )
+            db.add(next_assignment)
+            fault.assigned_section = next_section
+            fault.assigned_user_id = None
+            fault.status = "ASSIGNED"
+            add_event(db, fault.id, "SECTION_ASSIGNMENT_ESCALATED", user.id, {
+                "previous_assignment_id": assignment.id,
+                "next_assignment_id": next_assignment.id,
+                "from_section": assignment.section,
+                "to_section": next_assignment.section,
+                "findings": assignment.findings,
+                "recommendation": assignment.recommendation,
+                "review_comments": comments,
+            })
+            add_event(db, fault.id, "FAULT_ASSIGNED", user.id, {
+                "assignment_id": next_assignment.id,
+                "previous_assignment_id": assignment.id,
+                "assigned_section": next_assignment.section,
+                "handoff": True,
+            })
+            result_assignment_id = next_assignment.id
+    else:
+        if assignment.completion_review_status != "PENDING":
+            raise HTTPException(status_code=409, detail="This assignment has no technical completion awaiting review")
+        if req.decision == "RETURN_COMPLETION":
+            assignment.completion_review_status = "RETURNED"
+            assignment.completion_review_comments = comments
+            fault.status = assignment.review_previous_fault_status or "DIAGNOSED"
+            add_event(db, fault.id, "TECHNICAL_COMPLETION_RETURNED", user.id, {
+                "assignment_id": assignment.id,
+                "comments": comments,
+            })
+        else:
+            successful_intervention = db.scalar(
+                select(Intervention.id).where(
+                    Intervention.assignment_id == assignment.id,
+                    Intervention.outcome == "SUCCESS",
+                ).limit(1)
+            )
+            if not successful_intervention:
+                raise HTTPException(status_code=409, detail="Record a successful corrective intervention before approving technical completion")
+            assignment.completion_review_status = "APPROVED"
+            assignment.completion_review_comments = comments
+            assignment.status = "RESTORED"
+            assignment.completed_at = now
+            fault.status = "RESTORED"
+            fault.restored_at = now
+            add_event(db, fault.id, "FAULT_RESTORE", assignment.assigned_user_id or user.id, {
+                "assignment_id": assignment.id,
+                "technical_reviewed_by": user.id,
+            })
+            add_event(db, fault.id, "TECHNICAL_COMPLETION_APPROVED", user.id, {
+                "assignment_id": assignment.id,
+                "comments": comments,
+            })
+    db.commit()
+    return {
+        "fault_id": fault.id,
+        "assignment_id": result_assignment_id if req.decision == "APPROVE_ESCALATION" else assignment.id,
+        "assigned_section": fault.assigned_section,
+        "status": fault.status,
+        "decision": req.decision,
+    }
+
+
+@app.post("/api/v1/faults/{fault_id}/assignments/escalate")
+def escalate_assignment(
+    fault_id: str,
+    req: SectionEscalationCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
+    require_roles(user, "systems_automation", *INVESTIGATION_ROLES, "maintenance_manager", "supervisor", "system_administrator")
+    fault = db.get(Fault, fault_id)
+    if not fault:
+        raise HTTPException(status_code=404, detail="Fault not found")
+    require_fault_scope(user, fault)
+    assignment = current_assignment(fault)
+    if not assignment:
+        raise HTTPException(status_code=409, detail="This breakdown has no active section assignment")
+    require_current_assignment(user, fault)
+    if not fault.equipment_confirmed:
+        raise HTTPException(status_code=409, detail="Confirm the physical equipment before handing off technical work")
+    if assignment.escalation_status == "PENDING" or assignment.completion_review_status == "PENDING":
+        raise HTTPException(status_code=409, detail="This assignment already has a technical review pending")
+    if req.next_section not in SECTIONS or req.next_section == assignment.section:
+        raise HTTPException(status_code=422, detail="Choose a different, valid maintenance section")
+    if not req.findings.strip() or not req.recommendation.strip():
+        raise HTTPException(status_code=422, detail="Record findings and a recommended next action before handoff")
+
+    assignment.findings = req.findings.strip()
+    assignment.recommendation = req.recommendation.strip()
+    assignment.escalation_status = "PENDING"
+    assignment.requested_next_section = req.next_section
+    assignment.review_previous_fault_status = fault.status
+    fault.status = "AWAITING_CHIEF_REVIEW"
+    add_event(db, fault.id, "SECTION_ESCALATION_SUBMITTED_FOR_REVIEW", user.id, {
+        "assignment_id": assignment.id,
+        "from_section": assignment.section,
+        "to_section": req.next_section,
+        "findings": assignment.findings,
+        "recommendation": assignment.recommendation,
+    })
+    db.commit()
+    return {
+        "fault_id": fault.id,
+        "assignment_id": assignment.id,
+        "requested_section": assignment.requested_next_section,
+        "escalation_status": assignment.escalation_status,
+        "status": fault.status,
+    }
+
+
+@app.post("/api/v1/faults/{fault_id}/operator-updates")
+def add_operator_update(
+    fault_id: str,
+    req: OperatorUpdateCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
+    require_roles(user, "operations")
+    fault = db.get(Fault, fault_id)
+    if not fault:
+        raise HTTPException(status_code=404, detail="Fault not found")
+    require_fault_scope(user, fault)
+    if fault.status == "CLOSED":
+        raise HTTPException(status_code=409, detail="A closed breakdown cannot receive further operator updates")
+    note = req.note.strip()
+    if not note:
+        raise HTTPException(status_code=422, detail="Enter an update for the responding team")
+    add_event(db, fault.id, "OPERATOR_UPDATE", user.id, {"note": note})
+    db.commit()
+    return {"fault_id": fault.id, "status": fault.status}
+
+
+@app.post("/api/v1/faults/{fault_id}/operator-confirmation")
+def confirm_operator_restoration(
+    fault_id: str,
+    req: OperatorConfirmationCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
+    require_roles(user, "operations")
+    fault = db.get(Fault, fault_id)
+    if not fault:
+        raise HTTPException(status_code=404, detail="Fault not found")
+    require_fault_scope(user, fault)
+    if fault.status != "RESTORED":
+        raise HTTPException(status_code=409, detail="Operator confirmation is available after a section reports restoration")
+    comments = req.comments.strip()
+    if not req.confirmed and not comments:
+        raise HTTPException(status_code=422, detail="Describe what remains wrong so the section can continue")
+    assignment = max(fault.assignments, key=lambda item: item.created_at) if fault.assignments else None
+    if req.confirmed:
+        fault.status = "CLOSED"
+        fault.closure_remarks = comments
+        add_event(db, fault.id, "FAULT_OPERATOR_CONFIRMED", user.id, {"comments": comments})
+        add_event(db, fault.id, "FAULT_CLOSE", user.id, {"comments": comments})
+    else:
+        section = assignment.section if assignment else fault.assigned_section or "Systems Automation"
+        reopened = FaultAssignment(
+            id=str(uuid.uuid4()),
+            fault_id=fault.id,
+            section=section,
+            assigned_by_id=user.id,
+            previous_assignment_id=assignment.id if assignment else None,
+            reason="Operator did not confirm restoration",
+        )
+        db.add(reopened)
+        fault.assigned_section = section
+        fault.assigned_user_id = None
+        fault.restored_at = None
+        fault.status = "ASSIGNED"
+        add_event(db, fault.id, "FAULT_OPERATOR_REJECTED_RESTORATION", user.id, {
+            "comments": comments,
+            "reopened_assignment_id": reopened.id,
+            "assigned_section": section,
+        })
+    db.commit()
+    return {"fault_id": fault.id, "status": fault.status, "confirmed": req.confirmed}
+
+
+@app.post("/api/v1/faults/{fault_id}/attachments")
+async def upload_fault_attachment(
+    fault_id: str,
+    file: UploadFile = File(...),
+    assignment_id: str | None = Query(default=None),
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
+    require_roles(user, "operations", *INVESTIGATION_ROLES, "maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
+    fault = db.get(Fault, fault_id)
+    if not fault:
+        raise HTTPException(status_code=404, detail="Fault not found")
+    require_fault_scope(user, fault)
+    if fault.status == "CLOSED":
+        raise HTTPException(status_code=409, detail="Evidence cannot be added to a closed breakdown")
+
+    active_assignment = current_assignment(fault)
+    attachment_assignment_id = assignment_id
+    if role_key(user) in TECHNICAL_ROLES:
+        if not active_assignment:
+            raise HTTPException(status_code=409, detail="There is no active section assignment for this breakdown")
+        require_current_assignment(user, fault)
+        if assignment_id and assignment_id != active_assignment.id:
+            raise HTTPException(status_code=422, detail="Evidence must be attached to the active section assignment")
+        attachment_assignment_id = active_assignment.id
+    elif assignment_id:
+        target_assignment = db.get(FaultAssignment, assignment_id)
+        if not target_assignment or target_assignment.fault_id != fault.id:
+            raise HTTPException(status_code=404, detail="Section assignment not found")
+
+    extension = Path(file.filename or "").suffix.lower()
+    media_type = ALLOWED_ATTACHMENT_TYPES.get(extension)
+    if not media_type:
+        raise HTTPException(status_code=415, detail="Upload a PNG, JPEG, WebP, PDF, CSV, TXT, JSON or LOG file")
+    supplied_type = (file.content_type or "").lower()
+    accepted_types = {media_type}
+    if extension == ".csv":
+        accepted_types.add("text/plain")
+    if supplied_type and supplied_type not in accepted_types and supplied_type != "application/octet-stream":
+        raise HTTPException(status_code=415, detail="The uploaded file type does not match its extension")
+    content = await file.read(MAX_ATTACHMENT_BYTES + 1)
+    if not content:
+        raise HTTPException(status_code=422, detail="The uploaded file is empty")
+    if len(content) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=413, detail="Each attachment must be 10 MiB or smaller")
+
+    attachment_id = str(uuid.uuid4())
+    storage_key = f"{uuid.uuid4().hex}{extension}"
+    storage_path = ATTACHMENT_STORAGE_DIR / storage_key
+    ATTACHMENT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    storage_path.write_bytes(content)
+    original_filename = (file.filename or "evidence").replace("\\", "/").rsplit("/", 1)[-1]
+    original_filename = "".join(character for character in original_filename if character >= " " and character != "\x7f")[:255]
+    if not original_filename:
+        original_filename = f"evidence{extension}"
+    attachment = FaultAttachment(
+        id=attachment_id,
+        fault_id=fault.id,
+        assignment_id=attachment_assignment_id,
+        uploader_id=user.id,
+        original_filename=original_filename,
+        storage_key=storage_key,
+        content_type=media_type,
+        size_bytes=len(content),
+    )
+    db.add(attachment)
+    add_event(db, fault.id, "EVIDENCE_ATTACHED", user.id, {
+        "attachment_id": attachment.id,
+        "assignment_id": attachment.assignment_id,
+        "filename": attachment.original_filename,
+        "size_bytes": attachment.size_bytes,
+    })
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        if storage_path.exists():
+            storage_path.unlink()
+        raise
+    return {
+        "id": attachment.id,
+        "fault_id": attachment.fault_id,
+        "assignment_id": attachment.assignment_id,
+        "filename": attachment.original_filename,
+        "content_type": attachment.content_type,
+        "size_bytes": attachment.size_bytes,
+    }
+
+
+@app.get("/api/v1/faults/{fault_id}/attachments/{attachment_id}")
+def download_fault_attachment(
+    fault_id: str,
+    attachment_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
+    fault = db.get(Fault, fault_id)
+    if not fault:
+        raise HTTPException(status_code=404, detail="Fault not found")
+    require_fault_scope(user, fault)
+    attachment = db.get(FaultAttachment, attachment_id)
+    if not attachment or attachment.fault_id != fault.id:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    storage_path = ATTACHMENT_STORAGE_DIR / Path(attachment.storage_key).name
+    if not storage_path.is_file():
+        raise HTTPException(status_code=404, detail="Attachment file is unavailable")
+    return FileResponse(storage_path, media_type=attachment.content_type, filename=attachment.original_filename)
+
+
 @app.post("/api/v1/faults/{fault_id}/action")
 def fault_action(fault_id: str, action: str, user: User = Depends(current_user), db: Session = Depends(db_dep)):
     action_roles = {
-        "acknowledge": ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
-        "on_site": ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
-        "diagnose": ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
-        "restore": ("technician_pt", "technician_ct", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
-        "close": ("technician_ct", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
+        "acknowledge": (*INVESTIGATION_ROLES, "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
+        "on_site": (*INVESTIGATION_ROLES, "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
+        "diagnose": (*INVESTIGATION_ROLES, "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
+        "restore": ("systems_automation", "technician_st", "technician_pt", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
+        "close": ("chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
     }
     if action not in action_roles:
         raise HTTPException(status_code=400, detail="Unknown fault action")
@@ -1890,13 +3004,68 @@ def fault_action(fault_id: str, action: str, user: User = Depends(current_user),
     if not f:
         raise HTTPException(status_code=404, detail="Fault not found")
     require_fault_scope(user, f)
-    transitions = {"acknowledge": "ACKNOWLEDGED", "on_site": "ON_SITE", "diagnose": "DIAGNOSED", "restore": "RESTORED", "close": "CLOSED"}
-    f.status = transitions[action]
-    if action == "acknowledge":
-        f.acknowledged_at = utcnow()
+    if action == "close":
+        raise HTTPException(status_code=409, detail="Operations must confirm restoration before the breakdown can close")
+    if not f.equipment_confirmed:
+        raise HTTPException(status_code=409, detail="Confirm the physical equipment before starting technical work")
+    assignment = current_assignment(f)
+    if assignment:
+        require_current_assignment(user, f)
+    else:
+        section = f.assigned_section or (f.equipment.section if f.equipment else "")
+        assignment = FaultAssignment(
+            id=str(uuid.uuid4()),
+            fault_id=f.id,
+            section=section,
+            assigned_by_id=user.id,
+            reason="Existing fault section assignment",
+            created_at=f.created_at,
+        )
+        db.add(assignment)
+        f.assigned_section = section
+    if assignment.escalation_status == "PENDING" or assignment.completion_review_status == "PENDING":
+        raise HTTPException(status_code=409, detail="This assignment is awaiting Chief Technician review")
     if action == "restore":
-        f.restored_at = utcnow()
-    add_event(db, fault_id, f"FAULT_{action.upper()}", user.id, {})
+        successful_intervention = db.scalar(
+            select(Intervention.id).where(
+                Intervention.assignment_id == assignment.id,
+                Intervention.outcome == "SUCCESS",
+            ).limit(1)
+        )
+        if not successful_intervention:
+            raise HTTPException(status_code=409, detail="Record a successful corrective intervention before requesting technical completion")
+        assignment.completion_review_status = "PENDING"
+        assignment.review_previous_fault_status = f.status
+        f.status = "AWAITING_CHIEF_REVIEW"
+        add_event(db, f.id, "TECHNICAL_COMPLETION_SUBMITTED_FOR_REVIEW", user.id, {
+            "assignment_id": assignment.id,
+            "section": assignment.section,
+        })
+        db.commit()
+        return {
+            "reference": f.reference,
+            "status": f.status,
+            "completion_review_status": assignment.completion_review_status,
+        }
+    if action == "acknowledge":
+        if assignment.assigned_user_id and assignment.assigned_user_id != user.id:
+            raise HTTPException(status_code=409, detail="This breakdown is already assigned to another employee")
+        assignment.assigned_user_id = user.id
+        assignment.status = "ACKNOWLEDGED"
+        assignment.acknowledged_at = utcnow()
+        f.assigned_user_id = user.id
+        if assignment.section == "Systems Automation" and not db.scalar(
+            select(FaultEvent.id).where(FaultEvent.fault_id == f.id, FaultEvent.event_type == "FAULT_TRIAGED").limit(1)
+        ):
+            add_event(db, f.id, "FAULT_TRIAGED", user.id, {
+                "assignment_id": assignment.id,
+                "triage_method": "Systems Automation accepted the initial response",
+            })
+    transitions = {"acknowledge": "ACKNOWLEDGED", "on_site": "ON_SITE", "diagnose": "DIAGNOSED"}
+    f.status = transitions[action]
+    if action in ("on_site", "diagnose"):
+        assignment.status = "IN_PROGRESS"
+    add_event(db, fault_id, f"FAULT_{action.upper()}", user.id, {"assignment_id": assignment.id})
     db.commit()
     return {"reference": f.reference, "status": f.status}
 
@@ -2068,7 +3237,7 @@ def recurring_intelligence(equipment_id: str, user: User = Depends(current_user)
             "assigned_section": last.assigned_section or last.equipment.section,
         } if last else None,
         "suggested_section": equipment.section,
-        "triage_action": "DIRECT_TO_SECTION" if len(recent) > 0 else "NORMAL_TRIAGE",
+        "triage_action": "SA_FIRST_WITH_REPEAT_CONTEXT" if len(recent) > 0 else "SA_FIRST",
         "ranked_causes": ranked_causes,
         "previous_occurrences": [{"reference": f.reference, "symptom": f.symptom, "category": f.category, "status": f.status, "date": f.created_at.isoformat()} for f in recent[:10]],
         "ranking_note": "Deterministic history-based indication; not a confirmed root cause.",
@@ -2080,6 +3249,10 @@ def workflow_summary(faults: list[Fault], db: Session) -> dict:
     events = db.scalars(
         select(FaultEvent).where(FaultEvent.fault_id.in_(fault_ids)).order_by(FaultEvent.created_at)
     ).all() if fault_ids else []
+    assignments = db.scalars(
+        select(FaultAssignment).where(FaultAssignment.fault_id.in_(fault_ids))
+    ).all() if fault_ids else []
+    assignment_by_id = {item.id: item for item in assignments}
     events_by_fault: dict[str, list[FaultEvent]] = {}
     for event in events:
         events_by_fault.setdefault(event.fault_id, []).append(event)
@@ -2098,6 +3271,21 @@ def workflow_summary(faults: list[Fault], db: Session) -> dict:
     stage_counts = {stage: 0 for stage in stage_types}
     section_counts: dict[str, dict[str, int]] = {}
     handoffs: dict[str, dict[str, int]] = {}
+    handoff_defaults = {
+        "operations_reports": 0,
+        "systems_automation_triage": 0,
+        "assigned_to_section": 0,
+        "section_acknowledgements": 0,
+        "restorations": 0,
+        "knowledge_reuses": 0,
+        "repeat_direct_routes": 0,
+        "section_handoffs_sent": 0,
+        "section_handoffs_received": 0,
+    }
+
+    def section_handoff(section_name: str) -> dict[str, int]:
+        return handoffs.setdefault(section_name, handoff_defaults.copy())
+
     triage_times: list[float] = []
     acknowledgement_times: list[float] = []
     restoration_times: list[float] = []
@@ -2116,17 +3304,11 @@ def workflow_summary(faults: list[Fault], db: Session) -> dict:
     for fault in faults:
         section = fault.assigned_section or (fault.equipment.section if fault.equipment else "Unassigned")
         section_row = section_counts.setdefault(section, {stage: 0 for stage in stage_types})
-        handoff_row = handoffs.setdefault(section, {
-            "operations_reports": 0, "systems_automation_triage": 0, "assigned_to_section": 0,
-            "section_acknowledgements": 0, "restorations": 0, "knowledge_reuses": 0, "repeat_direct_routes": 0,
-        })
+        handoff_row = section_handoff(section)
         reporter = user_by_id.get(fault.reporter_id)
         if reporter and role_key(reporter) == "operations":
             operations_report_count += 1
-            operations_row = handoffs.setdefault("Operations", {
-                "operations_reports": 0, "systems_automation_triage": 0, "assigned_to_section": 0,
-                "section_acknowledgements": 0, "restorations": 0, "knowledge_reuses": 0, "repeat_direct_routes": 0,
-            })
+            operations_row = section_handoff("Operations")
             operations_row["operations_reports"] += 1
         fault_events = events_by_fault.get(fault.id, [])
         first_event_by_stage: dict[str, FaultEvent] = {}
@@ -2183,10 +3365,7 @@ def workflow_summary(faults: list[Fault], db: Session) -> dict:
             actor = user_by_id.get(triage_event.actor_id)
             if actor and role_key(actor) == "systems_automation":
                 automation_triage_count += 1
-                automation_row = handoffs.setdefault("Systems Automation", {
-                    "operations_reports": 0, "systems_automation_triage": 0, "assigned_to_section": 0,
-                    "section_acknowledgements": 0, "restorations": 0, "knowledge_reuses": 0, "repeat_direct_routes": 0,
-                })
+                automation_row = section_handoff("Systems Automation")
                 automation_row["systems_automation_triage"] += 1
             triage_times.append((utc_datetime(triage_event.created_at) - utc_datetime(fault.created_at)).total_seconds() / 60)
         assignment_events = [event for event in fault_events if event.event_type == "FAULT_ASSIGNED"]
@@ -2196,13 +3375,21 @@ def workflow_summary(faults: list[Fault], db: Session) -> dict:
             except json.JSONDecodeError:
                 assignment_payload = {}
             receiving_section = assignment_payload.get("assigned_section") or section
-            receiving_row = handoffs.setdefault(receiving_section, {
-                "operations_reports": 0, "systems_automation_triage": 0, "assigned_to_section": 0,
-                "section_acknowledgements": 0, "restorations": 0, "knowledge_reuses": 0, "repeat_direct_routes": 0,
-            })
+            receiving_row = section_handoff(receiving_section)
             receiving_row["assigned_to_section"] += 1
             if assignment_payload.get("repeat_routed_to_owner"):
                 receiving_row["repeat_direct_routes"] += 1
+        for escalation_event in (event for event in fault_events if event.event_type == "SECTION_ASSIGNMENT_ESCALATED"):
+            try:
+                escalation_payload = json.loads(escalation_event.payload or "{}")
+            except json.JSONDecodeError:
+                escalation_payload = {}
+            source_section = escalation_payload.get("from_section") or section
+            destination_section = escalation_payload.get("to_section") or section
+            source_row = section_handoff(source_section)
+            destination_row = section_handoff(destination_section)
+            source_row["section_handoffs_sent"] += 1
+            destination_row["section_handoffs_received"] += 1
         if "assigned" in first_event_by_stage:
             assignment_count += 1
             assignment = first_event_by_stage["assigned"]
@@ -2212,16 +3399,32 @@ def workflow_summary(faults: list[Fault], db: Session) -> dict:
                 assignment_payload = {}
             suggested_section = assignment_payload.get("suggested_section") or (fault.equipment.section if fault.equipment else "")
             assigned_section = assignment_payload.get("assigned_section") or section
-            if suggested_section and assigned_section != suggested_section:
+            if (
+                assignment_payload.get("routing_strategy") != "SYSTEMS_AUTOMATION_FIRST"
+                and suggested_section
+                and assigned_section != suggested_section
+            ):
                 wrong_first_assignment_count += 1
         if "acknowledged" in first_event_by_stage:
             acknowledgement = first_event_by_stage["acknowledged"]
             acknowledgement_times.append((utc_datetime(acknowledgement.created_at) - utc_datetime(fault.created_at)).total_seconds() / 60)
-            handoff_row["section_acknowledgements"] += 1
         if "restored" in first_event_by_stage:
             restored = first_event_by_stage["restored"]
             restoration_times.append((utc_datetime(restored.created_at) - utc_datetime(fault.created_at)).total_seconds() / 3600)
-            handoff_row["restorations"] += 1
+        for event in fault_events:
+            if event.event_type not in ("FAULT_ACKNOWLEDGE", "FAULT_RESTORE"):
+                continue
+            try:
+                event_payload = json.loads(event.payload or "{}")
+            except json.JSONDecodeError:
+                event_payload = {}
+            assignment = assignment_by_id.get(event_payload.get("assignment_id"))
+            assignment_section = assignment.section if assignment else section
+            assignment_row = section_handoff(assignment_section)
+            if event.event_type == "FAULT_ACKNOWLEDGE":
+                assignment_row["section_acknowledgements"] += 1
+            else:
+                assignment_row["restorations"] += 1
 
     return {
         "stages": stage_counts,

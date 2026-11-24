@@ -6,6 +6,8 @@ export type User = {
   role_label: string;
   section: string;
   active: boolean;
+  availability_status: "AVAILABLE" | "UNAVAILABLE";
+  competencies: string[];
   permissions: string[];
   visibility_scope: string;
 };
@@ -69,6 +71,10 @@ export function normalizeUser(value: unknown): User | null {
     role_label: typeof raw.role_label === "string" ? raw.role_label : labels[role] ?? storedRole,
     section,
     active: typeof raw.active === "boolean" ? raw.active : true,
+    availability_status: raw.availability_status === "UNAVAILABLE" ? "UNAVAILABLE" : "AVAILABLE",
+    competencies: Array.isArray(raw.competencies) && raw.competencies.every((item) => typeof item === "string")
+      ? raw.competencies
+      : [],
     permissions,
     visibility_scope: typeof raw.visibility_scope === "string" ? raw.visibility_scope : section || "Cached session",
   };

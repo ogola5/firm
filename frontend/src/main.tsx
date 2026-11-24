@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, NavLink, Route, Routes, useNavigate } from "react-router-dom";
-import { AlertTriangle, BookOpen, Gauge, LogOut, Radio, RefreshCw, Search, ShieldCheck, Wrench } from "lucide-react";
+import { BrowserRouter, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
+import { AlertTriangle, BookOpen, ClipboardList, Gauge, History, LogOut, Plus, Radio, RefreshCw, Search, ShieldCheck, Wrench } from "lucide-react";
 import { db } from "./db";
 import { normalizeUser, type User } from "./auth";
 import "./styles.css";
@@ -14,7 +14,11 @@ async function api(path: string, options: RequestInit = {}) {
   const token = localStorage.getItem("kpc-token");
   const response = await fetch(`${API}${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
+    headers: {
+      ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
   });
   if (!response.ok) throw new Error(await response.text());
   return response.json();
@@ -94,15 +98,17 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
   const canManageUsers = user.role === "system_administrator";
   const canSeePeople = canManageUsers || peopleOnly;
   const canReviewProcedures = ["technician_ct", "chief_engineer", "supervisor"].includes(user.role);
+  const technicianRoles = ["systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"];
+  const technicianView = technicianRoles.includes(user.role);
 
   return (
     <div className="app-shell">
       <aside>
         <div className="side-brand"><Wrench size={22} /><strong>KPC Maintenance</strong></div>
         <nav>
-          <NavLink to="/dashboard"><Gauge size={18} /> {executiveOnly ? "Executive summary" : peopleOnly ? "Workforce overview" : "Dashboard"}</NavLink>
+          <NavLink to="/dashboard">{user.role === "technician_ct" ? <Gauge size={18} /> : technicianView ? <ClipboardList size={18} /> : <Gauge size={18} />} {user.role === "technician_ct" ? "Section oversight" : technicianView ? "My work" : executiveOnly ? "Executive summary" : peopleOnly ? "Workforce overview" : "Dashboard"}</NavLink>
           {canSeeMaintenance && (user.permissions || []).includes("equipment.read") && <NavLink to="/equipment"><Search size={18} /> Equipment</NavLink>}
-          {canSeeMaintenance && (user.permissions || []).includes("faults.read") && <NavLink to="/faults"><AlertTriangle size={18} /> Faults</NavLink>}
+          {canSeeMaintenance && (user.permissions || []).includes("faults.read") && <NavLink to="/faults"><AlertTriangle size={18} /> {technicianView ? "Browse breakdowns" : "Faults"}</NavLink>}
           {canSeeMaintenance && (user.permissions || []).includes("knowledge.read") && <NavLink to="/knowledge"><BookOpen size={18} /> Knowledge</NavLink>}
           {canSeeMaintenance && canReviewProcedures && <NavLink to="/approvals"><ShieldCheck size={18} /> Procedure review</NavLink>}
           {canSeePeople && <NavLink to="/people"><ShieldCheck size={18} /> {canManageUsers ? "User management" : "People directory"}</NavLink>}
@@ -135,8 +141,12 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
 function Dashboard({ user }: { user: User }) {
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   useEffect(() => {
-    if (user.role !== "hr_officer") api("/api/v1/analytics/overview").then(setData).catch(() => setData(null));
+    if (user.role !== "hr_officer" && !["systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"].includes(user.role)) {
+      api("/api/v1/analytics/overview").then(setData).catch(() => setData(null));
+    }
   }, [user.role]);
+  if (user.role === "technician_ct") return <ChiefTechnicianDashboard user={user} />;
+  if (user.role === "operations" || ["systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"].includes(user.role)) return <PersonalWorkspace user={user} />;
   if (user.role === "hr_officer") return <section className="page"><div className="page-heading"><div><p className="eyebrow">PEOPLE AND APPRAISAL EVIDENCE</p><h2>Workforce overview</h2><p className="muted">HR can review attributed work contributions and time measures without opening individual fault records.</p></div></div><People user={user} compact /><RecognitionPanel /></section>;
   if (!data) return <section className="page"><h2>{user.role === "managing_director" ? "Executive summary" : user.role === "hr_officer" ? "Workforce overview" : "Management overview"}</h2><div className="empty">Summary data is unavailable. Reconnect and try again.</div></section>;
   const categories = (data.by_category as Record<string, number>) || {};
@@ -161,6 +171,172 @@ function Dashboard({ user }: { user: User }) {
       {["maintenance_manager", "general_manager_om", "system_administrator"].includes(user.role) && <PeopleSummary />}
       {["maintenance_manager", "general_manager_om", "hr_officer", "supervisor", "system_administrator"].includes(user.role) && <RecognitionPanel />}
       {executive && <div className="panel"><h3>Access level</h3><p>Enterprise summary KPIs only. Individual fault timelines, equipment records, and employee directory details are restricted to operational and HR roles.</p></div>}
+    </section>
+  );
+}
+
+function PersonalWorkspace({ user }: { user: User }) {
+  const isOperator = user.role === "operations";
+  const [items, setItems] = useState<Array<Record<string, unknown>>>([]);
+  const [error, setError] = useState("");
+  const [availability, setAvailability] = useState(user.availability_status);
+
+  useEffect(() => {
+    const path = isOperator ? "/api/v1/faults?history_scope=reported_by_me" : "/api/v1/faults?queue=mine";
+    api(path).then((rows) => {
+      setItems(isOperator ? rows.filter((item: Record<string, unknown>) => !["RESTORED", "CLOSED"].includes(String(item.status))) : rows);
+      setError("");
+    }).catch(() => setError("Could not load breakdowns. Reconnect and try again."));
+  }, [isOperator]);
+
+  function breakdownLink(item: Record<string, unknown>) {
+    return `/faults?mode=history&fault=${encodeURIComponent(String(item.id))}`;
+  }
+
+  async function updateAvailability(value: "AVAILABLE" | "UNAVAILABLE") {
+    const previous = availability;
+    setAvailability(value);
+    setError("");
+    try {
+      await api("/api/v1/me/availability", { method: "PATCH", body: JSON.stringify({ availability_status: value }) });
+    } catch (reason) {
+      setAvailability(previous);
+      setError(reason instanceof Error ? reason.message : "Availability could not be updated.");
+    }
+  }
+
+  function renderQueue() {
+    if (!items.length) return <p className="muted">{isOperator ? "You have no active breakdowns that you reported." : "You have no active breakdowns assigned to you."}</p>;
+    return <div className="technician-queue">{items.slice(0, 5).map((item) => (
+      <NavLink className="technician-queue-item" key={String(item.id)} to={breakdownLink(item)}>
+        <span className="queue-item-main">
+          <strong>{String(item.reference)} · {String(item.equipment_tag || "Asset not identified")}</strong>
+          <span>{String(item.symptom)} · {String(item.status)}</span>
+          {item.equipment_confirmed === false && <small>Asset identity needs confirmation</small>}
+        </span>
+        <span className="tag">{String(item.assigned_section || "Needs triage")}</span>
+      </NavLink>
+    ))}</div>;
+  }
+
+  return (
+    <section className="page technician-workspace personal-workspace">
+      <div className="page-heading">
+        <div><p className="eyebrow">{isOperator ? "OPERATIONS WORKSPACE" : `${user.section || "MAINTENANCE"} · TECHNICIAN WORKSPACE`}</p><h2>My work</h2><p className="muted">Your active work only. Browse breakdowns when you need the wider history.</p></div>
+        <div className="technician-actions">
+          <NavLink className="secondary" to="/faults?mode=history"><History size={17} /> Find previous work</NavLink>
+          {(user.permissions || []).includes("faults.report") && <NavLink className="primary" to="/faults?mode=report"><Plus size={17} /> Report a breakdown</NavLink>}
+          {["technician_st", "technician_pt"].includes(user.role) && <label className="availability-field">Availability<select value={availability} onChange={(event) => updateAvailability(event.target.value as "AVAILABLE" | "UNAVAILABLE")}><option value="AVAILABLE">Available</option><option value="UNAVAILABLE">Unavailable</option></select></label>}
+        </div>
+      </div>
+      {error && <p className="error">{error}</p>}
+      <div className="panel">
+        <div className="section-heading"><div><h3>{isOperator ? "Reported by me" : "Assigned to me"}</h3><p className="muted">{isOperator ? "Follow up on the breakdowns you have reported." : "Continue the breakdown work you have taken ownership of."}</p></div><span className="count">{items.length}</span></div>
+        {renderQueue()}
+        {(isOperator || items.length > 5) && <NavLink className="text-button" to={isOperator ? "/faults?mode=history&scope=reported_by_me" : "/faults?mode=history&scope=mine"}>{isOperator ? "View your report history" : "View all your active work"}</NavLink>}
+      </div>
+      <NavLink className="workspace-knowledge" to="/knowledge"><BookOpen size={16} /> Open approved and legacy procedures</NavLink>
+    </section>
+  );
+}
+
+function ChiefTechnicianDashboard({ user }: { user: User }) {
+  const [workspace, setWorkspace] = useState<Record<string, unknown> | null>(null);
+  const [competencyDrafts, setCompetencyDrafts] = useState<Record<string, string>>({});
+  const [savingUserId, setSavingUserId] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function reload() {
+    const data = await api("/api/v1/chief/workspace") as Record<string, unknown>;
+    setWorkspace(data);
+    const team = (data.technicians || []) as Array<Record<string, unknown>>;
+    setCompetencyDrafts(Object.fromEntries(team.map((person) => [
+      String(person.id),
+      ((person.competencies || []) as string[]).join(", "),
+    ])));
+  }
+
+  useEffect(() => {
+    reload().catch((reason) => setError(reason instanceof Error ? reason.message : "Section oversight could not be loaded."));
+  }, []);
+
+  async function saveCompetencies(userId: string) {
+    setSavingUserId(userId);
+    setError("");
+    setMessage("");
+    try {
+      await api(`/api/v1/chief/team/${encodeURIComponent(userId)}/competencies`, {
+        method: "PATCH",
+        body: JSON.stringify({ competencies: (competencyDrafts[userId] || "").split(",") }),
+      });
+      setMessage("Technician competencies updated.");
+      await reload();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Competencies could not be saved.");
+    } finally {
+      setSavingUserId("");
+    }
+  }
+
+  if (!workspace) return <section className="page"><div className="page-heading"><div><p className="eyebrow">{user.section} · TECHNICAL SUPERVISION</p><h2>Section oversight</h2></div></div>{error ? <p className="error">{error}</p> : <p className="muted">Loading section work…</p>}</section>;
+  const counts = (workspace.counts || {}) as Record<string, number>;
+  const faults = (workspace.faults || []) as Array<Record<string, unknown>>;
+  const team = (workspace.technicians || []) as Array<Record<string, unknown>>;
+  const activeFaults = faults.filter((fault) => !["RESTORED", "CLOSED"].includes(String(fault.status)));
+  const priorityRank: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+  const prioritize = (left: Record<string, unknown>, right: Record<string, unknown>) =>
+    Number(right.overdue === true) - Number(left.overdue === true)
+    || (priorityRank[String(left.severity)] ?? 4) - (priorityRank[String(right.severity)] ?? 4)
+    || String(left.created_at).localeCompare(String(right.created_at));
+  const sectionFaults = activeFaults.filter((fault) => fault.assigned_section === user.section).sort(prioritize);
+  const reviewFaults = activeFaults.filter((fault) => fault.awaiting_review).sort(prioritize);
+  const escalatedFaults = activeFaults.filter((fault) => fault.escalated).sort(prioritize);
+  const faultLink = (fault: Record<string, unknown>) => `/faults?mode=history&fault=${encodeURIComponent(String(fault.id))}`;
+  const metrics = [
+    ["Awaiting assignment", counts.awaiting_assignment || 0],
+    [`Active in ${user.section}`, counts.active_section || 0],
+    ["Under investigation", counts.investigating || 0],
+    ["Awaiting my review", counts.awaiting_review || 0],
+    ["Overdue", counts.overdue || 0],
+    ["Critical unresolved", counts.critical || 0],
+  ];
+
+  function renderFaults(rows: Array<Record<string, unknown>>, emptyMessage: string) {
+    if (!rows.length) return <p className="muted">{emptyMessage}</p>;
+    return <div className="chief-fault-list">{rows.slice(0, 6).map((fault) => (
+      <NavLink className="chief-fault-item" key={String(fault.id)} to={faultLink(fault)}>
+        <span><strong>{String(fault.reference)} · {String(fault.equipment_tag)}</strong><small>{String(fault.symptom)} · {String(fault.status).replace(/_/g, " ")}</small></span>
+        <span className="chief-fault-meta">{fault.overdue === true && <b className="risk-text">Overdue</b>}{String(fault.severity) === "Critical" && <b className="risk-text">Critical</b>}<small>{fault.awaiting_review ? "Chief decision required" : fault.awaiting_assignment ? "Awaiting assignment" : `Assigned to ${String(fault.assigned_user_name || fault.assigned_section)}`}</small></span>
+      </NavLink>
+    ))}</div>;
+  }
+
+  return (
+    <section className="page chief-workspace">
+      <div className="page-heading"><div><p className="eyebrow">{user.section} · TECHNICAL SUPERVISION</p><h2>Section oversight</h2><p className="muted">Allocate work, review technical decisions and monitor your section’s full fault lifecycle.</p></div></div>
+      {error && <p className="error">{error}</p>}
+      {message && <p className="confirmation">{message}</p>}
+      <div className="chief-workflow" aria-label="Fault responsibility flow"><span>Operations reports</span><b>Chief assigns</b><span>ST / PT investigate</span><b>Chief reviews</b><span>Operations confirms</span></div>
+      <div className="metrics chief-metrics">{metrics.map(([label, value]) => <Metric key={String(label)} label={String(label)} value={String(value)} />)}</div>
+      <div className="grid-two chief-queues">
+        <div className="panel"><div className="section-heading"><div><h3>Needs Chief review</h3><p className="muted">Escalations and technical completion requests awaiting your decision.</p></div><span className="count">{reviewFaults.length}</span></div>{renderFaults(reviewFaults, "No review decisions are waiting.")}</div>
+        <div className="panel"><div className="section-heading"><div><h3>Active section work</h3><p className="muted">Unassigned, allocated and in-progress faults in your section.</p></div><span className="count">{sectionFaults.length}</span></div>{renderFaults(sectionFaults, "No active faults are assigned to your section.")}<NavLink className="text-button" to="/faults">Browse section faults</NavLink></div>
+      </div>
+      <div className="panel chief-escalations"><div className="section-heading"><div><h3>Escalated from {user.section}</h3><p className="muted">The original fault remains visible with all section findings and evidence.</p></div><span className="count">{escalatedFaults.length}</span></div>{renderFaults(escalatedFaults, "No active fault has been escalated from your section.")}</div>
+      <details className="panel chief-team">
+        <summary className="section-heading"><div><h3>Technician pool</h3><p className="muted">ST/PT availability, active workload and competencies for assignment decisions.</p></div><span className="count">{team.filter((person) => person.active).length} active</span></summary>
+        <div className="table"><table><thead><tr><th>Technician</th><th>Availability</th><th>Active work</th><th>Competencies</th><th></th></tr></thead><tbody>
+          {team.map((person) => <tr key={String(person.id)}>
+            <td><strong>{String(person.display_name)}</strong><br /><small>{String(person.role_label)}</small></td>
+            <td>{person.active ? String(person.availability_status).toLowerCase() : "Inactive account"}</td>
+            <td>{String(person.active_workload)}</td>
+            <td><input aria-label={`Competencies for ${String(person.display_name)}`} value={competencyDrafts[String(person.id)] || ""} onChange={(event) => setCompetencyDrafts({ ...competencyDrafts, [String(person.id)]: event.target.value })} placeholder="SCADA, actuator controls, valve mechanisms" /></td>
+            <td><button className="secondary" disabled={savingUserId === String(person.id)} onClick={() => saveCompetencies(String(person.id))}>Save</button></td>
+          </tr>)}
+          {!team.length && <tr><td colSpan={5}>No Senior or Principal Technicians are configured for this section.</td></tr>}
+        </tbody></table></div>
+      </details>
     </section>
   );
 }
@@ -215,8 +391,8 @@ function WorkflowPanel({ workflow }: { workflow: WorkflowReport }) {
       <div className="grid-two">
         <div>
           <h4>Section handoffs</h4>
-          <div className="table"><table><thead><tr><th>Section</th><th>Ops reports</th><th>Automation triage</th><th>Assigned</th><th>Repeat direct</th><th>Acknowledged</th><th>Restored</th><th>Knowledge uses</th></tr></thead><tbody>
-            {Object.entries(handoffs).map(([section, row]) => <tr key={section}><td><strong>{section}</strong></td><td>{String(row.operations_reports ?? 0)}</td><td>{String(row.systems_automation_triage ?? 0)}</td><td>{String(row.assigned_to_section ?? 0)}</td><td>{String(row.repeat_direct_routes ?? 0)}</td><td>{String(row.section_acknowledgements ?? 0)}</td><td>{String(row.restorations ?? 0)}</td><td>{String(row.knowledge_reuses ?? 0)}</td></tr>)}
+          <div className="table"><table><thead><tr><th>Section</th><th>Ops reports</th><th>Automation triage</th><th>Assigned</th><th>Handoffs sent</th><th>Handoffs received</th><th>Acknowledged</th><th>Restored</th><th>Knowledge uses</th></tr></thead><tbody>
+            {Object.entries(handoffs).map(([section, row]) => <tr key={section}><td><strong>{section}</strong></td><td>{String(row.operations_reports ?? 0)}</td><td>{String(row.systems_automation_triage ?? 0)}</td><td>{String(row.assigned_to_section ?? 0)}</td><td>{String(row.section_handoffs_sent ?? 0)}</td><td>{String(row.section_handoffs_received ?? 0)}</td><td>{String(row.section_acknowledgements ?? 0)}</td><td>{String(row.restorations ?? 0)}</td><td>{String(row.knowledge_reuses ?? 0)}</td></tr>)}
           </tbody></table></div>
         </div>
         <div>
@@ -401,17 +577,36 @@ function Equipment({ user }: { user: User }) {
 
 function Faults({ user }: { user: User }) {
   const [faults, setFaults] = useState<Array<Record<string, unknown>>>([]);
-  const [equipment, setEquipment] = useState<Array<Record<string, unknown>>>([]);
+  const [equipmentMatches, setEquipmentMatches] = useState<Array<Record<string, unknown>>>([]);
   const [equipmentId, setEquipmentId] = useState("");
-  const [symptom, setSymptom] = useState("Unexpected trip");
+  const [equipmentSearch, setEquipmentSearch] = useState("");
+  const [equipmentConfirmed, setEquipmentConfirmed] = useState(false);
+  const [reportedLocation, setReportedLocation] = useState("");
+  const [reportedOnBehalf, setReportedOnBehalf] = useState("");
+  const [operatingConditions, setOperatingConditions] = useState("");
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [symptom, setSymptom] = useState("");
+  const [operationalImpact, setOperationalImpact] = useState("");
+  const [additionalDetails, setAdditionalDetails] = useState("");
   const [severity, setSeverity] = useState("Medium");
   const [message, setMessage] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState("");
-  const [repeatInsight, setRepeatInsight] = useState<Record<string, unknown> | null>(null);
+  const [repeatInsight, setRepeatInsight] = useState<{ repeat_count?: number; last_occurrence?: { date?: string }; suggested_section?: string } | null>(null);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyScope, setHistoryScope] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialMode = searchParams.get("mode") === "report" ? "report" : "history";
+  const [mode, setMode] = useState<"report" | "history">(initialMode);
+  const selectedEquipment = equipmentMatches.find((item) => String(item.id) === equipmentId);
+  const technicalRoles = ["technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"];
 
-  async function loadFaults(preferredId = "") {
-    const rows = await api("/api/v1/faults");
+  async function loadFaults(preferredId = "", scope = historyScope, search = historySearch) {
+    const params = new URLSearchParams();
+    if (scope === "mine") params.set("queue", "mine");
+    else if (scope) params.set("history_scope", scope);
+    if (search.trim()) params.set("search", search.trim());
+    const rows = await api(`/api/v1/faults?${params.toString()}`);
     setFaults(rows);
     await db.faults.clear();
     await db.faults.bulkPut(rows as never[]);
@@ -420,57 +615,194 @@ function Faults({ user }: { user: User }) {
   }
 
   useEffect(() => {
-    api("/api/v1/equipment").then(setEquipment).catch(() => setEquipment([]));
-    loadFaults().catch(async () => {
+    const requestedFault = searchParams.get("fault");
+    const requestedMode = searchParams.get("mode");
+    const requestedScope = searchParams.get("scope") || "";
+    if (requestedFault) setSelectedId(requestedFault);
+    if (requestedMode === "report" || requestedMode === "history") setMode(requestedMode);
+    setHistoryScope(["mine", "reported_by_me", "worked_by_me"].includes(requestedScope) ? requestedScope : "");
+  }, [searchParams]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadFaults().catch(async () => {
       const cached = await db.faults.toArray();
-      const sectionScoped = ["technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"].includes(user.role);
+      const sectionScoped = technicalRoles.includes(user.role);
       const equipment = await db.equipment.toArray();
       const sectionEquipment = new Set(equipment.filter((item) => item.section === user.section).map((item) => item.id));
       const visible = cached.filter((item) => !sectionScoped || item.assigned_section === user.section || sectionEquipment.has(String(item.equipment_id)));
       setFaults(visible);
       if (!selectedId && visible.length) setSelectedId(String(visible[0].id));
       setError("Showing cached fault summaries. Open a connection to load investigation history.");
-    });
-  }, [user.role, user.section]);
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [historyScope, historySearch, user.role, user.section]);
 
   useEffect(() => {
-    if (!equipmentId) {
+    const query = equipmentSearch.trim();
+    if (query.length < 2) {
+      setEquipmentMatches([]);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      api(`/api/v1/equipment?search=${encodeURIComponent(query)}`)
+        .then((items) => { if (active) setEquipmentMatches(items); })
+        .catch(() => { if (active) setEquipmentMatches([]); });
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [equipmentSearch]);
+
+  useEffect(() => {
+    if (!equipmentId || !equipmentConfirmed) {
       setRepeatInsight(null);
       return;
     }
     api(`/api/v1/intelligence/equipment/${encodeURIComponent(equipmentId)}`)
       .then(setRepeatInsight)
       .catch(() => setRepeatInsight(null));
-  }, [equipmentId]);
+  }, [equipmentId, equipmentConfirmed]);
 
   async function report() {
-    if (!equipmentId) return;
-    const payload = { equipment_id: equipmentId, category: "Electrical", symptom, severity, description: "Reported through fast-report workflow", operational_impact: "" };
+    if (!symptom.trim() || !operationalImpact.trim() || (!equipmentSearch.trim() && !reportedLocation.trim())) {
+      setError("Add what is happening, its effect on operation, and either an equipment description or a known location.");
+      return;
+    }
+    const payload = {
+      ...(equipmentId ? { equipment_id: equipmentId } : {}),
+      equipment_confirmed: Boolean(equipmentId && equipmentConfirmed),
+      reported_equipment_text: equipmentSearch.trim(),
+      reported_location: reportedLocation.trim(),
+      reported_on_behalf_of: reportedOnBehalf.trim(),
+      operating_conditions: operatingConditions.trim(),
+      category: String(selectedEquipment?.category || "Unconfirmed"),
+      symptom: symptom.trim(),
+      severity,
+      description: additionalDetails.trim(),
+      operational_impact: operationalImpact.trim(),
+    };
+    let created: { id: string; reference: string; asset_confirmation_required?: boolean };
     try {
-      const created = await api("/api/v1/faults", { method: "POST", body: JSON.stringify(payload) });
-      setMessage(`Fault reported: ${created.reference}`);
-      setSelectedId(created.id);
-      await loadFaults(created.id);
+      created = await api("/api/v1/faults", { method: "POST", body: JSON.stringify(payload) });
+    } catch (reportError) {
+      if (reportError instanceof TypeError) {
+        const eventId = crypto.randomUUID();
+        await db.pendingEvents.put({ event_id: eventId, event_type: "FAULT_REPORTED", actor_id: user.id, client_timestamp: new Date().toISOString(), sequence_number: 1, sync_status: "PENDING", payload });
+        setMessage("Connection unavailable. Breakdown saved offline and queued for synchronisation.");
+      } else {
+        setError(`Could not submit the breakdown. ${reportError instanceof Error ? reportError.message : ""}`);
+      }
+      return;
+    }
+    let reportMessage = created.asset_confirmation_required
+      ? `Breakdown reported: ${created.reference}. Asset identification is unconfirmed and requires confirmation.`
+      : `Breakdown reported: ${created.reference}`;
+    const failedUploads: string[] = [];
+    for (const file of evidenceFiles) {
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        await api(`/api/v1/faults/${encodeURIComponent(created.id)}/attachments`, { method: "POST", body: form });
+      } catch (reason) {
+        failedUploads.push(`${file.name}: ${reason instanceof Error ? reason.message : "upload failed"}`);
+      }
+    }
+    setEvidenceFiles([]);
+    if (failedUploads.length) {
+      reportMessage += ` Evidence upload failed for: ${failedUploads.join(", ")}. Reopen this breakdown and attach those files.`;
+    }
+    setMessage(reportMessage);
+    setError("");
+    setSelectedId(created.id);
+    setMode("history");
+    setSearchParams({ mode: "history", fault: created.id });
+    setHistoryScope("");
+    setHistorySearch("");
+    try {
+      await loadFaults(created.id, "", "");
     } catch {
-      const eventId = crypto.randomUUID();
-      await db.pendingEvents.put({ event_id: eventId, event_type: "FAULT_REPORTED", actor_id: user.id, client_timestamp: new Date().toISOString(), sequence_number: 1, sync_status: "PENDING", payload });
-      setMessage("Fault saved offline and queued for synchronisation.");
+      setError("Breakdown reported, but the history list could not be refreshed.");
     }
   }
 
   return (
     <section className="page">
-      <div className="page-heading"><div><p className="eyebrow">FAULT WORKFLOW</p><h2>Faults</h2></div></div>
-      {(user.permissions || []).includes("faults.report") && <div className="panel quick-report"><h3>Fast report</h3><div className="form-grid"><label>Equipment<select value={equipmentId} onChange={(e) => setEquipmentId(e.target.value)}><option value="">Select equipment</option>{equipment.map((e) => <option key={String(e.id)} value={String(e.id)}>{String(e.tag)} — {String(e.name)}</option>)}</select></label><label>Symptom<select value={symptom} onChange={(e) => setSymptom(e.target.value)}>{["Unexpected trip", "Intermittent alarm", "Unstable reading", "Failure to start"].map((v) => <option key={v}>{v}</option>)}</select></label><label>Severity<select value={severity} onChange={(e) => setSeverity(e.target.value)}>{["Low", "Medium", "High", "Critical"].map((v) => <option key={v}>{v}</option>)}</select></label></div><button className="primary" onClick={report}>Submit fault</button>{message && <p className="confirmation">{message}</p>}</div>}
+      <div className="page-heading"><div><p className="eyebrow">BREAKDOWN WORKFLOW</p><h2>{technicalRoles.includes(user.role) || user.role === "systems_automation" ? "Breakdowns" : "Faults"}</h2><p className="muted">Report clearly, confirm uncertain assets safely, and find what was done before.</p></div></div>
+      <div className="work-tabs">
+        {(user.permissions || []).includes("faults.report") && <button className={mode === "report" ? "active" : ""} onClick={() => { setMessage(""); setError(""); setMode("report"); setSearchParams({ mode: "report" }); }}><Plus size={16} /> Report a breakdown</button>}
+        <button className={mode === "history" ? "active" : ""} onClick={() => { setMode("history"); setSearchParams({ mode: "history" }); }}><History size={16} /> Find previous work</button>
+      </div>
+      {mode === "report" && (user.permissions || []).includes("faults.report") && <div className="panel quick-report">
+        <h3>Tell us what you can see</h3>
+        <p className="muted">Use the tag if you know it. Otherwise describe the equipment and area in your own words. Do not guess a tag.</p>
+        <div className="report-grid">
+          <label>Equipment tag or description
+            <input value={equipmentSearch} onChange={(event) => { setEquipmentSearch(event.target.value); setEquipmentId(""); setEquipmentConfirmed(false); }} placeholder="e.g. inlet valve not opening, near 11-TK-601" />
+          </label>
+          <label>Known area or location
+            <input value={reportedLocation} onChange={(event) => setReportedLocation(event.target.value)} placeholder="Plant, station, area, or nearby equipment" />
+          </label>
+          <label>What is happening?
+            <textarea required value={symptom} onChange={(event) => setSymptom(event.target.value)} placeholder="Describe what you observed" />
+          </label>
+          <label>Effect on operation
+            <textarea required value={operationalImpact} onChange={(event) => setOperationalImpact(event.target.value)} placeholder="What is stopped, reduced, or affected?" />
+          </label>
+        </div>
+        {equipmentSearch.trim().length >= 2 && <div className="asset-matches">
+          <strong>Possible equipment matches</strong>
+          {equipmentMatches.length ? equipmentMatches.slice(0, 5).map((item) => (
+            <button type="button" className={`asset-match ${equipmentId === String(item.id) ? "selected" : ""}`} key={String(item.id)} onClick={() => { setEquipmentId(String(item.id)); setEquipmentConfirmed(false); }}>
+              <span><strong>{String(item.tag)} · {String(item.name)}</strong><small>{String(item.location)} · {String(item.station)} · {String(item.section)}</small></span>
+              <span className="tag">{equipmentId === String(item.id) ? "Selected suggestion" : "Possible match"}</span>
+            </button>
+          )) : <p className="muted">No matching asset found. You can still report using your description and location.</p>}
+          {equipmentId && <label className="asset-confirmation"><input type="checkbox" checked={equipmentConfirmed} onChange={(event) => setEquipmentConfirmed(event.target.checked)} /> I am sure this is the exact equipment</label>}
+          {equipmentId && <button className="text-button" type="button" onClick={() => { setEquipmentId(""); setEquipmentConfirmed(false); }}>Not sure / asset not listed</button>}
+        </div>}
+        <details className="report-more"><summary>Optional details</summary>
+          <label>Operating conditions<textarea value={operatingConditions} onChange={(event) => setOperatingConditions(event.target.value)} placeholder="What was the equipment doing when the issue occurred?" /></label>
+          <label>Reported on behalf of (optional)<input value={reportedOnBehalf} onChange={(event) => setReportedOnBehalf(event.target.value)} placeholder="Name or team" /></label>
+          <label>Additional notes<textarea value={additionalDetails} onChange={(event) => setAdditionalDetails(event.target.value)} placeholder="Anything else that may help the standby team" /></label>
+          <label>Priority<select value={severity} onChange={(event) => setSeverity(event.target.value)}>{["Low", "Medium", "High", "Critical"].map((value) => <option key={value}>{value}</option>)}</select></label>
+          <label>Evidence (optional; up to 10 MiB per file)<input type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,.csv,.txt,.json,.log" multiple onChange={(event) => setEvidenceFiles(Array.from(event.target.files || []))} /></label>
+          {evidenceFiles.length > 0 && <small>{evidenceFiles.map((file) => file.name).join(", ")}</small>}
+        </details>
+        {error && <p className="error">{error}</p>}
+        <button className="primary" onClick={report}>Submit breakdown</button>
+      </div>}
+      {message && <p className="confirmation">{message}</p>}
       {repeatInsight && Number(repeatInsight.repeat_count || 0) > 0 && <div className="repeat-banner">
         <strong>SEEN BEFORE:</strong> Same equipment has {String(repeatInsight.repeat_count)} occurrence(s) in the last 90 days.
         <span>Last: {repeatInsight.last_occurrence ? new Date(String(repeatInsight.last_occurrence.date)).toLocaleDateString() : "—"} · Suggested section: {String(repeatInsight.suggested_section)}</span>
-        <span>Routing: skip normal triage and assign directly to the responsible standby section.</span>
+        <span>Routing: Systems Automation responds first; the responsible section will inherit this breakdown history.</span>
       </div>}
-      {error && <p className="error">{error}</p>}
-      <p className="muted">Select a report to see equipment history, prior fixes, unsuccessful attempts and the current work record.</p>
-      <div className="table panel"><table><thead><tr><th>Reference</th><th>Equipment</th><th>Symptom</th><th>Severity</th><th>Status</th><th>Section</th></tr></thead><tbody>{faults.map((f) => <tr key={String(f.id)} className={selectedId === String(f.id) ? "selected-row" : "clickable-row"} onClick={() => setSelectedId(String(f.id))} tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter") setSelectedId(String(f.id)); }}><td><strong>{String(f.reference)}</strong></td><td>{String(f.equipment_tag)}</td><td>{String(f.symptom)}</td><td><span className={`severity ${String(f.severity).toLowerCase()}`}>{String(f.severity)}</span></td><td>{String(f.status)}</td><td>{String(f.assigned_section || "Unassigned")}</td></tr>)}</tbody></table></div>
-      {selectedId && <FaultDetail key={selectedId} user={user} faultId={selectedId} onRefresh={loadFaults} />}
+      {mode === "history" && <>
+        <div className="history-toolbar">
+          <div className="search"><Search size={17} /><input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Search tag, description, symptom, or location" /></div>
+          {(technicalRoles.includes(user.role) || user.role === "systems_automation" || user.role === "operations") && <select value={historyScope} onChange={(event) => {
+            const scope = event.target.value;
+            setHistoryScope(scope);
+            setSelectedId("");
+            setSearchParams({ mode: "history", ...(scope ? { scope } : {}) });
+          }} aria-label="Filter previous work">
+            <option value="">{user.role === "operations" ? "All breakdowns" : "All section work"}</option>
+            {(technicalRoles.includes(user.role) || user.role === "systems_automation") && <option value="mine">Assigned to me · active</option>}
+            <option value="reported_by_me">Reported by me</option>
+            {(technicalRoles.includes(user.role) || user.role === "systems_automation") && <option value="worked_by_me">Worked by me</option>}
+          </select>}
+        </div>
+        <p className="muted">Select a breakdown to review the reported problem, investigation history, prior fixes and unsuccessful attempts.</p>
+        <div className="table panel"><table><thead><tr><th>Reference</th><th>Equipment / description</th><th>Reported by</th><th>Problem</th><th>Status</th><th>Section</th></tr></thead><tbody>{faults.map((fault) => <tr key={String(fault.id)} className={selectedId === String(fault.id) ? "selected-row" : "clickable-row"} onClick={() => { setSelectedId(String(fault.id)); setSearchParams({ mode: "history", ...(historyScope ? { scope: historyScope } : {}), fault: String(fault.id) }); }} tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter") { setSelectedId(String(fault.id)); setSearchParams({ mode: "history", ...(historyScope ? { scope: historyScope } : {}), fault: String(fault.id) }); } }}>
+          <td><strong>{String(fault.reference)}</strong></td><td>{String(fault.equipment_tag || "Asset not identified")}{fault.equipment_confirmed === false && <small className="unconfirmed-label">Needs asset confirmation</small>}</td><td>{String(fault.reporter_name || "—")}</td><td>{String(fault.symptom)}</td><td>{String(fault.status)}</td><td>{String(fault.assigned_section || "Unassigned")}</td>
+        </tr>)}</tbody></table></div>
+        {!faults.length && <div className="empty">No breakdowns match this search.</div>}
+        {selectedId && <FaultDetail key={selectedId} user={user} faultId={selectedId} onRefresh={loadFaults} />}
+      </>}
     </section>
   );
 }
@@ -478,6 +810,9 @@ function Faults({ user }: { user: User }) {
 type DataRow = Record<string, unknown>;
 type FaultContext = {
   fault: DataRow;
+  assignments: DataRow[];
+  attachments: DataRow[];
+  operator_updates: DataRow[];
   timeline: DataRow[];
   diagnoses: DataRow[];
   interventions: DataRow[];
@@ -490,6 +825,12 @@ type FaultContext = {
   repeat_routing: DataRow;
 };
 
+function dateTimeLocal(value: unknown) {
+  if (!value) return "";
+  const date = new Date(String(value));
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string; onRefresh: () => Promise<void> }) {
   const [context, setContext] = useState<FaultContext | null>(null);
   const [error, setError] = useState("");
@@ -499,9 +840,22 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
   const [procedure, setProcedure] = useState({ title: "", observed_symptom: "", confirmed_cause: "", diagnostic_procedure: "", corrective_action: "", safety: "" });
   const [triageSection, setTriageSection] = useState("");
   const [triageComment, setTriageComment] = useState("");
+  const [triageAssetSearch, setTriageAssetSearch] = useState("");
+  const [triageAssets, setTriageAssets] = useState<DataRow[]>([]);
+  const [confirmedEquipmentId, setConfirmedEquipmentId] = useState("");
   const [revisionOf, setRevisionOf] = useState("");
+  const [handoffSection, setHandoffSection] = useState("");
+  const [handoffFindings, setHandoffFindings] = useState("");
+  const [handoffRecommendation, setHandoffRecommendation] = useState("");
+  const [technicianPool, setTechnicianPool] = useState<DataRow[]>([]);
+  const [allocation, setAllocation] = useState({ assigned_user_id: "", severity: "Medium", response_due_at: "", instructions: "" });
+  const [reviewComments, setReviewComments] = useState("");
+  const [operatorNote, setOperatorNote] = useState("");
+  const [operatorComments, setOperatorComments] = useState("");
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const isSectionChief = user.role === "technician_ct";
   const canUpdateFault = (user.permissions || []).includes("faults.update");
-  const canInvestigate = ["technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"].includes(user.role);
+  const canInvestigate = ["systems_automation", "technician_st", "technician_pt", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"].includes(user.role);
   const canContribute = (user.permissions || []).includes("knowledge.contribute");
   const canTriage = (user.permissions || []).includes("faults.triage") || (user.permissions || []).includes("faults.triage.section");
 
@@ -509,11 +863,42 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
     const loaded = await api(`/api/v1/faults/${encodeURIComponent(faultId)}/context`) as FaultContext;
     setContext(loaded);
     setTriageSection((current) => current || String(loaded.fault.assigned_section || loaded.fault.suggested_section || ""));
+    const active = loaded.assignments.find((item) => Boolean(item.is_active));
+    setAllocation({
+      assigned_user_id: String(active?.assigned_user_id || ""),
+      severity: String(loaded.fault.severity || "Medium"),
+      response_due_at: dateTimeLocal(active?.response_due_at),
+      instructions: String(active?.instructions || ""),
+    });
   }
 
   useEffect(() => {
     reload().catch((reason) => setError(reason instanceof Error ? reason.message : "Investigation history could not be loaded."));
   }, [faultId]);
+
+  useEffect(() => {
+    if (isSectionChief) {
+      api("/api/v1/chief/team").then(setTechnicianPool).catch((reason) => setError(reason instanceof Error ? reason.message : "Section technician pool could not be loaded."));
+    }
+  }, [isSectionChief, user.section]);
+
+  useEffect(() => {
+    const query = triageAssetSearch.trim();
+    if (query.length < 2) {
+      setTriageAssets([]);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      api(`/api/v1/equipment?search=${encodeURIComponent(query)}`)
+        .then((items) => { if (active) setTriageAssets(items); })
+        .catch(() => { if (active) setTriageAssets([]); });
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [triageAssetSearch]);
 
   async function performAction(action: string) {
     setError("");
@@ -618,10 +1003,13 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
         body: JSON.stringify({
           assigned_section: triageSection || String(context?.fault.suggested_section || ""),
           triage_comment: triageComment,
+          ...(confirmedEquipmentId ? { confirmed_equipment_id: confirmedEquipmentId } : {}),
         }),
       });
-      setMessage("Triage and section assignment recorded.");
+      setMessage(fault.equipment_confirmed === false ? "Asset confirmation recorded; the breakdown remains with Systems Automation." : "Asset confirmation note recorded.");
       setTriageComment("");
+      setConfirmedEquipmentId("");
+      setTriageAssetSearch("");
       await reload();
       await onRefresh();
     } catch (reason) {
@@ -629,40 +1017,312 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
     }
   }
 
+  async function submitEscalation(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/assignments/escalate`, {
+        method: "POST",
+        body: JSON.stringify({
+          next_section: handoffSection,
+          findings: handoffFindings,
+          recommendation: handoffRecommendation,
+        }),
+      });
+      setHandoffSection("");
+      setHandoffFindings("");
+      setHandoffRecommendation("");
+      setMessage(`Findings handed to ${handoffSection}; the breakdown record remains continuous.`);
+      await reload();
+      await onRefresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Section handoff could not be saved.");
+    }
+  }
+
+  async function saveAllocation(event: React.FormEvent) {
+    event.preventDefault();
+    const assignment = context?.assignments.find((item) => Boolean(item.is_active));
+    if (!assignment) return;
+    setError("");
+    try {
+      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/assignments/${encodeURIComponent(String(assignment.id))}/allocate`, {
+        method: "POST",
+        body: JSON.stringify({
+          ...allocation,
+          assigned_user_id: allocation.assigned_user_id || null,
+          response_due_at: allocation.response_due_at ? new Date(allocation.response_due_at).toISOString() : null,
+        }),
+      });
+      setMessage("Section assignment and response target saved.");
+      await reload();
+      await onRefresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Section assignment could not be saved.");
+    }
+  }
+
+  async function reviewSectionWork(decision: string) {
+    const assignment = context?.assignments.find((item) => Boolean(item.is_active));
+    if (!assignment) return;
+    if (decision.startsWith("RETURN_") && !reviewComments.trim()) {
+      setError("Add clear instructions before returning work for more investigation.");
+      return;
+    }
+    setError("");
+    try {
+      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/assignments/${encodeURIComponent(String(assignment.id))}/review`, {
+        method: "POST",
+        body: JSON.stringify({ decision, comments: reviewComments }),
+      });
+      setReviewComments("");
+      setMessage(decision.startsWith("APPROVE_") ? "Chief technical review approved." : "Work returned with your instructions.");
+      await reload();
+      await onRefresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Technical review could not be saved.");
+    }
+  }
+
+  async function submitOperatorUpdate(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/operator-updates`, {
+        method: "POST",
+        body: JSON.stringify({ note: operatorNote }),
+      });
+      setOperatorNote("");
+      setMessage("Progress update sent to the responding teams.");
+      await reload();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Operator update could not be saved.");
+    }
+  }
+
+  async function confirmRestoration(confirmed: boolean) {
+    setError("");
+    try {
+      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/operator-confirmation`, {
+        method: "POST",
+        body: JSON.stringify({ confirmed, comments: operatorComments }),
+      });
+      setOperatorComments("");
+      setMessage(confirmed ? "Operational restoration confirmed; the breakdown is closed." : "Restoration not confirmed; work has returned to the responsible section.");
+      await reload();
+      await onRefresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Operator confirmation could not be saved.");
+    }
+  }
+
+  async function uploadEvidence() {
+    setError("");
+    const failed: string[] = [];
+    const failedFiles: File[] = [];
+    for (const file of evidenceFiles) {
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        await api(`/api/v1/faults/${encodeURIComponent(faultId)}/attachments`, { method: "POST", body: form });
+      } catch (reason) {
+        failedFiles.push(file);
+        failed.push(`${file.name}: ${reason instanceof Error ? reason.message : "upload failed"}`);
+      }
+    }
+    setEvidenceFiles(failedFiles);
+    if (failed.length) {
+      setError(`Evidence could not be uploaded: ${failed.join(", ")}.`);
+    } else {
+      setMessage("Evidence added to this breakdown.");
+    }
+    await reload();
+  }
+
+  async function downloadEvidence(attachmentId: string, filename: string) {
+    setError("");
+    try {
+      const token = localStorage.getItem("kpc-token");
+      const response = await fetch(`${API}/api/v1/faults/${encodeURIComponent(faultId)}/attachments/${encodeURIComponent(attachmentId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Evidence could not be downloaded.");
+    }
+  }
+
   if (!context) return <div className="panel"><h3>Fault work history</h3>{error ? <p className="error">{error}</p> : <p className="muted">Loading fault history…</p>}</div>;
   const fault = context.fault;
   const statusValue = String(fault.status);
+  const activeAssignment = context.assignments.find((item) => Boolean(item.is_active));
+  const canWorkAssignment = !isSectionChief && Boolean(activeAssignment) && (
+    user.role === "systems_automation"
+      ? activeAssignment?.section === "Systems Automation"
+      : canInvestigate
+        ? activeAssignment?.section === user.section
+        : true
+  );
+  const canReviewSectionAssignment = isSectionChief && activeAssignment?.section === user.section;
+  const awaitingChiefReview = statusValue === "AWAITING_CHIEF_REVIEW"
+    || activeAssignment?.escalation_status === "PENDING"
+    || activeAssignment?.completion_review_status === "PENDING";
+  const canTriageCurrent = canTriage && (
+    !activeAssignment || (
+      activeAssignment.section === "Systems Automation"
+      && ["systems_automation", "maintenance_manager", "supervisor", "system_administrator"].includes(user.role)
+    )
+  );
+  const canConfirmRestoration = user.role === "operations" && (user.permissions || []).includes("faults.confirm");
+  const canAttachEvidence = user.role === "operations" || canWorkAssignment
+    || ["maintenance_manager", "general_manager_om", "supervisor", "system_administrator"].includes(user.role);
   const hasSuccessfulIntervention = context.interventions.some((item) => item.outcome === "SUCCESS");
   const canSubmitProcedure = canContribute && ["RESTORED", "CLOSED"].includes(statusValue) && hasSuccessfulIntervention;
   const updateActions = user.permissions || [];
   const restrictedTriage = ["technician_ct", "chief_engineer"].includes(user.role);
-  const triageOptions = ["Systems Automation", "Electrical", "Instrumentation", "Mechanical"].filter((section) => !restrictedTriage || section === user.section);
+  const allSections = ["Systems Automation", "Electrical", "Instrumentation", "Mechanical"];
+  const triageOptions = (activeAssignment?.section === "Systems Automation" ? ["Systems Automation"] : allSections).filter((section) => {
+    if (!restrictedTriage) return true;
+    if (context?.fault.equipment_confirmed === false && !confirmedEquipmentId && section === "Systems Automation") return true;
+    return section === user.section;
+  });
   const unresolvedReuse = context.reuse_records.filter((item) => item.actor_id === user.id && !item.outcome);
 
   return (
     <div className="fault-detail">
       <div className="panel">
-        <div className="section-heading"><div><p className="eyebrow">WORK ORDER CONTEXT</p><h3>{String(fault.reference)} · {String(fault.equipment_tag)}</h3><p>{String(fault.symptom)} · {String(fault.description || "No additional report details")}</p></div><span className="status">{statusValue}</span></div>
-        <p className="muted">Assigned section: {String(fault.assigned_section || "Unassigned")} · Reported {new Date(String(fault.created_at)).toLocaleString()}</p>
+        <div className="section-heading"><div><p className="eyebrow">WORK ORDER CONTEXT</p><h3>{String(fault.reference)} · {String(fault.equipment_tag)}</h3><p>{String(fault.symptom)} · {String(fault.description || "No additional report details")}</p>{Boolean(fault.operating_conditions) && <p><strong>Operating conditions:</strong> {String(fault.operating_conditions)}</p>}{Boolean(fault.operational_impact) && <p><strong>Operational effect:</strong> {String(fault.operational_impact)}</p>}</div><span className="status">{statusValue}</span></div>
+        <p className="muted">Assigned section: {String(fault.assigned_section || "Unassigned")} · Reported by {String(fault.reporter_name || "Unknown")} · {new Date(String(fault.created_at)).toLocaleString()}{fault.reported_on_behalf_of ? ` · On behalf of ${String(fault.reported_on_behalf_of)}` : ""}</p>
+        {fault.equipment_confirmed === false && <div className="unconfirmed-banner">
+          <strong>Asset not confirmed</strong>
+          <span>Reported wording: {String(fault.reported_equipment_text || "Not provided")}{Boolean(fault.reported_location) ? ` · Location: ${String(fault.reported_location)}` : ""}</span>
+          {Boolean(fault.suggested_equipment_tag) && <span>Possible match only: {String(fault.suggested_equipment_tag)}</span>}
+          <span>Do not use the suggestion as a confirmed tag. Confirm the physical asset before routing to its maintenance section.</span>
+        </div>}
         {context.previous_faults.length > 0 && <p className="repeat-alert">Seen before on this equipment: {context.previous_faults.length} earlier report(s). Review the diagnosis and intervention history before repeating work.</p>}
-        {canTriage && <form className="triage-form" onSubmit={submitTriage}>
-          <strong>Systems Automation triage and routing</strong><span className="muted">Suggested section from the equipment record: {String(fault.suggested_section || "Not set")}</span>
-          <div className="form-grid"><label>Assign to section<select value={triageSection || String(fault.assigned_section || fault.suggested_section || "")} onChange={(event) => setTriageSection(event.target.value)} required>{triageOptions.map((section) => <option key={section} value={section}>{section}</option>)}</select></label><label>Triage note<input value={triageComment} onChange={(event) => setTriageComment(event.target.value)} /></label></div>
-          <button className="secondary" type="submit">Save triage and assignment</button>
+        {canTriageCurrent && <form className="triage-form" onSubmit={submitTriage}>
+          <strong>Systems Automation asset confirmation</strong><span className="muted">{fault.equipment_confirmed === false ? "Confirm the actual equipment before any section handoff." : `Suggested owner section: ${String(fault.suggested_section || "Not set")}. This breakdown remains with Systems Automation until findings are handed off.`}</span>
+          {fault.equipment_confirmed === false && <label>Find the actual equipment by tag or description
+            <input value={triageAssetSearch} onChange={(event) => { setTriageAssetSearch(event.target.value); setConfirmedEquipmentId(""); }} placeholder="Search equipment records" />
+          </label>}
+          {fault.equipment_confirmed === false && triageAssets.slice(0, 5).map((item) => <button type="button" className={`asset-match ${confirmedEquipmentId === String(item.id) ? "selected" : ""}`} key={String(item.id)} onClick={() => { setConfirmedEquipmentId(String(item.id)); setTriageSection("Systems Automation"); }}>
+            <span><strong>{String(item.tag)} · {String(item.name)}</strong><small>{String(item.location)} · {String(item.section)}</small></span><span className="tag">{confirmedEquipmentId === String(item.id) ? "Confirmed asset" : "Select actual asset"}</span>
+          </button>)}
+          <div className="form-grid"><label>Current section<select value={triageSection || String(fault.assigned_section || "Systems Automation")} onChange={(event) => setTriageSection(event.target.value)} required>{triageOptions.map((section) => <option key={section} value={section}>{section}</option>)}</select></label><label>Asset confirmation note<input value={triageComment} onChange={(event) => setTriageComment(event.target.value)} /></label></div>
+          <button className="secondary" type="submit">{fault.equipment_confirmed === false ? confirmedEquipmentId ? "Confirm asset; keep with Systems Automation" : "Keep unconfirmed with Systems Automation" : "Save asset confirmation"}</button>
         </form>}
-        {canUpdateFault && <div className="action-row">
+        {canUpdateFault && canWorkAssignment && fault.equipment_confirmed !== false && <div className="action-row">
           {["REPORTED", "TRIAGED", "ASSIGNED"].includes(statusValue) && updateActions.includes("faults.update") && <button className="secondary" onClick={() => performAction("acknowledge")}>Acknowledge</button>}
           {statusValue === "ACKNOWLEDGED" && updateActions.includes("faults.update") && <button className="secondary" onClick={() => performAction("on_site")}>On site</button>}
           {["ON_SITE", "ACKNOWLEDGED"].includes(statusValue) && updateActions.includes("faults.update") && <button className="secondary" onClick={() => performAction("diagnose")}>Mark diagnosed</button>}
-          {!["RESTORED", "CLOSED"].includes(statusValue) && updateActions.includes("faults.restore") && <button className="primary" onClick={() => performAction("restore")}>Mark restored</button>}
-          {statusValue === "RESTORED" && updateActions.includes("faults.close") && <button className="primary" onClick={() => performAction("close")}>Close fault</button>}
+          {!["RESTORED", "CLOSED", "AWAITING_CHIEF_REVIEW"].includes(statusValue) && updateActions.includes("faults.restore") && <button className="primary" onClick={() => performAction("restore")}>Request technical completion review</button>}
         </div>}
+        {canUpdateFault && fault.equipment_confirmed === false && <p className="muted">Technical actions are disabled until the physical equipment is confirmed.</p>}
+        {statusValue === "AWAITING_CHIEF_REVIEW" && <p className="repeat-alert">Work is waiting for Chief Technician review. Operations cannot confirm restoration until technical completion is approved.</p>}
+        {statusValue === "RESTORED" && <p className="confirmation">Chief technical review is complete. Waiting for Operations to confirm service restoration.</p>}
+        {Boolean(fault.closure_remarks) && <p><strong>Operator closure remarks:</strong> {String(fault.closure_remarks)}</p>}
         {message && <p className="confirmation">{message}</p>}
         {error && <p className="error">{error}</p>}
       </div>
 
+      {context.assignments.length > 0 && <div className="panel assignment-chain">
+        <div className="section-heading"><div><p className="eyebrow">ACCOUNTABLE SECTION HANDOFFS</p><h3>One breakdown, shared findings</h3></div><span className="muted">Active section: {String(activeAssignment?.section || "Awaiting operator confirmation")}</span></div>
+        <div className="assignment-list">{context.assignments.map((item, index) => <article className="assignment-card" key={String(item.id)}>
+          <div className="assignment-heading"><strong>{index + 1}. {String(item.section)}</strong><span className={`status ${String(item.status).toLowerCase()}`}>{String(item.status).replace(/_/g, " ")}</span></div>
+          <small>{item.assigned_user_name ? `Owner: ${String(item.assigned_user_name)}` : "Awaiting section acknowledgement"} · {new Date(String(item.created_at)).toLocaleString()} · {String(item.elapsed_minutes)} min in assignment</small>
+          {Boolean(item.reason) && <p><strong>Handoff reason:</strong> {String(item.reason)}</p>}
+          {Boolean(item.instructions) && <p><strong>Chief Technician instructions:</strong> {String(item.instructions)}</p>}
+          {Boolean(item.response_due_at) && <p><strong>Expected response:</strong> {new Date(String(item.response_due_at)).toLocaleString()}</p>}
+          {Boolean(item.findings) && <p><strong>Findings:</strong> {String(item.findings)}</p>}
+          {Boolean(item.recommendation) && <p><strong>Recommended next action:</strong> {String(item.recommendation)}</p>}
+          {item.escalation_status === "RETURNED" && Boolean(item.escalation_review_comments) && <p><strong>Chief review:</strong> {String(item.escalation_review_comments)}</p>}
+          {item.completion_review_status === "RETURNED" && Boolean(item.completion_review_comments) && <p><strong>Completion review:</strong> {String(item.completion_review_comments)}</p>}
+        </article>)}</div>
+        {canReviewSectionAssignment && fault.equipment_confirmed !== false && <form className="assignment-allocation" onSubmit={saveAllocation}>
+          <h4>Allocate section work</h4>
+          <p className="muted">Choose an available Senior or Principal Technician using current workload and their recorded competencies.</p>
+          <div className="form-grid">
+            <label>Assigned technician<select value={allocation.assigned_user_id} onChange={(event) => setAllocation({ ...allocation, assigned_user_id: event.target.value })}>
+              <option value="">Leave in section queue</option>
+              {technicianPool.filter((person) => person.active && (
+                person.availability_status === "AVAILABLE" || String(person.id) === allocation.assigned_user_id
+              )).map((person) => <option key={String(person.id)} value={String(person.id)}>
+                {String(person.display_name)} · {String(person.role_label)} · {String(person.active_workload)} active · {((person.competencies || []) as string[]).join(", ") || "Competencies not recorded"}
+              </option>)}
+            </select></label>
+            <label>Operational priority<select value={allocation.severity} onChange={(event) => setAllocation({ ...allocation, severity: event.target.value })}>{["Low", "Medium", "High", "Critical"].map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label>Expected response by<input type="datetime-local" value={allocation.response_due_at} onChange={(event) => setAllocation({ ...allocation, response_due_at: event.target.value })} required /></label>
+          </div>
+          <label>Technical instructions<textarea value={allocation.instructions} onChange={(event) => setAllocation({ ...allocation, instructions: event.target.value })} placeholder="Focus checks, permit constraints, or evidence to collect" /></label>
+          <button className="primary" type="submit">{activeAssignment?.assigned_user_id ? "Save assignment / reassign" : "Assign work"}</button>
+        </form>}
+        {canReviewSectionAssignment && activeAssignment?.escalation_status === "PENDING" && <div className="section-review-panel">
+          <h4>Review requested escalation to {String(activeAssignment.requested_next_section)}</h4>
+          <p className="muted">Check the technician’s findings, evidence and recommendation above before transferring the next assignment.</p>
+          <label>Review note or instructions<textarea value={reviewComments} onChange={(event) => setReviewComments(event.target.value)} placeholder="Required if returning for more investigation" /></label>
+          <div className="action-row"><button className="primary" type="button" onClick={() => reviewSectionWork("APPROVE_ESCALATION")}>Approve escalation</button><button className="secondary" type="button" onClick={() => reviewSectionWork("RETURN_ESCALATION")}>Return for investigation</button></div>
+        </div>}
+        {canReviewSectionAssignment && activeAssignment?.completion_review_status === "PENDING" && <div className="section-review-panel">
+          <h4>Review technical completion</h4>
+          <p className="muted">Verify that corrective work and test results are documented. Approval marks the section restored; Operations must still confirm service.</p>
+          <label>Review note or instructions<textarea value={reviewComments} onChange={(event) => setReviewComments(event.target.value)} placeholder="Required if returning for more work" /></label>
+          <div className="action-row"><button className="primary" type="button" onClick={() => reviewSectionWork("APPROVE_COMPLETION")}>Approve technical completion</button><button className="secondary" type="button" onClick={() => reviewSectionWork("RETURN_COMPLETION")}>Return for more work</button></div>
+        </div>}
+        {canWorkAssignment && !awaitingChiefReview && fault.equipment_confirmed !== false && activeAssignment && <form className="handoff-form" onSubmit={submitEscalation}>
+          <h4>Hand off to another section</h4>
+          <p className="muted">The receiving team gets this fault, prior section findings, tests, and linked evidence.</p>
+          <label>Next section<select value={handoffSection} onChange={(event) => setHandoffSection(event.target.value)} required>
+            <option value="">Select section</option>{allSections.filter((section) => section !== activeAssignment.section).map((section) => <option key={section}>{section}</option>)}
+          </select></label>
+          <label>What did your section find?<textarea value={handoffFindings} onChange={(event) => setHandoffFindings(event.target.value)} required /></label>
+          <label>What should the next section do?<textarea value={handoffRecommendation} onChange={(event) => setHandoffRecommendation(event.target.value)} required /></label>
+          <button className="secondary" type="submit">Send with findings</button>
+        </form>}
+      </div>}
+
+      <div className="panel evidence-panel">
+        <div className="section-heading"><div><p className="eyebrow">SHARED EVIDENCE AND OPERATIONS UPDATES</p><h3>Progress and evidence</h3></div></div>
+        {context.attachments.map((item) => {
+          const assignment = context.assignments.find((entry) => entry.id === item.assignment_id);
+          return <article className="evidence-item" key={String(item.id)}>
+            <div><strong>{String(item.filename)}</strong><small>{String(item.uploaded_by)} · {assignment ? `${String(assignment.section)} section` : "Breakdown report"} · {Math.ceil(Number(item.size_bytes) / 1024)} KiB</small></div>
+            <button className="secondary" type="button" onClick={() => downloadEvidence(String(item.id), String(item.filename))}>Download</button>
+          </article>;
+        })}
+        {!context.attachments.length && <p className="muted">No evidence attached yet.</p>}
+        {canAttachEvidence && statusValue !== "CLOSED" && <div className="evidence-upload">
+          <label>Add images, PDFs, or text/log evidence (10 MiB max per file)<input type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,.csv,.txt,.json,.log" multiple onChange={(event) => setEvidenceFiles(Array.from(event.target.files || []))} /></label>
+          {evidenceFiles.length > 0 && <><small>{evidenceFiles.map((file) => file.name).join(", ")}</small><button className="secondary" type="button" onClick={uploadEvidence}>Upload evidence</button></>}
+        </div>}
+        {user.role === "operations" && statusValue !== "CLOSED" && <form className="operator-update-form" onSubmit={submitOperatorUpdate}>
+          <h4>Send an update to the responding teams</h4>
+          <label>New operating information<textarea value={operatorNote} onChange={(event) => setOperatorNote(event.target.value)} required placeholder="Add a change in conditions, access, or operational impact" /></label>
+          <button className="secondary" type="submit">Send progress update</button>
+        </form>}
+        {context.operator_updates.map((item) => <article className="timeline-item" key={String(item.id)}>
+          <strong>{String(item.event_type).replace(/_/g, " ")}</strong>
+          <small>{String(item.actor_name)} · {new Date(String(item.created_at)).toLocaleString()}</small>
+          <p>{String((item.payload as DataRow)?.note || (item.payload as DataRow)?.comments || "No additional comments")}</p>
+        </article>)}
+        {canConfirmRestoration && statusValue === "RESTORED" && <div className="operator-confirmation">
+          <h4>Confirm service restoration</h4>
+          <p className="muted">Check the valve or equipment against the applicable operating procedure before closing this breakdown.</p>
+          <label>Confirmation notes<textarea value={operatorComments} onChange={(event) => setOperatorComments(event.target.value)} placeholder="Optional confirmation note; required if service is still affected" /></label>
+          <div className="action-row">
+            <button className="primary" type="button" onClick={() => confirmRestoration(true)}>Confirm restored and close</button>
+            <button className="secondary" type="button" onClick={() => confirmRestoration(false)}>Still not working — return to section</button>
+          </div>
+        </div>}
+      </div>
+
       {context.ranked_causes && context.ranked_causes.length > 0 && <div className="panel ranked-causes">
-        <div className="section-heading"><div><p className="eyebrow">RANKED TROUBLESHOOTING</p><h3>Most likely causes and confirmed fixes</h3></div><span className="muted">{context.repeat_routing?.triage_action === "DIRECT_TO_SECTION" ? "Repeat route: direct to standby" : "Standard section route"}</span></div>
+        <div className="section-heading"><div><p className="eyebrow">RANKED TROUBLESHOOTING</p><h3>Most likely causes and confirmed fixes</h3></div><span className="muted">{context.repeat_routing?.seen_before ? "Repeat history shared with Systems Automation first" : "Systems Automation first response"}</span></div>
         <div className="cause-list">
           {context.ranked_causes.map((cause, index) => <article className={`cause-card ${cause.recurrence_warning ? "workaround-warning" : ""}`} key={String(cause.possible_cause)}>
             <div className="cause-rank">{index + 1}</div>
@@ -701,7 +1361,7 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
         </div>
       </div>
 
-      {canInvestigate && <div className="grid-two">
+      {canInvestigate && canWorkAssignment && !awaitingChiefReview && !["RESTORED", "CLOSED"].includes(statusValue) && <div className="grid-two">
         <form className="panel" onSubmit={submitDiagnosis}>
           <h3>Record possible cause and checks</h3>
           <label>Possible cause<input value={diagnosis.possible_cause} onChange={(event) => setDiagnosis({ ...diagnosis, possible_cause: event.target.value })} required /></label>
@@ -728,8 +1388,8 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
 
       <div className="grid-two">
         <div className="panel"><h3>Investigation and intervention log</h3>
-          {context.diagnoses.map((item) => <article className="history-item" key={String(item.id)}><strong>Possible cause: {String(item.possible_cause)}</strong><small>{String(item.author_name)} · {String(item.verification_status)} · {new Date(String(item.created_at)).toLocaleString()}</small><p>{String(item.diagnostic_method)}</p><p>{String(item.observations)} {String(item.test_results)}</p></article>)}
-          {context.interventions.map((item) => <article className={`history-item ${item.outcome === "FAILED" ? "failed-attempt" : ""}`} key={String(item.id)}><strong>{String(item.outcome)} intervention</strong><small>{String(item.actor_name)} · {new Date(String(item.created_at)).toLocaleString()}</small><p>{String(item.corrective_action)}</p><p>{String(item.tools_materials)} {String(item.notes)}</p></article>)}
+          {context.diagnoses.map((item) => <article className="history-item" key={String(item.id)}><strong>Possible cause: {String(item.possible_cause)}</strong><small>{String(item.assignment_section || "Legacy record")} · {String(item.author_name)} · {String(item.verification_status)} · {new Date(String(item.created_at)).toLocaleString()}</small><p>{String(item.diagnostic_method)}</p><p>{String(item.observations)} {String(item.test_results)}</p></article>)}
+          {context.interventions.map((item) => <article className={`history-item ${item.outcome === "FAILED" ? "failed-attempt" : ""}`} key={String(item.id)}><strong>{String(item.outcome)} intervention</strong><small>{String(item.assignment_section || "Legacy record")} · {String(item.actor_name)} · {new Date(String(item.created_at)).toLocaleString()}</small><p>{String(item.corrective_action)}</p><p>{String(item.tools_materials)} {String(item.notes)}</p></article>)}
           {!context.diagnoses.length && !context.interventions.length && <p className="muted">No investigation steps have been recorded for this report.</p>}
         </div>
         <div className="panel"><h3>Event and review timeline</h3>

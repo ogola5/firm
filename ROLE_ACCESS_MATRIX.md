@@ -4,17 +4,19 @@ This is the prototype's proposed least-privilege model. Role titles and permissi
 
 ## Maintenance section roles
 
-Every technical role is assigned exactly one section: Systems Automation, Electrical, Instrumentation or Mechanical. Fault queues, equipment and section dashboards for these roles are scoped to that section. Section chiefs can triage only within their section.
+Section technicians and engineers are assigned to Electrical, Instrumentation or Mechanical; Systems Automation has cross-section access to the first-response queue. Systems Automation receives the first assignment for every new breakdown, and responders can read findings and history from sections already involved in that same fault.
 
 | Level | Role | Default access |
 |---|---|---|
-| ST | Senior Technician | Read section faults, assets, previous interventions and approved procedures; acknowledge and update investigation; record diagnosis/interventions and contribute procedure updates |
-| PT | Principal Technician | ST access plus restoration authority |
-| CT | Chief Technician | PT access plus section-only technical review of procedure updates; approve technical review or request clarification; close faults |
+| ST | Senior Technician | Shared ST/PT execution pool: read assigned-section work, equipment history and approved procedures; acknowledge jobs; record diagnoses, tests, interventions and procedure contributions; request technical completion review |
+| PT | Principal Technician | Same operational investigation and completion-request permissions as ST; shares the section assignment pool |
+| CT | Chief Technician | Section-level technical supervisor: see the whole section workload and linked escalations, assign/reassign ST/PT work, set priority and response targets, maintain competencies, review escalations and approve or return technical completion requests; also performs technical review of procedure updates |
 | AE | Assistant Engineer | Read section fault history and approved procedures; update investigation and contribute diagnoses, interventions and procedure updates |
 | ENG | Engineer | AE access and procedure contributions |
 | Senior Engineer | Senior Engineer | Engineer access plus restoration authority |
-| Chief Engineer | Chief Engineer | Senior Engineer access plus section-only technical review and fault closure |
+| Chief Engineer | Chief Engineer | Senior Engineer access plus section-only technical review |
+
+ST/PT assignments remain one operational pool; the Chief Technician coordinates the section rather than acting as another assigned investigator. Each section's Chief Technician controls assignments and reviews that section's escalation requests. An approved escalation creates the next linked section assignment without replacing the original fault record. A technician records successful corrective work and requests technical completion; the responsible section Chief Technician approves or returns that request. Operations separately confirms service restoration before a fault is closed. An Operations rejection reopens work with the last responsible section.
 
 Fault investigation records preserve multiple possible causes and every intervention, including unsuccessful attempts. Successful intervention evidence is required before a procedure update can be submitted. Revisions create new immutable versions; prior versions and review comments remain available.
 
@@ -22,11 +24,11 @@ Fault investigation records preserve multiple possible causes and every interven
 
 | Role | What they can see/do | Restrictions |
 |---|---|---|
-| Operations | Equipment identification, fault summaries/status and fault reporting across stations | No account administration, approvals or HR directory |
-| Systems Automation | Cross-section triage queue, prior fault context, repeat-fault indicators and section routing | Cannot administer accounts or publish procedure updates |
+| Operations | Equipment identification, fault reporting, progress updates, evidence and restoration confirmation across stations | No account administration, maintenance approvals or HR directory |
+| Systems Automation | First responder for all breakdowns; cross-section triage, asset confirmation, prior fault context and accountable section handoffs | Cannot administer accounts or publish procedure updates |
 | Maintenance Manager | Detailed maintenance records, workflow analytics and approved procedures across sections | No account provisioning or procedure publication approval |
 | HR Officer | Synthetic employee directory; date-filtered contribution evidence: authored/approved procedures, colleague-confirmed reuse, diagnoses, intervention outcomes and response/restoration times | No individual fault narratives, equipment records or procedure contents; report counts are contextual and not rewarded |
-| General Manager, Operations & Maintenance | Cross-section Operations → Systems Automation → section handoff funnel, timing baselines, wrong first assignments, repeat-fault direct routing, knowledge reuse and maintenance records | Workforce view is aggregate only; no HR directory or account administration |
+| General Manager, Operations & Maintenance | Cross-section Operations → Systems Automation → section handoff funnel, assignment ownership and timing baselines, repeat-fault context, knowledge reuse and maintenance records | Workforce view is aggregate only; no HR directory or account administration |
 | Managing Director / CEO | Enterprise summary KPIs and resolved rate | No individual fault, equipment, maintenance-evidence or employee records |
 | Supervisor | Maintenance records; final publication approval after Chief Technician/Chief Engineer technical review | No account provisioning; cannot bypass technical review for publication |
 | System Administrator | Role definitions, account provisioning/deactivation and technical system access | Cannot approve maintenance knowledge or safety/operational work |
@@ -35,7 +37,7 @@ Fault investigation records preserve multiple possible causes and every interven
 
 1. Technicians and engineers open a fault to see same-equipment history, prior diagnoses, failed and successful interventions, and applicable approved procedures.
 2. They record diagnoses and each intervention with contributor and timestamp. An unsuccessful attempt remains visible.
-3. After a successful intervention and restoration, the contributor submits a procedure update.
+3. After a successful intervention and approved technical completion, the contributor submits a procedure update.
 4. The section Chief Technician or Chief Engineer reviews the technical evidence, approves the review or asks for clarification. The contributor revises by creating a new version.
 5. A Supervisor publishes a technically reviewed version to the reusable library. Drafts, clarification requests and technical approvals are not published.
 6. A colleague records procedure reuse on a fault and confirms success or failure after restoration. Only colleague-confirmed successful reuse counts as reuse evidence for the procedure contributor.
@@ -47,7 +49,7 @@ GM workflow analytics are based on recorded handoff events and show baselines; t
 ## Repeat-fault and recognition workflow
 
 - Operations reporting flags a same-equipment/same-symptom fault seen in the previous 90 days.
-- Repeat faults are assigned directly to the equipment owner section; normal triage is skipped and recorded in the event timeline.
+- Repeat-fault history is surfaced to responders, but every repeat still starts with Systems Automation. Each section Chief reviews its incoming work, and any subsequent section receives the prior findings, tests, evidence and recommended next action when the escalation is approved.
 - Troubleshooting ranks multiple diagnoses using confirmed successes, failed attempts, quick checks and recurrence warnings.
 - Recurring workaround fixes are flagged for deeper investigation. Caution/High-risk fixes require supervisor approval.
 - Contributor recognition uses approved procedures, meaningful revisions and colleague-confirmed reuse. Report volume does not earn recognition points.

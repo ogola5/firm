@@ -11,3 +11,4 @@ dist/
 *.db
 *.tsbuildinfo
 backend/kpc.db
+backend/storage/attachments/
