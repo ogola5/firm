@@ -9,21 +9,39 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@hookform/resolvers": "^3.10.0",
+    "@radix-ui/react-slot": "^1.5.0",
+    "@tanstack/react-query": "^5.108.4",
     "@vitejs/plugin-react": "^4.3.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "dexie": "^4.0.10",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-hook-form": "^7.92.0",
     "react-router-dom": "^7.1.1",
-    "vite": "^6.0.5"
+    "recharts": "^3.11.1",
+    "tailwind-merge": "^2.6.2",
+    "vite": "^6.0.5",
+    "workbox-expiration": "^7.4.1",
+    "workbox-precaching": "^7.4.1",
+    "workbox-routing": "^7.4.1",
+    "workbox-strategies": "^7.4.1",
+    "workbox-window": "^7.4.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@playwright/test": "1.49",
     "@types/node": "^18.19.130",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.7.0",
     "fake-indexeddb": "^6.2.8",
+    "postcss": "^8.5.33",
+    "tailwindcss": "3.4",
     "typescript": "~5.7.2",
+    "vite-plugin-pwa": "^0.21.2",
     "vitest": "^2.1.8"
   }
 }
