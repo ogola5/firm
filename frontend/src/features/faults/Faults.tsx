@@ -7,6 +7,7 @@ import { Alert } from "../../components/ui/alert";
 import { Badge, statusVariant } from "../../components/ui/badge";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input, NativeSelect } from "../../components/ui/form-controls";
+import { Pagination, usePagination } from "../../components/ui/pagination";
 import { EmptyState, Page, PageHeader } from "../../components/ui/page";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { db } from "../../db";
@@ -64,6 +65,7 @@ export function Faults({ user }: { user: User }) {
     enabled: mode === "history",
   });
   const faults = history.data?.data ?? [];
+  const paging = usePagination(faults, 15, `${scope}|${debouncedSearch}`);
 
   // Open the first breakdown when none is selected yet.
   useEffect(() => {
@@ -149,7 +151,7 @@ export function Faults({ user }: { user: User }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {faults.map((fault) => {
+                {paging.visible.map((fault) => {
                   const id = String(fault.id);
                   return (
                     <TableRow
@@ -174,6 +176,7 @@ export function Faults({ user }: { user: User }) {
                 })}
               </TableBody>
             </Table>
+            <Pagination {...paging} />
           </CardContent>
         </Card>
         {!history.isLoading && !faults.length && <div className="mt-3"><EmptyState>No breakdowns match this search.</EmptyState></div>}
