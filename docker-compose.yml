@@ -1,13 +1,42 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: kpc
+      POSTGRES_USER: kpc
+      # Synthetic demo credential only. Override with an .env file outside the demo.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kpc-demo}
+    ports:
+      # Host port 5433 avoids clashing with a locally installed PostgreSQL.
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kpc -d kpc"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   backend:
     build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://kpc:${POSTGRES_PASSWORD:-kpc-demo}@db:5432/kpc
+      JWT_SECRET: ${JWT_SECRET:-synthetic-demo-only-change-in-production}
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/kpc.db:/app/kpc.db
+      - attachments:/app/storage/attachments
+    depends_on:
+      db:
+        condition: service_healthy
+
   frontend:
     build: ./frontend
     ports:
       - "5173:5173"
     depends_on:
       - backend
+
+volumes:
+  pgdata:
+  attachments:

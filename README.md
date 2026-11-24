@@ -4,10 +4,12 @@ This repository contains a synthetic, offline-capable prototype for digitally tr
 
 ## Stack
 
-- FastAPI, SQLAlchemy and SQLite for the local prototype
+- FastAPI, SQLAlchemy 2, Alembic and PostgreSQL 16
 - React, TypeScript and Vite
 - Dexie.js and a service worker for offline caching
 - Docker Compose for a reproducible development stack
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the code layout.
 
 ## Quick start
 
@@ -15,7 +17,13 @@ This repository contains a synthetic, offline-capable prototype for digitally tr
 docker compose up --build
 ```
 
-The frontend runs on port `5173` and the API on port `8000`. API documentation is available at `http://localhost:8000/docs`.
+The frontend runs on port `5173` and the API on port `8000`. API documentation is available at `http://localhost:8000/docs`. PostgreSQL is published on host port `5433` (set `POSTGRES_HOST_PORT` to change it). The backend container applies migrations and loads the demo data on first start.
+
+Reset the demonstration data at any time:
+
+```bash
+docker compose exec backend python -m app.cli reset
+```
 
 ### Docker Desktop from Ubuntu on WSL
 
@@ -38,8 +46,12 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+docker compose up -d db        # from the repository root
+python -m app.cli init         # migrate + seed
 uvicorn app.main:app --reload --port 8000
 ```
+
+Set `DATABASE_URL` to use a different database (the default is the Compose PostgreSQL on `localhost:5433`).
 
 Synthetic demo credentials are documented in [DEMO_GUIDE.md](DEMO_GUIDE.md).
 

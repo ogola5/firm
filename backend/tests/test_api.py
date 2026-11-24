@@ -673,7 +673,7 @@ def test_technical_review_is_section_scoped_and_publication_requires_chief_revie
 
 
 def test_sa_to_electrical_to_mechanical_handoffs_operator_confirmation_and_evidence(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.main.ATTACHMENT_STORAGE_DIR", tmp_path)
+    monkeypatch.setattr("app.services.storage.attachment_storage.root", tmp_path)
     operations = auth_headers(login("operations"))
     electrical_asset = next(
         item for item in client.get("/api/v1/equipment", headers=operations).json()
@@ -701,7 +701,7 @@ def test_sa_to_electrical_to_mechanical_handoffs_operator_confirmation_and_evide
     )
     assert first_evidence.status_code == 200
     assert first_evidence.json()["assignment_id"] == reported.json()["active_assignment_id"]
-    monkeypatch.setattr("app.main.MAX_ATTACHMENT_BYTES", 4)
+    monkeypatch.setattr("app.core.config.settings.max_attachment_bytes", 4)
     assert client.post(
         f"/api/v1/faults/{fault_id}/attachments",
         headers=automation,

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-24
+
+- Split the 3,500-line `backend/app/main.py` into `core/config`, `db`, `models`, `schemas`, `deps`, `services/*` and 14 routers. API paths and behaviour are unchanged.
+- Moved to PostgreSQL 16 (Docker Compose service on host port 5433) with Alembic migrations; removed the ad-hoc SQLite `ALTER TABLE` upgrade code.
+- Added indexes on fault, assignment, procedure and equipment foreign keys and on fault status/creation time.
+- Added `python -m app.cli migrate|seed|init|reset`; the backend container migrates and seeds on start.
+- Fixed seed insert ordering that violated foreign keys (hidden by SQLite).
+- Added an attachment storage abstraction, environment-based settings, a generic error handler and `/api/v1/health`.
+- Test suite now builds its schema through the migrations and can run against PostgreSQL.
+
 ## 2026-11-23
 
 - Added repeat-fault Seen Before reporting and direct routing to the responsible maintenance section.
