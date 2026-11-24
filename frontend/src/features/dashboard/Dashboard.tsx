@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { type User } from "../../auth";
-import { Bar, Metric } from "../../components/Metric";
+import { RankedBars } from "../../components/charts/RankedBars";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { EmptyState, Page, PageHeader, Stat } from "../../components/ui/page";
 import { type WorkflowReport } from "../../lib/types";
 import { api } from "../../offline/api";
 import { People, PeopleSummary } from "../people/People";
@@ -9,39 +11,110 @@ import { PersonalWorkspace } from "./PersonalWorkspace";
 import { RecognitionPanel } from "./RecognitionPanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 
-export function Dashboard({ user }: { user: User }) {
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
-  useEffect(() => {
-    if (user.role !== "hr_officer" && !["systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"].includes(user.role)) {
-      api("/api/v1/analytics/overview").then(setData).catch(() => setData(null));
-    }
-  }, [user.role]);
-  if (user.role === "technician_ct") return <ChiefTechnicianDashboard user={user} />;
-  if (user.role === "operations" || ["systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"].includes(user.role)) return <PersonalWorkspace user={user} />;
-  if (user.role === "hr_officer") return <section className="page"><div className="page-heading"><div><p className="eyebrow">PEOPLE AND APPRAISAL EVIDENCE</p><h2>Workforce overview</h2><p className="muted">HR can review attributed work contributions and time measures without opening individual fault records.</p></div></div><People user={user} compact /><RecognitionPanel /></section>;
-  if (!data) return <section className="page"><h2>{user.role === "managing_director" ? "Executive summary" : user.role === "hr_officer" ? "Workforce overview" : "Management overview"}</h2><div className="empty">Summary data is unavailable. Reconnect and try again.</div></section>;
-  const categories = (data.by_category as Record<string, number>) || {};
+const WORKSPACE_ROLES = [
+  "operations", "systems_automation", "technician_st", "technician_pt",
+  "assistant_engineer", "engineer", "senior_engineer", "chief_engineer",
+];
+
+type Overview = {
+  view_level?: string;
+  total_faults?: number;
+  open_faults?: number;
+  resolved_faults?: number;
+  resolved_rate_percent?: number;
+  approved_knowledge?: number;
+  knowledge_entries?: number;
+  mean_time_acknowledge_minutes?: number | null;
+  mean_time_restore_hours?: number | null;
+  by_category?: Record<string, number>;
+  workflow?: WorkflowReport;
+};
+
+function ManagementOverview({ user }: { user: User }) {
   const executive = user.role === "managing_director" || user.role === "management";
-  const workflow = data.workflow as WorkflowReport | undefined;
+  const { data, isLoading } = useQuery({
+    queryKey: ["analytics", "overview"],
+    queryFn: () => api<Overview>("/api/v1/analytics/overview"),
+  });
+  const title = executive ? "Executive summary"
+    : user.role === "general_manager_om" ? "Operations & Maintenance workflow"
+      : user.section ? `${user.section} overview` : "Operational overview";
+
+  if (!data) {
+    return (
+      <Page>
+        <PageHeader eyebrow="Illustrative demonstration data" title={title} />
+        <EmptyState>{isLoading ? "Loading summary…" : "Summary data is unavailable. Reconnect and try again."}</EmptyState>
+      </Page>
+    );
+  }
+  const categories = Object.entries(data.by_category || {}).map(([label, value]) => ({ label, value }));
   return (
-    <section className="page">
-      <div className="page-heading"><div><p className="eyebrow">ILLUSTRATIVE DEMONSTRATION DATA</p><h2>{executive ? "Executive summary" : user.role === "general_manager_om" ? "Operations & Maintenance workflow" : user.section ? `${user.section} overview` : "Operational overview"}</h2><p className="muted">{String(data.view_level || "Summary")} · not verified operating performance</p></div></div>
-      <div className="metrics">
-        <Metric label="Total faults" value={String(data.total_faults)} />
-        <Metric label="Open faults" value={String(data.open_faults)} />
-        <Metric label="Resolved faults" value={String(data.resolved_faults)} />
-        <Metric label={executive ? "Resolved rate" : "Approved knowledge"} value={executive ? `${String(data.resolved_rate_percent ?? 0)}%` : String(data.approved_knowledge)} />
+    <Page>
+      <PageHeader eyebrow="Illustrative demonstration data" title={title} description={`${data.view_level || "Summary"} · not verified operating performance`} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Total faults" value={data.total_faults ?? 0} />
+        <Stat label="Open faults" value={data.open_faults ?? 0} />
+        <Stat label="Resolved faults" value={data.resolved_faults ?? 0} />
+        {executive
+          ? <Stat label="Resolved rate" value={`${data.resolved_rate_percent ?? 0}%`} />
+          : <Stat label="Approved knowledge" value={data.approved_knowledge ?? 0} />}
       </div>
-      {!executive && <div className="grid-two">
-        <div className="panel"><h3>Faults by category</h3>{Object.entries(categories).map(([name, value]) => <Bar key={name} label={name} value={value} max={Math.max(...Object.values(categories))} />)}</div>
-        <div className="panel"><h3>Maintenance performance</h3>
-          <dl className="kpis"><div><dt>Mean acknowledgement</dt><dd>{String(data.mean_time_acknowledge_minutes ?? "—")} min</dd></div><div><dt>Mean restoration</dt><dd>{String(data.mean_time_restore_hours ?? "—")} h</dd></div><div><dt>Knowledge entries</dt><dd>{String(data.knowledge_entries)}</dd></div></dl>
+      {!executive && (
+        <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+          <Card>
+            <CardHeader><CardTitle>Faults by category</CardTitle></CardHeader>
+            <CardContent><RankedBars title="Faults by category" data={categories} /></CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Maintenance performance</CardTitle></CardHeader>
+            <CardContent>
+              <dl className="m-0 grid">
+                {[
+                  ["Mean acknowledgement", data.mean_time_acknowledge_minutes == null ? "—" : `${data.mean_time_acknowledge_minutes} min`],
+                  ["Mean restoration", data.mean_time_restore_hours == null ? "—" : `${data.mean_time_restore_hours} h`],
+                  ["Knowledge entries", String(data.knowledge_entries ?? 0)],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between border-b border-border py-3 last:border-0">
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="m-0 font-extrabold">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </CardContent>
+          </Card>
         </div>
-      </div>}
-      {workflow && <WorkflowPanel workflow={workflow} />}
+      )}
+      {data.workflow && <WorkflowPanel workflow={data.workflow} />}
       {["maintenance_manager", "general_manager_om", "system_administrator"].includes(user.role) && <PeopleSummary />}
-      {["maintenance_manager", "general_manager_om", "hr_officer", "supervisor", "system_administrator"].includes(user.role) && <RecognitionPanel />}
-      {executive && <div className="panel"><h3>Access level</h3><p>Enterprise summary KPIs only. Individual fault timelines, equipment records, and employee directory details are restricted to operational and HR roles.</p></div>}
-    </section>
+      {["maintenance_manager", "general_manager_om", "supervisor", "system_administrator"].includes(user.role) && <RecognitionPanel />}
+      {executive && (
+        <Card className="mt-4">
+          <CardHeader><CardTitle>Access level</CardTitle></CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Enterprise summary KPIs only. Individual fault timelines, equipment records, and employee directory details are restricted to operational and HR roles.
+          </CardContent>
+        </Card>
+      )}
+    </Page>
   );
+}
+
+export function Dashboard({ user }: { user: User }) {
+  if (user.role === "technician_ct") return <ChiefTechnicianDashboard user={user} />;
+  if (WORKSPACE_ROLES.includes(user.role)) return <PersonalWorkspace user={user} />;
+  if (user.role === "hr_officer") {
+    return (
+      <Page>
+        <PageHeader
+          eyebrow="People and appraisal evidence"
+          title="Workforce overview"
+          description="HR can review attributed work contributions and time measures without opening individual fault records."
+        />
+        <People user={user} compact />
+        <RecognitionPanel />
+      </Page>
+    );
+  }
+  return <ManagementOverview user={user} />;
 }

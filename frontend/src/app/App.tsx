@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { normalizeUser, type User } from "../auth";
 import { API_BASE as API } from "../offline/api";
 import { networkFetch } from "../offline/network";
+import { queryClient } from "../lib/query";
 import { Login } from "./Login";
 import { Shell } from "./Shell";
 
@@ -47,6 +48,8 @@ export function App() {
   function logout() {
     localStorage.removeItem("kpc-token");
     localStorage.removeItem("kpc-user");
+    // Never show one user's loaded data to the next person on a shared device.
+    queryClient.clear();
     setUser(null);
   }
   return user ? <Shell user={user} onLogout={logout} /> : <Login onLogin={setUser} />;

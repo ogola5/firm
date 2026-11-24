@@ -1,106 +1,198 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { type User } from "../../auth";
-import { Metric } from "../../components/Metric";
+import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Input } from "../../components/ui/form-controls";
+import { Page, PageHeader, Stat } from "../../components/ui/page";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { type DataRow } from "../../lib/types";
+import { errorMessage } from "../../lib/query";
 import { api } from "../../offline/api";
 
+type Workspace = { counts?: Record<string, number>; faults?: DataRow[]; technicians?: DataRow[] };
+
+const PRIORITY: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+const prioritize = (left: DataRow, right: DataRow) =>
+  Number(right.overdue === true) - Number(left.overdue === true)
+  || (PRIORITY[String(left.severity)] ?? 4) - (PRIORITY[String(right.severity)] ?? 4)
+  || String(left.created_at).localeCompare(String(right.created_at));
+
+function FaultQueue({ rows, empty }: { rows: DataRow[]; empty: string }) {
+  if (!rows.length) return <p className="m-0 text-sm text-muted-foreground">{empty}</p>;
+  return (
+    <div className="grid gap-2">
+      {rows.slice(0, 6).map((fault) => (
+        <Link
+          key={String(fault.id)}
+          to={`/faults?mode=history&fault=${encodeURIComponent(String(fault.id))}`}
+          className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5 text-foreground no-underline hover:bg-muted"
+        >
+          <span className="grid min-w-0">
+            <strong className="truncate">{String(fault.reference)} · {String(fault.equipment_tag)}</strong>
+            <small className="truncate text-muted-foreground">{String(fault.symptom)} · {String(fault.status).replace(/_/g, " ")}</small>
+          </span>
+          <span className="flex shrink-0 flex-col items-end gap-1 text-right">
+            <span className="flex gap-1">
+              {fault.overdue === true && <Badge variant="destructive">Overdue</Badge>}
+              {String(fault.severity) === "Critical" && <Badge variant="destructive">Critical</Badge>}
+            </span>
+            <small className="text-muted-foreground">
+              {fault.awaiting_review ? "Chief decision required" : fault.awaiting_assignment ? "Awaiting assignment" : `Assigned to ${String(fault.assigned_user_name || fault.assigned_section)}`}
+            </small>
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function QueueCard({ title, description, rows, empty, footer }: { title: string; description: string; rows: DataRow[]; empty: string; footer?: React.ReactNode }) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></div>
+          <Badge>{rows.length}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent><FaultQueue rows={rows} empty={empty} />{footer}</CardContent>
+    </Card>
+  );
+}
+
 export function ChiefTechnicianDashboard({ user }: { user: User }) {
-  const [workspace, setWorkspace] = useState<Record<string, unknown> | null>(null);
-  const [competencyDrafts, setCompetencyDrafts] = useState<Record<string, string>>({});
-  const [savingUserId, setSavingUserId] = useState("");
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
 
-  async function reload() {
-    const data = await api("/api/v1/chief/workspace") as Record<string, unknown>;
-    setWorkspace(data);
-    const team = (data.technicians || []) as Array<Record<string, unknown>>;
-    setCompetencyDrafts(Object.fromEntries(team.map((person) => [
-      String(person.id),
-      ((person.competencies || []) as string[]).join(", "),
-    ])));
-  }
+  const workspace = useQuery({ queryKey: ["chief", "workspace"], queryFn: () => api<Workspace>("/api/v1/chief/workspace") });
+  const team = workspace.data?.technicians ?? [];
 
   useEffect(() => {
-    reload().catch((reason) => setError(reason instanceof Error ? reason.message : "Section oversight could not be loaded."));
-  }, []);
+    setDrafts(Object.fromEntries(team.map((person) => [String(person.id), ((person.competencies || []) as string[]).join(", ")])));
+  }, [workspace.data]);
 
-  async function saveCompetencies(userId: string) {
-    setSavingUserId(userId);
-    setError("");
-    setMessage("");
-    try {
-      await api(`/api/v1/chief/team/${encodeURIComponent(userId)}/competencies`, {
-        method: "PATCH",
-        body: JSON.stringify({ competencies: (competencyDrafts[userId] || "").split(",") }),
-      });
+  const saveCompetencies = useMutation({
+    mutationFn: (userId: string) => api(`/api/v1/chief/team/${encodeURIComponent(userId)}/competencies`, {
+      method: "PATCH",
+      body: JSON.stringify({ competencies: (drafts[userId] || "").split(",") }),
+    }),
+    onSuccess: async () => {
       setMessage("Technician competencies updated.");
-      await reload();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Competencies could not be saved.");
-    } finally {
-      setSavingUserId("");
-    }
+      await queryClient.invalidateQueries({ queryKey: ["chief"] });
+    },
+  });
+
+  const header = (
+    <PageHeader
+      eyebrow={`${user.section} · technical supervision`}
+      title="Section oversight"
+      description="Allocate work, review technical decisions and monitor your section's full fault lifecycle."
+    />
+  );
+  if (!workspace.data) {
+    return (
+      <Page>
+        {header}
+        {workspace.isError
+          ? <Alert variant="destructive">{errorMessage(workspace.error, "Section oversight could not be loaded.")}</Alert>
+          : <p className="text-muted-foreground">Loading section work…</p>}
+      </Page>
+    );
   }
 
-  if (!workspace) return <section className="page"><div className="page-heading"><div><p className="eyebrow">{user.section} · TECHNICAL SUPERVISION</p><h2>Section oversight</h2></div></div>{error ? <p className="error">{error}</p> : <p className="muted">Loading section work…</p>}</section>;
-  const counts = (workspace.counts || {}) as Record<string, number>;
-  const faults = (workspace.faults || []) as Array<Record<string, unknown>>;
-  const team = (workspace.technicians || []) as Array<Record<string, unknown>>;
-  const activeFaults = faults.filter((fault) => !["RESTORED", "CLOSED"].includes(String(fault.status)));
-  const priorityRank: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
-  const prioritize = (left: Record<string, unknown>, right: Record<string, unknown>) =>
-    Number(right.overdue === true) - Number(left.overdue === true)
-    || (priorityRank[String(left.severity)] ?? 4) - (priorityRank[String(right.severity)] ?? 4)
-    || String(left.created_at).localeCompare(String(right.created_at));
-  const sectionFaults = activeFaults.filter((fault) => fault.assigned_section === user.section).sort(prioritize);
-  const reviewFaults = activeFaults.filter((fault) => fault.awaiting_review).sort(prioritize);
-  const escalatedFaults = activeFaults.filter((fault) => fault.escalated).sort(prioritize);
-  const faultLink = (fault: Record<string, unknown>) => `/faults?mode=history&fault=${encodeURIComponent(String(fault.id))}`;
-  const metrics = [
-    ["Awaiting assignment", counts.awaiting_assignment || 0],
-    [`Active in ${user.section}`, counts.active_section || 0],
-    ["Under investigation", counts.investigating || 0],
-    ["Awaiting my review", counts.awaiting_review || 0],
-    ["Overdue", counts.overdue || 0],
-    ["Critical unresolved", counts.critical || 0],
-  ];
-
-  function renderFaults(rows: Array<Record<string, unknown>>, emptyMessage: string) {
-    if (!rows.length) return <p className="muted">{emptyMessage}</p>;
-    return <div className="chief-fault-list">{rows.slice(0, 6).map((fault) => (
-      <NavLink className="chief-fault-item" key={String(fault.id)} to={faultLink(fault)}>
-        <span><strong>{String(fault.reference)} · {String(fault.equipment_tag)}</strong><small>{String(fault.symptom)} · {String(fault.status).replace(/_/g, " ")}</small></span>
-        <span className="chief-fault-meta">{fault.overdue === true && <b className="risk-text">Overdue</b>}{String(fault.severity) === "Critical" && <b className="risk-text">Critical</b>}<small>{fault.awaiting_review ? "Chief decision required" : fault.awaiting_assignment ? "Awaiting assignment" : `Assigned to ${String(fault.assigned_user_name || fault.assigned_section)}`}</small></span>
-      </NavLink>
-    ))}</div>;
-  }
+  const counts = workspace.data.counts || {};
+  const active = (workspace.data.faults || []).filter((fault) => !["RESTORED", "CLOSED"].includes(String(fault.status)));
+  const sectionFaults = active.filter((fault) => fault.assigned_section === user.section).sort(prioritize);
+  const reviewFaults = active.filter((fault) => fault.awaiting_review).sort(prioritize);
+  const escalatedFaults = active.filter((fault) => fault.escalated).sort(prioritize);
 
   return (
-    <section className="page chief-workspace">
-      <div className="page-heading"><div><p className="eyebrow">{user.section} · TECHNICAL SUPERVISION</p><h2>Section oversight</h2><p className="muted">Allocate work, review technical decisions and monitor your section’s full fault lifecycle.</p></div></div>
-      {error && <p className="error">{error}</p>}
-      {message && <p className="confirmation">{message}</p>}
-      <div className="chief-workflow" aria-label="Fault responsibility flow"><span>Operations reports</span><b>Chief assigns</b><span>ST / PT investigate</span><b>Chief reviews</b><span>Operations confirms</span></div>
-      <div className="metrics chief-metrics">{metrics.map(([label, value]) => <Metric key={String(label)} label={String(label)} value={String(value)} />)}</div>
-      <div className="grid-two chief-queues">
-        <div className="panel"><div className="section-heading"><div><h3>Needs Chief review</h3><p className="muted">Escalations and technical completion requests awaiting your decision.</p></div><span className="count">{reviewFaults.length}</span></div>{renderFaults(reviewFaults, "No review decisions are waiting.")}</div>
-        <div className="panel"><div className="section-heading"><div><h3>Active section work</h3><p className="muted">Unassigned, allocated and in-progress faults in your section.</p></div><span className="count">{sectionFaults.length}</span></div>{renderFaults(sectionFaults, "No active faults are assigned to your section.")}<NavLink className="text-button" to="/faults">Browse section faults</NavLink></div>
+    <Page>
+      {header}
+      {message && <Alert variant="success" className="mb-3">{message}</Alert>}
+      {saveCompetencies.isError && <Alert variant="destructive" className="mb-3">{errorMessage(saveCompetencies.error, "Competencies could not be saved.")}</Alert>}
+
+      <ol className="m-0 mb-4 flex list-none flex-wrap items-center gap-1 rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground" aria-label="Fault responsibility flow">
+        {["Operations reports", "Chief assigns", "ST / PT investigate", "Chief reviews", "Operations confirms"].map((step, index) => (
+          <li key={step} className="flex items-center gap-1">
+            {index > 0 && <ChevronRight className="size-4" aria-hidden />}
+            <span className={index % 2 ? "font-bold text-ring" : ""}>{step}</span>
+          </li>
+        ))}
+      </ol>
+
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <Stat label="Awaiting assignment" value={counts.awaiting_assignment || 0} />
+        <Stat label={`Active in ${user.section}`} value={counts.active_section || 0} />
+        <Stat label="Under investigation" value={counts.investigating || 0} />
+        <Stat label="Awaiting my review" value={counts.awaiting_review || 0} />
+        <Stat label="Overdue" value={counts.overdue || 0} />
+        <Stat label="Critical unresolved" value={counts.critical || 0} />
       </div>
-      <div className="panel chief-escalations"><div className="section-heading"><div><h3>Escalated from {user.section}</h3><p className="muted">The original fault remains visible with all section findings and evidence.</p></div><span className="count">{escalatedFaults.length}</span></div>{renderFaults(escalatedFaults, "No active fault has been escalated from your section.")}</div>
-      <details className="panel chief-team">
-        <summary className="section-heading"><div><h3>Technician pool</h3><p className="muted">ST/PT availability, active workload and competencies for assignment decisions.</p></div><span className="count">{team.filter((person) => person.active).length} active</span></summary>
-        <div className="table"><table><thead><tr><th>Technician</th><th>Availability</th><th>Active work</th><th>Competencies</th><th></th></tr></thead><tbody>
-          {team.map((person) => <tr key={String(person.id)}>
-            <td><strong>{String(person.display_name)}</strong><br /><small>{String(person.role_label)}</small></td>
-            <td>{person.active ? String(person.availability_status).toLowerCase() : "Inactive account"}</td>
-            <td>{String(person.active_workload)}</td>
-            <td><input aria-label={`Competencies for ${String(person.display_name)}`} value={competencyDrafts[String(person.id)] || ""} onChange={(event) => setCompetencyDrafts({ ...competencyDrafts, [String(person.id)]: event.target.value })} placeholder="SCADA, actuator controls, valve mechanisms" /></td>
-            <td><button className="secondary" disabled={savingUserId === String(person.id)} onClick={() => saveCompetencies(String(person.id))}>Save</button></td>
-          </tr>)}
-          {!team.length && <tr><td colSpan={5}>No Senior or Principal Technicians are configured for this section.</td></tr>}
-        </tbody></table></div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <QueueCard title="Needs Chief review" description="Escalations and technical completion requests awaiting your decision." rows={reviewFaults} empty="No review decisions are waiting." />
+        <QueueCard
+          title="Active section work"
+          description="Unassigned, allocated and in-progress faults in your section."
+          rows={sectionFaults}
+          empty="No active faults are assigned to your section."
+          footer={<Button variant="link" asChild className="mt-2"><Link to="/faults">Browse section faults</Link></Button>}
+        />
+      </div>
+      <div className="mt-4">
+        <QueueCard
+          title={`Escalated from ${user.section}`}
+          description="The original fault remains visible with all section findings and evidence."
+          rows={escalatedFaults}
+          empty="No active fault has been escalated from your section."
+        />
+      </div>
+
+      <details className="mt-4 rounded-lg border border-border bg-card">
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-5">
+          <div>
+            <h3 className="m-0">Technician pool</h3>
+            <p className="m-0 text-sm text-muted-foreground">ST/PT availability, active workload and competencies for assignment decisions.</p>
+          </div>
+          <Badge>{team.filter((person) => person.active).length} active</Badge>
+        </summary>
+        <div className="px-5 pb-5">
+          <Table>
+            <TableHeader><TableRow><TableHead>Technician</TableHead><TableHead>Availability</TableHead><TableHead>Active work</TableHead><TableHead>Competencies</TableHead><TableHead /></TableRow></TableHeader>
+            <TableBody>
+              {team.map((person) => {
+                const id = String(person.id);
+                return (
+                  <TableRow key={id}>
+                    <TableCell><strong>{String(person.display_name)}</strong><br /><small className="text-muted-foreground">{String(person.role_label)}</small></TableCell>
+                    <TableCell>{person.active ? String(person.availability_status).toLowerCase() : "Inactive account"}</TableCell>
+                    <TableCell>{String(person.active_workload)}</TableCell>
+                    <TableCell>
+                      <Input
+                        aria-label={`Competencies for ${String(person.display_name)}`}
+                        value={drafts[id] || ""}
+                        onChange={(event) => setDrafts({ ...drafts, [id]: event.target.value })}
+                        placeholder="SCADA, actuator controls, valve mechanisms"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="outline" disabled={saveCompetencies.isPending && saveCompetencies.variables === id} onClick={() => saveCompetencies.mutate(id)}>Save</Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {!team.length && <TableRow><TableCell colSpan={5}>No Senior or Principal Technicians are configured for this section.</TableCell></TableRow>}
+            </TableBody>
+          </Table>
+        </div>
       </details>
-    </section>
+    </Page>
   );
 }
