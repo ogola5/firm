@@ -70,6 +70,12 @@ GM O&M analytics include stage counts, section handoffs, wrong-first-assignment 
 
 Evidence files are stored locally under `backend/storage/attachments/` in this prototype and are excluded from Git. A deployment must provide persistent, access-controlled storage before relying on uploaded evidence. SAP integration remains deferred until the operational workflow is complete.
 
-Synchronisation:
-- `POST /api/v1/sync/events`
-- `GET /api/v1/sync/status`
+Synchronisation (see [OFFLINE_SYNC_DESIGN.md](OFFLINE_SYNC_DESIGN.md)):
+- `POST /api/v1/sync/events`: apply queued offline events; per-event `APPLIED`, `DUPLICATE`, `CONFLICT` or `REJECTED`
+- `GET /api/v1/sync/status`: counts by outcome, open conflicts visible to the caller, server time
+- `GET /api/v1/sync/conflicts`: offline changes awaiting reconciliation
+- `POST /api/v1/sync/conflicts/{event_id}/resolve`: `{"decision": "APPLY" | "DISCARD", "note": "..."}`
+- `GET /api/v1/sync/history?limit=20`: upload batches with per-event outcomes
+
+Operations:
+- `GET /api/v1/health`: API and database reachability

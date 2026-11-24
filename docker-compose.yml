@@ -32,10 +32,28 @@ services:
 
   frontend:
     build: ./frontend
+    environment:
+      # The browser calls same-origin /api; Vite forwards it to the API container.
+      VITE_PROXY_TARGET: http://backend:8000
     ports:
       - "5173:5173"
     depends_on:
       - backend
+
+  # End-to-end tests: docker compose --profile e2e run --rm e2e  (see scripts/e2e.sh)
+  e2e:
+    image: mcr.microsoft.com/playwright:v1.49.1-noble
+    profiles: ["e2e"]
+    working_dir: /work
+    environment:
+      E2E_BASE_URL: http://frontend:5173
+      CI: "1"
+    volumes:
+      - ./frontend:/work
+    ipc: host
+    command: ["npx", "playwright", "test"]
+    depends_on:
+      - frontend
 
 volumes:
   pgdata:

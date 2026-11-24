@@ -1,0 +1,109 @@
+/**
+ * Scenario 4 — Offline maintenance (MASTER BUILD PROMPT §16).
+ * Changes are made without a server connection, survive closing and reopening
+ * the app, and reach the backend exactly once after reconnection.
+ */
+import { expect, test } from "@playwright/test";
+import {
+  apiGet, apiPost, apiToken, setSimulatedNetwork, signIn, waitForOfflineVerifier, waitForSyncedOutbox,
+} from "./helpers";
+
+type FaultRow = { id: string; reference: string; symptom: string };
+type TimelineRow = { event_type: string; payload: string | Record<string, unknown> };
+
+test("Operations reports a breakdown offline; it survives a restart and offline sign-in, then syncs once", async ({ page, request }) => {
+  const symptom = `E2E offline report ${Date.now()}`;
+  await signIn(page, "operations");
+  await waitForOfflineVerifier(page, "operations");
+
+  await page.goto("/faults?mode=report");
+  await setSimulatedNetwork(page, "offline");
+  await expect(page.getByRole("status").first()).toContainText("Offline (simulated)");
+
+  await page.getByLabel("Equipment tag or description").fill("Booster pump, east bay");
+  await page.getByLabel("Known area or location").fill("PS02 pump bay (synthetic)");
+  await page.getByLabel("What is happening?").fill(symptom);
+  await page.getByLabel("Effect on operation").fill("Transfer rate reduced (synthetic)");
+  await page.getByRole("button", { name: "Submit breakdown" }).click();
+  await expect(page.getByText("saved on this device", { exact: false }).first()).toBeVisible();
+  await expect(page.getByLabel("Changes waiting")).toHaveText("1");
+
+  // Close and reopen the application while still offline.
+  await page.close();
+  const reopened = await page.context().newPage();
+  await reopened.goto("/faults?mode=history");
+  await expect(reopened.getByText(symptom).first()).toBeVisible();
+  await expect(reopened.getByText("Pending sync").first()).toBeVisible();
+
+  // Sign out and back in with no connection.
+  await reopened.getByRole("button", { name: "Log out" }).click();
+  await signIn(reopened, "operations");
+  await expect(reopened.getByText("Offline sign-in")).toBeVisible();
+  await expect(reopened.getByLabel("Changes waiting")).toHaveText("1");
+
+  // Reconnect: the app synchronises on start without user action.
+  await setSimulatedNetwork(reopened, "online");
+  await waitForSyncedOutbox(reopened);
+
+  const token = await apiToken(request, "operations");
+  const matches = await apiGet<FaultRow[]>(request, token, `/api/v1/faults?search=${encodeURIComponent(symptom)}`);
+  expect(matches.filter((row) => row.symptom === symptom)).toHaveLength(1);
+  expect(matches[0].reference).toMatch(/^KPC-DMO-/);
+});
+
+test("Systems Automation investigates offline; every step syncs exactly once with device timestamps", async ({ page, request, context }) => {
+  const operations = await apiToken(request, "operations");
+  const equipment = await apiGet<Array<{ id: string; section: string }>>(request, operations, "/api/v1/equipment");
+  const symptom = `E2E offline investigation ${Date.now()}`;
+  const fault = await apiPost<FaultRow>(request, operations, "/api/v1/faults", {
+    equipment_id: equipment.find((item) => item.section === "Electrical")!.id,
+    symptom,
+    operational_impact: "Valve unavailable (synthetic)",
+  });
+
+  await signIn(page, "automation");
+  await page.goto(`/faults?mode=history&fault=${fault.id}`);
+  await expect(page.getByRole("button", { name: "Acknowledge" })).toBeVisible(); // investigation cached
+
+  // Real browser disconnection (not the simulator).
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Acknowledge" }).click();
+  await expect(page.getByText("saved on this device", { exact: false }).first()).toBeVisible();
+
+  const diagnosisForm = page.locator("form", { hasText: "Record possible cause and checks" });
+  await diagnosisForm.getByLabel("Possible cause").fill("Loose actuator supply terminal");
+  await diagnosisForm.getByLabel("Diagnostic method").fill("Continuity test at the junction box");
+  await diagnosisForm.getByRole("button", { name: "Save diagnosis" }).click();
+  await expect(page.getByText("Diagnosis: No connection", { exact: false })).toBeVisible();
+
+  const interventionForm = page.locator("form", { hasText: "Record each intervention" });
+  await interventionForm.getByLabel("Action taken").fill("Reseated the connector");
+  await interventionForm.getByLabel("Outcome").selectOption("FAILED");
+  await interventionForm.getByRole("button", { name: "Save intervention" }).click();
+  await expect(page.getByText("Intervention: No connection", { exact: false })).toBeVisible();
+  await interventionForm.getByLabel("Action taken").fill("Replaced the terminal block");
+  await interventionForm.getByLabel("Outcome").selectOption("SUCCESS");
+  await interventionForm.getByRole("button", { name: "Save intervention" }).click();
+  await expect(page.getByLabel("Changes waiting")).toHaveText("4");
+
+  // Reopen the app while the API is still unreachable: the queued work is still there.
+  await context.setOffline(false);
+  await setSimulatedNetwork(page, "offline");
+  await expect(page.getByText("this is the copy saved on this device", { exact: false })).toBeVisible();
+  await expect(page.getByLabel("Changes waiting")).toHaveText("4");
+
+  await setSimulatedNetwork(page, "online");
+  await waitForSyncedOutbox(page);
+
+  const automation = await apiToken(request, "automation");
+  const timeline = await apiGet<TimelineRow[]>(request, automation, `/api/v1/faults/${fault.id}/timeline`);
+  const count = (type: string) => timeline.filter((row) => row.event_type === type).length;
+  expect(count("FAULT_ACKNOWLEDGE")).toBe(1);
+  expect(count("DIAGNOSIS_RECORDED")).toBe(1);
+  expect(count("INTERVENTION_FAILED")).toBe(1);
+  expect(count("INTERVENTION_SUCCESS")).toBe(1);
+  const diagnosisEvent = timeline.find((row) => row.event_type === "DIAGNOSIS_RECORDED")!;
+  const payload = typeof diagnosisEvent.payload === "string" ? JSON.parse(diagnosisEvent.payload) : diagnosisEvent.payload;
+  expect(payload.offline.device_id).toMatch(/^DEVICE-/);
+  expect(payload.offline.client_timestamp).toBeTruthy();
+});

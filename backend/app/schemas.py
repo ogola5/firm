@@ -1,7 +1,29 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class SyncEventIn(BaseModel):
+    """An event queued on a device while offline (see OFFLINE_SYNC_DESIGN.md)."""
+    event_id: str = Field(min_length=8, max_length=100)
+    fault_id: str | None = Field(default=None, max_length=100)
+    event_type: str = Field(max_length=60)
+    actor_id: str | None = None
+    device_id: str = Field(default="", max_length=100)
+    client_timestamp: str = Field(max_length=40)
+    sequence_number: int = 0
+    # The fault status the device saw when the user acted; used to detect
+    # workflow changes made by someone else while the device was offline.
+    base_status: str | None = Field(default=None, max_length=40)
+    payload: dict = Field(default_factory=dict)
+
+
+class ConflictResolution(BaseModel):
+    decision: Literal["APPLY", "DISCARD"]
+    note: str = ""
 
 
 class LoginRequest(BaseModel):

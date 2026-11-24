@@ -18,8 +18,11 @@
     "vite": "^6.0.5"
   },
   "devDependencies": {
+    "@playwright/test": "1.49",
+    "@types/node": "^18.19.130",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "fake-indexeddb": "^6.2.8",
     "typescript": "~5.7.2",
     "vitest": "^2.1.8"
   }

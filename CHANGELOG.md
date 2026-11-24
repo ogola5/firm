@@ -1,6 +1,17 @@
 # Changelog
 
-## 2026-11-24
+## 2026-11-24 — Offline-first (Stage 2)
+
+- Offline events are now applied to real records through shared service functions (`services/fault_operations.py`), with per-event `APPLIED`/`DUPLICATE`/`CONFLICT`/`REJECTED` acknowledgements. Previously they were only stored.
+- Conflict detection (workflow 409s and stale `base_status`), per-fault holding of later events, and a reconciliation API (apply as the original author, or discard with a reason).
+- Sync batches, per-event outcome history, device and client timestamps on timeline entries; migration `0002`.
+- Frontend: durable outbox with device sequence numbers, optimistic local updates, sync engine with reachability checks, exponential backoff with jitter, multiple retry triggers and Background Sync where supported.
+- Offline sign-in using a PBKDF2 verifier; offline reporting with evidence files, offline workflow steps, diagnoses, interventions and operator updates; cached equipment, breakdowns, investigations and knowledge.
+- Sync centre page and demonstration network simulator (online/offline/intermittent) that drives the real request path.
+- The browser now calls a same-origin `/api` that Vite proxies to the backend, so the hardcoded `localhost:8000` is gone. The service worker no longer caches API responses or cross-origin requests.
+- Playwright end-to-end suite running in the official Playwright Docker image (`scripts/e2e.sh`).
+
+## 2026-11-24 — Backend foundation (Stage 1)
 
 - Split the 3,500-line `backend/app/main.py` into `core/config`, `db`, `models`, `schemas`, `deps`, `services/*` and 14 routers. API paths and behaviour are unchanged.
 - Moved to PostgreSQL 16 (Docker Compose service on host port 5433) with Alembic migrations; removed the ad-hoc SQLite `ALTER TABLE` upgrade code.

@@ -12,3 +12,5 @@ dist/
 *.tsbuildinfo
 backend/kpc.db
 backend/storage/attachments/
+frontend/playwright-report/
+frontend/test-results/

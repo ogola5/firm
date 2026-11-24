@@ -1,28 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, BookOpen, ClipboardList, Gauge, History, LogOut, Plus, Radio, RefreshCw, Search, ShieldCheck, Wrench } from "lucide-react";
+import { AlertTriangle, BookOpen, ClipboardList, CloudOff, Gauge, History, LogOut, Plus, Radio, RefreshCw, Search, ShieldCheck, Wrench } from "lucide-react";
 import { db } from "./db";
 import { normalizeUser, type User } from "./auth";
+import { API_BASE as API, ApiError, api, isOfflineError } from "./offline/api";
+import { cacheEquipment, cacheFaultContext, cacheFaults, cachedFaultContext, refreshOfflineCache, searchCachedEquipment } from "./offline/cache";
+import { useConnection, useSyncState } from "./offline/hooks";
+import { networkFetch } from "./offline/network";
+import { queueAttachment, queueDiagnosis, queueFaultAction, queueFaultReport, queueIntervention, queueOperatorUpdate } from "./offline/outbox";
+import { offlineLogin, rememberOfflineSession } from "./offline/session";
+import { getSyncEngine, requestBackgroundSync, setSyncActor, startAutoSync } from "./offline/sync";
+import { NetworkSimulator, SyncCentre } from "./offline/SyncCentre";
 import "./styles.css";
-
-const API = "http://localhost:8000";
 
 type DemoAccount = { username: string; role_label: string; section: string };
 
-async function api(path: string, options: RequestInit = {}) {
-  const token = localStorage.getItem("kpc-token");
-  const response = await fetch(`${API}${path}`, {
-    ...options,
-    headers: {
-      ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-}
+const OFFLINE_SAVED = "No connection: saved on this device and queued for synchronisation.";
 
 function Login({ onLogin }: { onLogin: (user: User) => void }) {
   const [username, setUsername] = useState("operations");
@@ -31,7 +25,7 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
   const [accounts, setAccounts] = useState<DemoAccount[]>([]);
   const navigate = useNavigate();
   useEffect(() => {
-    fetch(`${API}/api/v1/auth/demo-accounts`).then((response) => response.json()).then(setAccounts).catch(() => setAccounts([]));
+    networkFetch(`${API}/api/v1/auth/demo-accounts`).then((response) => response.json()).then(setAccounts).catch(() => setAccounts([]));
   }, []);
   return (
     <main className="login-shell">
@@ -47,10 +41,33 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
             const result = await api("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
             localStorage.setItem("kpc-token", result.access_token);
             localStorage.setItem("kpc-user", JSON.stringify(result.user));
+            localStorage.removeItem("kpc-offline-session");
+            // Keep a password verifier (not the password) so this account can sign in offline later.
+            void rememberOfflineSession(username, password, result.user, result.access_token).catch(() => undefined);
+            getSyncEngine().resumeAfterLogin();
             onLogin(result.user);
             navigate("/dashboard");
-          } catch {
-            setError("Login unavailable. Confirm the backend is running.");
+          } catch (reason) {
+            if (reason instanceof ApiError) {
+              setError(reason.status === 401 ? "Invalid username or password." : reason.message);
+              return;
+            }
+            if (!isOfflineError(reason)) {
+              setError("Login unavailable. Confirm the backend is running.");
+              return;
+            }
+            try {
+              const session = await offlineLogin(username, password);
+              localStorage.setItem("kpc-token", session.token);
+              localStorage.setItem("kpc-user", JSON.stringify(session.user));
+              localStorage.setItem("kpc-offline-session", session.tokenExpired ? "token-expired" : "1");
+              const cachedUser = normalizeUser(session.user);
+              if (!cachedUser) throw new Error("The cached session is invalid.");
+              onLogin(cachedUser);
+              navigate("/dashboard");
+            } catch (offlineReason) {
+              setError(`No connection. ${offlineReason instanceof Error ? offlineReason.message : "Offline sign-in failed."}`);
+            }
           }
         }}>
           <label>Demonstration account
@@ -64,33 +81,45 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
           {error && <p className="error">{error}</p>}
           <button className="primary" type="submit">Sign in</button>
         </form>
+        <div className="login-simulator">
+          <p className="eyebrow">DEMONSTRATION NETWORK</p>
+          <NetworkSimulator compact />
+          <p className="muted">Accounts that have signed in here while connected can also sign in offline.</p>
+        </div>
       </section>
     </main>
   );
 }
 
 function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
-  const [online, setOnline] = useState(navigator.onLine);
-  const [pending, setPending] = useState(0);
-  useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    db.pendingEvents.where("sync_status").equals("PENDING").count().then(setPending);
-    return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
-  }, []);
+  const connection = useConnection();
+  const online = connection.online;
+  const { sync, pending, conflicts } = useSyncState(user.id);
+  const offlineSession = localStorage.getItem("kpc-offline-session");
 
-  async function syncNow() {
-    const events = await db.pendingEvents.where("sync_status").equals("PENDING").toArray();
-    if (!events.length) return;
-    try {
-      await api("/api/v1/sync/events", { method: "POST", body: JSON.stringify(events) });
-      await db.pendingEvents.bulkPut(events.map((event) => ({ ...event, sync_status: "SYNCED" as const })));
-      setPending(0);
-    } catch {
-      setPending(events.length);
-    }
-  }
+  useEffect(() => {
+    setSyncActor(user.id);
+    const stop = startAutoSync();
+    return () => {
+      stop();
+      setSyncActor(null);
+    };
+  }, [user.id]);
+
+  // Refresh the offline datasets whenever this session is (or becomes) connected.
+  useEffect(() => {
+    if (online) void refreshOfflineCache(user.permissions || []);
+  }, [online, user.id]);
+
+  useEffect(() => {
+    if (pending) void requestBackgroundSync();
+  }, [pending]);
+
+  const statusLabel = connection.mode === "offline"
+    ? "Offline (simulated)"
+    : !connection.browserOnline ? "Offline mode"
+      : !connection.serverReachable ? "Server unreachable"
+        : connection.mode === "intermittent" ? "Intermittent (simulated)" : "Connected";
 
   const peopleOnly = user.role === "hr_officer";
   const executiveOnly = user.role === "managing_director" || user.role === "management";
@@ -112,6 +141,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           {canSeeMaintenance && (user.permissions || []).includes("knowledge.read") && <NavLink to="/knowledge"><BookOpen size={18} /> Knowledge</NavLink>}
           {canSeeMaintenance && canReviewProcedures && <NavLink to="/approvals"><ShieldCheck size={18} /> Procedure review</NavLink>}
           {canSeePeople && <NavLink to="/people"><ShieldCheck size={18} /> {canManageUsers ? "User management" : "People directory"}</NavLink>}
+          {canSeeMaintenance && <NavLink to="/sync"><CloudOff size={18} /> Sync{conflicts ? ` (${conflicts})` : ""}</NavLink>}
         </nav>
         <div className="side-user">
           <div className={`status-dot ${online ? "online" : "offline"}`} />
@@ -121,8 +151,15 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
       </aside>
       <main>
         <header>
-          <div className="network-status"><Radio size={15} /> {online ? "Connected" : "Offline mode"}</div>
-          <button className="secondary" onClick={syncNow}><RefreshCw size={16} /> Sync now <span className="count">{pending}</span></button>
+          <div className="network-status" role="status">
+            <Radio size={15} /> {statusLabel}
+            {offlineSession && <span className="tag">Offline sign-in{offlineSession === "token-expired" ? " · sign in online to send changes" : ""}</span>}
+            {sync.phase === "auth_required" && <span className="error"> Session expired: sign in while connected to send queued work.</span>}
+            {sync.phase === "waiting_retry" && pending > 0 && <span className="muted"> · retrying automatically</span>}
+          </div>
+          <button className="secondary" onClick={() => void getSyncEngine().syncNow("manual")} disabled={sync.phase === "syncing"}>
+            <RefreshCw size={16} /> {sync.phase === "syncing" ? "Syncing…" : "Sync now"} <span className="count" aria-label="Changes waiting">{pending}</span>
+          </button>
         </header>
         <Routes>
           <Route path="/dashboard" element={<Dashboard user={user} />} />
@@ -131,6 +168,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           {canSeeMaintenance && (user.permissions || []).includes("knowledge.read") && <Route path="/knowledge" element={<Knowledge user={user} />} />}
           {canSeeMaintenance && canReviewProcedures && <Route path="/approvals" element={<ProcedureReview user={user} />} />}
           {canSeePeople && <Route path="/people" element={<People user={user} />} />}
+          {canSeeMaintenance && <Route path="/sync" element={<SyncCentre user={user} />} />}
           <Route path="*" element={<Dashboard user={user} />} />
         </Routes>
       </main>
@@ -555,20 +593,25 @@ function Bar({ label, value, max }: { label: string; value: number; max: number 
 function Equipment({ user }: { user: User }) {
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<Array<Record<string, unknown>>>([]);
+  const [fromCache, setFromCache] = useState(false);
   useEffect(() => {
-    api(`/api/v1/equipment?search=${encodeURIComponent(search)}`).then(async (rows) => {
-      setItems(rows);
-      await db.equipment.clear();
-      await db.equipment.bulkPut(rows as never[]);
-    }).catch(async () => {
-      const cached = await db.equipment.toArray();
-      const sectionScoped = ["technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"].includes(user.role);
-      setItems(cached.filter((item) => (!sectionScoped || item.section === user.section) && (!search || `${item.tag} ${item.name}`.toLowerCase().includes(search.toLowerCase()))));
-    });
+    const sectionScoped = ["technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"].includes(user.role);
+    const timer = window.setTimeout(() => {
+      api(`/api/v1/equipment?search=${encodeURIComponent(search)}`).then(async (rows) => {
+        setItems(rows);
+        setFromCache(false);
+        await cacheEquipment(rows);
+      }).catch(async (reason) => {
+        if (!isOfflineError(reason)) return;
+        setItems(await searchCachedEquipment(search, sectionScoped ? user.section : undefined, 100));
+        setFromCache(true);
+      });
+    }, 200);
+    return () => window.clearTimeout(timer);
   }, [search, user.role, user.section]);
   return (
     <section className="page">
-      <div className="page-heading"><div><p className="eyebrow">SIMULATED ASSET REGISTRY</p><h2>Equipment</h2></div></div>
+      <div className="page-heading"><div><p className="eyebrow">SIMULATED ASSET REGISTRY</p><h2>Equipment</h2>{fromCache && <p className="muted">Offline: showing equipment cached on this device.</p>}</div></div>
       <div className="toolbar"><div className="search"><Search size={17} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tag or name" /></div></div>
       <div className="table panel"><table><thead><tr><th>Tag</th><th>Name</th><th>Station</th><th>Section</th><th>Criticality</th></tr></thead><tbody>{items.map((item) => <tr key={String(item.id)}><td><strong>{String(item.tag)}</strong></td><td>{String(item.name)}</td><td>{String(item.station)}</td><td>{String(item.section)}</td><td><span className="tag">{String(item.criticality)}</span></td></tr>)}</tbody></table></div>
     </section>
@@ -607,9 +650,10 @@ function Faults({ user }: { user: User }) {
     else if (scope) params.set("history_scope", scope);
     if (search.trim()) params.set("search", search.trim());
     const rows = await api(`/api/v1/faults?${params.toString()}`);
-    setFaults(rows);
-    await db.faults.clear();
-    await db.faults.bulkPut(rows as never[]);
+    // Reports queued on this device appear until the server acknowledges them.
+    const localPending = await db.faults.filter((row) => Boolean(row.offline_pending) && row.reporter_id === user.id).toArray();
+    setFaults([...localPending, ...rows]);
+    await cacheFaults(rows);
     if (preferredId) setSelectedId(preferredId);
     else if (!selectedId && rows.length) setSelectedId(String(rows[0].id));
   }
@@ -630,10 +674,14 @@ function Faults({ user }: { user: User }) {
       const sectionScoped = technicalRoles.includes(user.role);
       const equipment = await db.equipment.toArray();
       const sectionEquipment = new Set(equipment.filter((item) => item.section === user.section).map((item) => item.id));
-      const visible = cached.filter((item) => !sectionScoped || item.assigned_section === user.section || sectionEquipment.has(String(item.equipment_id)));
+      const term = historySearch.trim().toLowerCase();
+      const visible = cached
+        .filter((item) => item.offline_pending || !sectionScoped || item.assigned_section === user.section || sectionEquipment.has(String(item.equipment_id)))
+        .filter((item) => !term || [item.reference, item.symptom, item.equipment_tag].some((value) => String(value ?? "").toLowerCase().includes(term)))
+        .sort((left, right) => String(right.created_at ?? "").localeCompare(String(left.created_at ?? "")));
       setFaults(visible);
       if (!selectedId && visible.length) setSelectedId(String(visible[0].id));
-      setError("Showing cached fault summaries. Open a connection to load investigation history.");
+      setError("Offline: showing breakdowns cached on this device. Investigations opened before going offline are available.");
       });
     }, 250);
     return () => window.clearTimeout(timer);
@@ -649,7 +697,11 @@ function Faults({ user }: { user: User }) {
     const timer = window.setTimeout(() => {
       api(`/api/v1/equipment?search=${encodeURIComponent(query)}`)
         .then((items) => { if (active) setEquipmentMatches(items); })
-        .catch(() => { if (active) setEquipmentMatches([]); });
+        .catch(async (reason) => {
+          const sectionScoped = technicalRoles.includes(user.role);
+          const cached = isOfflineError(reason) ? await searchCachedEquipment(query, sectionScoped ? user.section : undefined) : [];
+          if (active) setEquipmentMatches(cached);
+        });
     }, 250);
     return () => {
       active = false;
@@ -689,10 +741,16 @@ function Faults({ user }: { user: User }) {
     try {
       created = await api("/api/v1/faults", { method: "POST", body: JSON.stringify(payload) });
     } catch (reportError) {
-      if (reportError instanceof TypeError) {
-        const eventId = crypto.randomUUID();
-        await db.pendingEvents.put({ event_id: eventId, event_type: "FAULT_REPORTED", actor_id: user.id, client_timestamp: new Date().toISOString(), sequence_number: 1, sync_status: "PENDING", payload });
-        setMessage("Connection unavailable. Breakdown saved offline and queued for synchronisation.");
+      if (isOfflineError(reportError)) {
+        const { faultId } = await queueFaultReport(user, payload, { equipment_tag: selectedEquipment?.tag });
+        for (const file of evidenceFiles) await queueAttachment(user.id, faultId, file);
+        setEvidenceFiles([]);
+        setMessage(`${OFFLINE_SAVED} The official reference is assigned when it reaches the server${evidenceFiles.length ? `; ${evidenceFiles.length} evidence file(s) will upload after it` : ""}.`);
+        setError("");
+        setSelectedId(faultId);
+        setMode("history");
+        setSearchParams({ mode: "history", fault: faultId });
+        setFaults(await db.faults.filter((row) => Boolean(row.offline_pending) && row.reporter_id === user.id).toArray().then((local) => [...local, ...faults.filter((row) => !row.offline_pending)]));
       } else {
         setError(`Could not submit the breakdown. ${reportError instanceof Error ? reportError.message : ""}`);
       }
@@ -859,8 +917,36 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
   const canContribute = (user.permissions || []).includes("knowledge.contribute");
   const canTriage = (user.permissions || []).includes("faults.triage") || (user.permissions || []).includes("faults.triage.section");
 
+  const [offlineView, setOfflineView] = useState(false);
+
   async function reload() {
-    const loaded = await api(`/api/v1/faults/${encodeURIComponent(faultId)}/context`) as FaultContext;
+    let loaded: FaultContext;
+    try {
+      loaded = await api(`/api/v1/faults/${encodeURIComponent(faultId)}/context`) as FaultContext;
+      await cacheFaultContext(faultId, loaded as unknown as Record<string, unknown>);
+      setOfflineView(false);
+    } catch (reason) {
+      const cached = isOfflineError(reason) || (reason instanceof ApiError && reason.status === 404)
+        ? await cachedFaultContext(faultId)
+        : undefined;
+      if (!cached) {
+        const summary = await db.faults.get(faultId);
+        if (summary?.offline_pending) {
+          // Reported on this device and not yet on the server.
+          setContext({
+            fault: summary, assignments: [], attachments: [], operator_updates: [], timeline: [], diagnoses: [],
+            interventions: [], previous_faults: [], approved_procedures: [], legacy_knowledge: [], procedure_updates: [], reuse_records: [],
+          } as unknown as FaultContext);
+          setOfflineView(true);
+          return;
+        }
+        throw isOfflineError(reason)
+          ? new Error("This breakdown was not opened while connected, so its investigation is not on this device yet.")
+          : reason;
+      }
+      loaded = cached.context as unknown as FaultContext;
+      setOfflineView(true);
+    }
     setContext(loaded);
     setTriageSection((current) => current || String(loaded.fault.assigned_section || loaded.fault.suggested_section || ""));
     const active = loaded.assignments.find((item) => Boolean(item.is_active));
@@ -909,6 +995,12 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
       await reload();
       await onRefresh();
     } catch (reason) {
+      if (isOfflineError(reason)) {
+        await queueFaultAction(user.id, faultId, action);
+        setMessage(`${action.replace("_", " ")}: ${OFFLINE_SAVED}`);
+        await reload();
+        return;
+      }
       setError(reason instanceof Error ? reason.message : "Fault action failed.");
     }
   }
@@ -916,19 +1008,26 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
   async function submitDiagnosis(event: React.FormEvent) {
     event.preventDefault();
     setError("");
+    const body = { ...diagnosis, confidence: diagnosis.confidence ? Number(diagnosis.confidence) : null };
+    const clear = () => setDiagnosis({ possible_cause: "", diagnostic_method: "", observations: "", test_results: "", confidence: "", quick_check: "", fix_summary: "", workaround: false, risk_level: "Normal" });
     try {
-      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/diagnoses`, {
-        method: "POST",
-        body: JSON.stringify({
-          ...diagnosis,
-          confidence: diagnosis.confidence ? Number(diagnosis.confidence) : null,
-        }),
-      });
-      setDiagnosis({ possible_cause: "", diagnostic_method: "", observations: "", test_results: "", confidence: "", quick_check: "", fix_summary: "", workaround: false, risk_level: "Normal" });
+      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/diagnoses`, { method: "POST", body: JSON.stringify(body) });
+      clear();
       setMessage("Diagnosis recorded. It remains unverified until an intervention confirms it.");
       await reload();
       await onRefresh();
     } catch (reason) {
+      if (isOfflineError(reason)) {
+        if (!body.possible_cause.trim() || !body.diagnostic_method.trim()) {
+          setError("A possible cause and diagnostic method are required.");
+          return;
+        }
+        await queueDiagnosis(user, faultId, body);
+        clear();
+        setMessage(`Diagnosis: ${OFFLINE_SAVED}`);
+        await reload();
+        return;
+      }
       setError(reason instanceof Error ? reason.message : "Diagnosis could not be saved.");
     }
   }
@@ -936,15 +1035,25 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
   async function submitIntervention(event: React.FormEvent) {
     event.preventDefault();
     setError("");
+    const body = { ...intervention, diagnosis_id: intervention.diagnosis_id || null };
+    const clear = () => setIntervention({ diagnosis_id: "", corrective_action: "", tools_materials: "", outcome: "SUCCESS", notes: "" });
     try {
-      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/interventions`, {
-        method: "POST",
-        body: JSON.stringify({ ...intervention, diagnosis_id: intervention.diagnosis_id || null }),
-      });
-      setIntervention({ diagnosis_id: "", corrective_action: "", tools_materials: "", outcome: "SUCCESS", notes: "" });
+      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/interventions`, { method: "POST", body: JSON.stringify(body) });
+      clear();
       setMessage("Intervention recorded; failed attempts remain in the history.");
       await reload();
     } catch (reason) {
+      if (isOfflineError(reason)) {
+        if (!body.corrective_action.trim()) {
+          setError("A corrective action is required.");
+          return;
+        }
+        await queueIntervention(user, faultId, body);
+        clear();
+        setMessage(`Intervention: ${OFFLINE_SAVED} Failed attempts are kept.`);
+        await reload();
+        return;
+      }
       setError(reason instanceof Error ? reason.message : "Intervention could not be saved.");
     }
   }
@@ -1096,6 +1205,13 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
       setMessage("Progress update sent to the responding teams.");
       await reload();
     } catch (reason) {
+      if (isOfflineError(reason) && operatorNote.trim()) {
+        await queueOperatorUpdate(user, faultId, operatorNote.trim());
+        setOperatorNote("");
+        setMessage(`Progress update: ${OFFLINE_SAVED}`);
+        await reload();
+        return;
+      }
       setError(reason instanceof Error ? reason.message : "Operator update could not be saved.");
     }
   }
@@ -1143,7 +1259,7 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
     setError("");
     try {
       const token = localStorage.getItem("kpc-token");
-      const response = await fetch(`${API}/api/v1/faults/${encodeURIComponent(faultId)}/attachments/${encodeURIComponent(attachmentId)}`, {
+      const response = await networkFetch(`${API}/api/v1/faults/${encodeURIComponent(faultId)}/attachments/${encodeURIComponent(attachmentId)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!response.ok) throw new Error(await response.text());
@@ -1196,6 +1312,14 @@ function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId: string
 
   return (
     <div className="fault-detail">
+      {offlineView && (
+        <div className="offline-banner" role="status">
+          <CloudOff size={16} />
+          {fault.offline_pending
+            ? "Reported on this device and waiting to synchronise. Investigation steps become available once Systems Automation receives it."
+            : "Offline: this is the copy saved on this device. Acknowledge, on-site, diagnosis, intervention and operator updates are queued; other steps need a connection."}
+        </div>
+      )}
       <div className="panel">
         <div className="section-heading"><div><p className="eyebrow">WORK ORDER CONTEXT</p><h3>{String(fault.reference)} · {String(fault.equipment_tag)}</h3><p>{String(fault.symptom)} · {String(fault.description || "No additional report details")}</p>{Boolean(fault.operating_conditions) && <p><strong>Operating conditions:</strong> {String(fault.operating_conditions)}</p>}{Boolean(fault.operational_impact) && <p><strong>Operational effect:</strong> {String(fault.operational_impact)}</p>}</div><span className="status">{statusValue}</span></div>
         <p className="muted">Assigned section: {String(fault.assigned_section || "Unassigned")} · Reported by {String(fault.reporter_name || "Unknown")} · {new Date(String(fault.created_at)).toLocaleString()}{fault.reported_on_behalf_of ? ` · On behalf of ${String(fault.reported_on_behalf_of)}` : ""}</p>
@@ -1631,7 +1755,7 @@ function App() {
   useEffect(() => {
     const token = localStorage.getItem("kpc-token");
     if (!user || !token) return;
-    fetch(`${API}/api/v1/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+    networkFetch(`${API}/api/v1/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (response) => {
         if (response.status === 401) {
           localStorage.removeItem("kpc-token");
@@ -1647,6 +1771,8 @@ function App() {
         const normalized = normalizeUser(freshUser);
         if (!normalized) throw new Error("The server returned an invalid user session");
         localStorage.setItem("kpc-user", JSON.stringify(normalized));
+        // The server accepted the session again, so it is no longer an offline-only sign-in.
+        localStorage.removeItem("kpc-offline-session");
         setUser(normalized);
       })
       .catch((error: unknown) => console.warn("Keeping the cached demo session; server validation is unavailable.", error));

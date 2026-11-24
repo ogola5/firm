@@ -93,3 +93,8 @@ textarea { min-height: 82px; resize: vertical; border: 1px solid #cbd7df; border
 .status.awaiting_chief_review { background:#fff1d6; color:#805c0b; }
 .chief-workflow { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:0 0 14px; padding:12px 16px; border:1px solid #dce5ea; border-radius:8px; background:#f7fafb; color:#486273; font-size:13px; }.chief-workflow b { color:#174f6d; }.chief-team summary { list-style:none; cursor:pointer; }.chief-team summary::-webkit-details-marker { display:none; }.chief-team summary:focus-visible { outline:2px solid #2c6688; outline-offset:3px; }
 @media (max-width: 900px) { .chief-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+/* Offline-first */
+.offline-banner { display:flex; align-items:center; gap:8px; padding:10px 14px; border:1px solid #d2ad63; border-radius:8px; background:#fff8e8; color:#805c0b; font-size:13px; font-weight:700; }
+.simulator.panel { margin-bottom:14px; }.simulator h3 { display:flex; align-items:center; gap:8px; margin-top:0; }
+.login-simulator { margin-top:22px; padding-top:16px; border-top:1px solid #e3eaee; display:grid; gap:8px; }.login-simulator p { margin:0; font-size:12px; }
+.network-status .tag { margin-left:6px; }

@@ -23,20 +23,21 @@ Live checklist. A feature is ticked only when it works and is covered by tests.
 
 ## Stage 2 — Offline-first
 
-- [ ] Move fault/investigation operations into services callable from routes and sync
-- [ ] Apply synced events to real records, per-fault ordering, server acknowledgements
-- [ ] Conflict detection and reconciliation workflow
-- [ ] Retry with backoff and jitter; Sync Now; sync history
-- [ ] Offline session for previously authenticated users
-- [ ] Expanded IndexedDB schema and cached datasets
-- [ ] Network simulator (online / offline / intermittent)
+- [x] Move fault/investigation operations into services callable from routes and sync
+- [x] Apply synced events to real records, per-fault ordering, server acknowledgements
+- [x] Conflict detection and reconciliation workflow
+- [x] Retry with backoff and jitter; Sync Now; sync history
+- [x] Offline session for previously authenticated users
+- [x] Expanded IndexedDB schema and cached datasets
+- [x] Network simulator (online / offline / intermittent)
+- [x] Playwright Scenario 4 (offline maintenance)
 
 ## Stage 3 — Frontend stack and structure
 
 - [ ] Split `main.tsx` into routes, components, API and data layers
 - [ ] Tailwind CSS and shadcn/ui; TanStack Query; Recharts; React Hook Form and Zod
-- [ ] Workbox service worker
-- [ ] Playwright end-to-end scenarios; performance report
+- [ ] Workbox service worker; offline reload of a production build
+- [ ] Playwright Scenarios 1–3, 5–6; performance report
 
 ## Stage 4 — Missing modules
 

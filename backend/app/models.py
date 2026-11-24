@@ -256,12 +256,45 @@ class KnowledgeReuseOutcome(Base):
     confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class SyncBatch(Base):
+    """One upload of queued offline events from a device (sync audit history)."""
+    __tablename__ = "sync_batches"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    actor_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    device_id: Mapped[str] = mapped_column(String, default="")
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    event_count: Mapped[int] = mapped_column(Integer, default=0)
+    applied_count: Mapped[int] = mapped_column(Integer, default=0)
+    conflict_count: Mapped[int] = mapped_column(Integer, default=0)
+    rejected_count: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class SyncEvent(Base):
+    """An offline event received from a client.
+
+    `event_id` is client-generated and is the idempotency key. `client_timestamp`
+    is the device's clock and is kept separate from the server's `received_at`.
+    Status: APPLIED, CONFLICT (kept for reconciliation), REJECTED (permission or
+    validation failure), RESOLVED_APPLIED or RESOLVED_DISCARDED.
+    """
     __tablename__ = "sync_events"
     event_id: Mapped[str] = mapped_column(String, primary_key=True)
+    batch_id: Mapped[Optional[str]] = mapped_column(ForeignKey("sync_batches.id"), nullable=True, index=True)
     fault_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     event_type: Mapped[str] = mapped_column(String)
-    actor_id: Mapped[str] = mapped_column(String)
+    actor_id: Mapped[str] = mapped_column(String, index=True)
+    device_id: Mapped[str] = mapped_column(String, default="")
+    sequence_number: Mapped[int] = mapped_column(Integer, default=0)
+    base_status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     payload: Mapped[str] = mapped_column(Text)
     client_timestamp: Mapped[str] = mapped_column(String)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    status: Mapped[str] = mapped_column(String, default="APPLIED", index=True)
+    status_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    detail: Mapped[str] = mapped_column(Text, default="")
+    result: Mapped[str] = mapped_column(Text, default="{}")
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution_note: Mapped[str] = mapped_column(Text, default="")

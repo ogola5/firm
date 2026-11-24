@@ -13,8 +13,22 @@ from app.models import Equipment, Fault, FaultAssignment, Intervention, User, ut
 from app.schemas import AssignmentAllocationRequest, AssignmentReviewRequest, OperatorConfirmationCreate, OperatorUpdateCreate, SectionEscalationCreate, TriageRequest
 from app.services.access import ASSIGNABLE_TECHNICIAN_ROLES, INVESTIGATION_ROLES, SECTIONS, current_assignment, require_current_assignment, require_equipment_scope, require_fault_scope, require_roles, role_key
 from app.services.audit import add_event
+from app.services import fault_operations
 
 router = APIRouter()
+
+
+@router.post("/api/v1/faults/{fault_id}/operator-updates")
+def add_operator_update(
+    fault_id: str,
+    req: OperatorUpdateCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(db_dep),
+):
+    result = fault_operations.add_operator_update(db, user, fault_id, req.note)
+    db.commit()
+    return result
+
 
 @router.post("/api/v1/faults/{fault_id}/triage")
 def triage_fault(fault_id: str, req: TriageRequest, user: User = Depends(current_user), db: Session = Depends(db_dep)):
@@ -310,28 +324,6 @@ def escalate_assignment(
         "escalation_status": assignment.escalation_status,
         "status": fault.status,
     }
-
-
-@router.post("/api/v1/faults/{fault_id}/operator-updates")
-def add_operator_update(
-    fault_id: str,
-    req: OperatorUpdateCreate,
-    user: User = Depends(current_user),
-    db: Session = Depends(db_dep),
-):
-    require_roles(user, "operations")
-    fault = db.get(Fault, fault_id)
-    if not fault:
-        raise HTTPException(status_code=404, detail="Fault not found")
-    require_fault_scope(user, fault)
-    if fault.status == "CLOSED":
-        raise HTTPException(status_code=409, detail="A closed breakdown cannot receive further operator updates")
-    note = req.note.strip()
-    if not note:
-        raise HTTPException(status_code=422, detail="Enter an update for the responding team")
-    add_event(db, fault.id, "OPERATOR_UPDATE", user.id, {"note": note})
-    db.commit()
-    return {"fault_id": fault.id, "status": fault.status}
 
 
 @router.post("/api/v1/faults/{fault_id}/operator-confirmation")
