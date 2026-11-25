@@ -25,8 +25,14 @@ def test_types_are_listed_with_owner_and_most_troublesome_first():
 def test_a_type_page_leads_with_the_problem_then_causes_fixes_failures_and_proof():
     page = client.get("/api/v1/library/types/PUMP", headers=headers("st-mechanical")).json()
     wont_start = next(item for item in page["symptoms"] if item["symptom"] == "Won't start")
-    top = next(item for item in wont_start["causes"] if item["cause"] == "Latched trip in the vibration monitor")
-    assert top["confirmed"] >= 2
+    # Different wordings of the same kind of cause are merged, and the wordings kept.
+    top = wont_start["causes"][0]
+    assert top["category"] == "Protection trip latched / alarms would not reset" and top["confirmed"] >= 2
+    assert "Latched trip in the vibration monitor" in [top["cause"], *top["also_recorded_as"]]
+    assert len([item for item in wont_start["causes"] if item["category"] == top["category"]]) == 1
+    # No generic causes left over from the old demo data.
+    assert all(item["cause"] not in ("Sensor drift", "Blocked filter", "Loose terminal connection", "Incorrect controller parameter")
+               for group in page["symptoms"] for item in group["causes"])
     assert top["first_check"]
     assert any("SCADA" in item["action"] and "latch" in item["note"] for item in wont_start["did_not_work"])
     card = next(item for item in wont_start["procedures"] if item["reference"].startswith("PU-LIB"))

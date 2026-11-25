@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-28 — Cleaner demo history; merged causes
+
+- **Type-specific demo history:**
+  - The generic demo history (the same four causes and "synthetic" text on every piece of equipment) is replaced by type-appropriate cases. For example, pumps get latched trips, seals and alignment; valves get selector switches and sticking stems; level transmitters get water in the housing.
+  - Each case has a realistic failed attempt, and the procedures and older work instructions match.
+  - It runs on start-up and only changes rows that still hold the generic text, so existing databases (Render) are cleaned too (`app/demo_content.py`).
+- **Merged causes:** the library groups causes by cause category, so different wordings of the same cause become one line. The other wordings are listed under "Also recorded as", so nothing recorded is hidden.
+
 ## 2026-11-28 — Knowledge library by equipment type
 
 See [KNOWLEDGE_LIBRARY.md](KNOWLEDGE_LIBRARY.md) for the philosophy and the decisions.

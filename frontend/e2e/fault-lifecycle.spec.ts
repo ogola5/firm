@@ -137,6 +137,10 @@ test("Scenario 1 + 3: first-time fault to published knowledge, keeping the faile
   await expect(page.getByLabel(/^Fix/)).toHaveValue("Tightened and replaced the supply terminal");
   await expect(page.getByLabel(/Don't bother with/)).toHaveValue(/Reset the actuator controller/);
   await page.getByLabel("Title").fill(procedureTitle);
+  // If the library already has similar procedures, the draft asks whether this adds to one. Here it is new.
+  const similar = page.getByLabel("Similar procedures");
+  await page.waitForLoadState("networkidle");
+  if (await similar.isVisible()) await similar.getByText("No, this is a different problem").click();
   await page.getByRole("button", { name: "Send for review" }).click();
   await expect(page.getByRole("heading", { name: "Sent for review" })).toBeVisible();
 

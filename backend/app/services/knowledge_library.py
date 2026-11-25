@@ -53,6 +53,13 @@ def symptom_group(text: str) -> str:
     return "Other"
 
 
+def cause_key(diagnosis: Diagnosis) -> str:
+    """Group causes that mean the same thing: the cause category from the write-up pick-list, else the words."""
+    if diagnosis.cause_category and diagnosis.cause_category != "not_found":
+        return f"category:{diagnosis.cause_category}"
+    return "text:" + " ".join(re.findall(r"[a-z0-9]+", diagnosis.possible_cause.lower()))
+
+
 def _iso(value: datetime | None) -> str | None:
     return utc_datetime(value).isoformat() if value else None
 
@@ -208,7 +215,8 @@ def type_page(db: Session, user: User, code: str, now: datetime | None = None) -
     for fault in faults:
         label = symptom_group(f"{fault.symptom} {fault.description}" if symptom_group(fault.symptom) == "Other" else fault.symptom)
         group = groups.setdefault(label, {
-            "symptom": label, "faults": 0, "last_seen": None, "_causes": defaultdict(lambda: {"confirmed": 0, "seen": 0, "checks": Counter(), "category": ""}),
+            "symptom": label, "faults": 0, "last_seen": None,
+            "_causes": defaultdict(lambda: {"confirmed": 0, "seen": 0, "checks": Counter(), "category": "", "wordings": Counter()}),
             "_worked": Counter(), "_worked_type": {}, "_failed": Counter(), "_failed_notes": {}, "cases": [], "_fault_ids": set(),
         })
         group["faults"] += 1
@@ -217,10 +225,12 @@ def type_page(db: Session, user: User, code: str, now: datetime | None = None) -
         attempts = interventions_by_fault.get(fault.id, [])
         succeeded_diagnoses = {item.diagnosis_id for item in attempts if item.outcome == "SUCCESS"}
         for diagnosis in diagnoses_by_fault.get(fault.id, []):
-            cause = group["_causes"][diagnosis.possible_cause.strip()]
+            # Same kind of cause, different wording: merged (by cause category, else by normalised text).
+            cause = group["_causes"][cause_key(diagnosis)]
             cause["seen"] += 1
             cause["confirmed"] += int(diagnosis.id in succeeded_diagnoses)
             cause["category"] = cause["category"] or diagnosis.cause_category
+            cause["wordings"][diagnosis.possible_cause.strip()] += 1
             if diagnosis.quick_check:
                 cause["checks"][diagnosis.quick_check.strip()] += 1
         for attempt in attempts:
@@ -255,9 +265,14 @@ def type_page(db: Session, user: User, code: str, now: datetime | None = None) -
         causes = sorted(group["_causes"].items(), key=lambda pair: (-pair[1]["confirmed"], -pair[1]["seen"], pair[0]))
         symptoms.append({
             "symptom": label, "faults": group["faults"], "last_seen": group["last_seen"],
-            "causes": [{"cause": cause, "confirmed": data["confirmed"], "seen": data["seen"],
-                        "category": CAUSE_CATEGORIES.get(data["category"], ""),
-                        "first_check": data["checks"].most_common(1)[0][0] if data["checks"] else ""} for cause, data in causes[:5]],
+            "causes": [{
+                # The most common wording leads; the others are listed so nothing recorded is hidden.
+                "cause": data["wordings"].most_common(1)[0][0] if data["wordings"] else key,
+                "also_recorded_as": [text for text, _ in data["wordings"].most_common()][1:4],
+                "confirmed": data["confirmed"], "seen": data["seen"],
+                "category": CAUSE_CATEGORIES.get(data["category"], ""),
+                "first_check": data["checks"].most_common(1)[0][0] if data["checks"] else "",
+            } for key, data in causes[:5]],
             "worked": [{"action": action, "times": times, "kind": ACTION_TYPES.get(group["_worked_type"].get(action, ""), "")}
                        for action, times in group["_worked"].most_common(5)],
             "did_not_work": [{"action": action, "times": times, "note": group["_failed_notes"].get(action, "")}

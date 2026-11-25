@@ -31,7 +31,7 @@ type ProcedureCard = {
 };
 type Symptom = {
   symptom: string; faults: number; last_seen: string | null;
-  causes: Array<{ cause: string; confirmed: number; seen: number; category: string; first_check: string }>;
+  causes: Array<{ cause: string; also_recorded_as: string[]; confirmed: number; seen: number; category: string; first_check: string }>;
   worked: Array<{ action: string; times: number; kind: string }>;
   did_not_work: Array<{ action: string; times: number; note: string }>;
   procedures: ProcedureCard[];
@@ -182,6 +182,7 @@ function SymptomSection({ item, canWithdraw, onChanged }: { item: Symptom; canWi
               {item.causes.map((cause) => (
                 <li key={cause.cause}>
                   <strong>{cause.cause}</strong> <span className="text-sm text-muted-foreground">· confirmed {cause.confirmed} of {cause.seen} time(s){cause.category ? ` · ${cause.category}` : ""}</span>
+                  {cause.also_recorded_as.length > 0 && <div className="text-xs text-muted-foreground">Also recorded as: {cause.also_recorded_as.join("; ")}</div>}
                   {cause.first_check && <div className="text-sm">Check first: {cause.first_check}</div>}
                 </li>
               ))}
