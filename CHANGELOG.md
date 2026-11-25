@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-11-27 — Regions and escalation to the Senior and Chief Engineers
+
+See [ESCALATION.md](ESCALATION.md).
+
+- **Three regions:** Western, Nairobi and Coast. Each piece of equipment belongs to a region through its pump station.
+  - Regional staff (ST, PT, CT, AE, E, SE) see their section in their region.
+  - The Chief Engineer sees the whole section.
+  - The CT allocates only within their region.
+  - Procedures and the library stay section-wide.
+- **Escalation, CT → regional SE → section CE:**
+  - **To the SE:** when the CT asks, at once for a safety report, or automatically when not back in service after 8 hours.
+  - **To the CE only if it persists:** the same equipment fails again within 30 days of a fix, or the SE escalates it (spares, design change, contractor, repeated fixes).
+  - Each escalation is emailed and recorded on the timeline. The SE and CE can add guidance, which reaches the CT and the technician.
+- **Screens:**
+  - an "Escalated to you" panel on SE and CE homes, and an Escalations page
+  - an escalation card on the fault page
+  - badges and guidance in My jobs
+  - the region in the sidebar, scope, enrolment, approvals, account creation, access changes and the people list
+- **Accounts:** the region is part of the account and of the session's access version, so changing it signs the person out.
+- **API:**
+  - `POST /api/v1/faults/{id}/escalate`
+  - `POST /api/v1/faults/{id}/escalation-guidance`
+  - `GET /api/v1/escalations`
+  - escalation fields on fault list, detail, context and jobs
+- **Migration `0008`** (it backfills regions from stations and puts existing regional staff in Nairobi). Demo data: Coast and Western teams for every section.
+
 ## 2026-11-26 — Knowledge capture, recognition, drawings and "likely to fail"
 
 See [KNOWLEDGE_CAPTURE.md](KNOWLEDGE_CAPTURE.md).

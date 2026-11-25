@@ -38,6 +38,7 @@ class EnrolmentStart(BaseModel):
     job_title: str = ""
     requested_role: str
     requested_section: str = ""
+    requested_region: str = ""
 
 
 class EnrolmentVerify(BaseModel):
@@ -49,6 +50,7 @@ class EnrolmentVerify(BaseModel):
 class EnrolmentDecision(BaseModel):
     role: str = ""
     section: str = ""
+    region: str = ""
     reason: str = ""
 
 
@@ -180,12 +182,14 @@ class UserCreate(BaseModel):
     job_title: str = ""
     role: str
     section: str = ""
+    region: str = ""
     password: str
 
 
 class UserAccessUpdate(BaseModel):
     role: str
     section: str = ""
+    region: str = ""
 
 
 class UserStatusUpdate(BaseModel):

@@ -9,7 +9,7 @@ from fastapi import APIRouter
 from app.db import db_dep
 from app.deps import current_user
 from app.models import Equipment, Fault, User
-from app.services.access import require_equipment_scope, require_roles, role_key
+from app.services.access import region_filter, require_equipment_scope, require_roles, role_key
 from app.services.equipment_search import rank_equipment
 
 router = APIRouter()
@@ -22,13 +22,16 @@ def equipment_list(search: str = "", station: str = "", user: User = Depends(cur
         query = query.where(Equipment.station == station)
     if role_key(user) in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
         query = query.where(Equipment.section == user.section)
+    in_region = region_filter(user)
+    if in_region is not None:
+        query = query.where(in_region)
     equipment = list(db.scalars(query.order_by(Equipment.tag)).all())
     if search.strip():
         equipment = rank_equipment(equipment, search)
     return [
         {
             "id": e.id, "tag": e.tag, "name": e.name, "aliases": e.aliases, "category": e.category,
-            "station": e.station, "location": e.location, "section": e.section,
+            "station": e.station, "location": e.location, "section": e.section, "region": e.region,
             "criticality": e.criticality, "operational_status": e.operational_status,
             "description": e.description,
         }

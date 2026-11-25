@@ -169,3 +169,29 @@ Synchronisation (see [OFFLINE_SYNC_DESIGN.md](OFFLINE_SYNC_DESIGN.md)):
 
 Operations:
 - `GET /api/v1/health`: API and database reachability
+
+Regions and escalation (see [ESCALATION.md](ESCALATION.md)):
+
+| Endpoint | Who | What |
+|---|---|---|
+| `POST /api/v1/faults/{id}/escalate` `{"to": "SE" \| "CE", "reason": "..."}` | CT (to the SE) and SE (to the CE) of the owning or working section, in the fault's region | Raises the level (it never lowers it). Emails the SEs of the section in that region, or the section's CE. Records `FAULT_ESCALATED`. 403 if this person may not, 422 if the reason is too short. |
+| `POST /api/v1/faults/{id}/escalation-guidance` `{"note": "..."}` | SE (level 1 or 2), CE (level 2) | Stores the guidance. Emails the CT and the assigned technician. Records `ESCALATION_GUIDANCE`. |
+| `GET /api/v1/escalations` | SE (own section and region), CE (level 2 in own section), MM, GM, Supervisor, System Administrator | Open escalated faults, highest level first: reason, guidance, hours open, region and the actions this person may take. Other roles get 403. |
+
+Fault list, detail, context and My jobs include:
+
+- `escalation_level` (0 CT, 1 SE, 2 CE)
+- `escalated_to`, `escalated_at`, `escalation_reason`, `escalation_guidance`
+- `escalation_actions` (`to_se`, `to_ce`, `guide`) on detail and context
+
+**Automatic escalation:**
+
+- a safety report goes to the SE at once
+- a fault on equipment fixed within `CE_REPEAT_DAYS` (30) goes to the CE at report time
+- a fault not back in service after `SE_AFTER_HOURS` (8) goes to the SE on the next background check
+
+**Regional scope:**
+
+- Regional staff (ST, PT, CT, AE, E, SE) see equipment and faults only in their region, plus unidentified equipment.
+- Out-of-region faults return 404, like out-of-section ones.
+- Enrolment, approval, account creation and access changes take `requested_region` or `region` (Western, Nairobi, Coast). It is required for regional roles.

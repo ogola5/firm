@@ -11,7 +11,7 @@ from app.db import db_dep
 from app.deps import current_user
 from app.models import Equipment, Fault, FaultAssignment, Intervention, User, utc_datetime, utcnow
 from app.schemas import AssignmentAllocationRequest, AssignmentReviewRequest, OperatorConfirmationCreate, OperatorUpdateCreate, SectionEscalationCreate, TriageRequest
-from app.services.access import ASSIGNABLE_TECHNICIAN_ROLES, INVESTIGATION_ROLES, SECTIONS, current_assignment, require_current_assignment, require_equipment_scope, require_fault_scope, require_roles, role_key
+from app.services.access import ASSIGNABLE_TECHNICIAN_ROLES, INVESTIGATION_ROLES, SECTIONS, current_assignment, require_current_assignment, require_equipment_scope, require_fault_scope, require_roles, role_key, user_region
 from app.services.audit import add_event
 from app.services import fault_operations
 
@@ -126,8 +126,9 @@ def allocate_section_assignment(
             or not assignee.active
             or assignee.section != user.section
             or role_key(assignee) not in ASSIGNABLE_TECHNICIAN_ROLES
+            or (user_region(user) and assignee.region != user.region)
         ):
-            raise HTTPException(status_code=422, detail="Choose an active Senior or Principal Technician in your section")
+            raise HTTPException(status_code=422, detail="Choose an active Senior or Principal Technician in your section and region")
         if assignee.availability_status != "AVAILABLE":
             raise HTTPException(status_code=409, detail="This technician is marked unavailable")
     previous_assignee_id = assignment.assigned_user_id

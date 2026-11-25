@@ -7,6 +7,40 @@ import json
 from app.models import Equipment, Fault, FaultAssignment, User
 
 SECTIONS = ("Systems Automation", "Electrical", "Instrumentation", "Mechanical")
+REGIONS = ("Western", "Nairobi", "Coast")
+# Illustrative: the region each demonstration pump station belongs to.
+STATION_REGIONS = {"PS01": "Coast", "PS02": "Nairobi", "PS04": "Nairobi", "DEPOT01": "Western"}
+# Staff who work in one region of their section. The Chief Engineer covers the whole section.
+REGIONAL_ROLES = ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer")
+
+
+def user_region(user: User) -> str | None:
+    """The region this person is limited to, or None (whole section or company-wide)."""
+    return user.region if role_key(user) in REGIONAL_ROLES and user.region else None
+
+
+def check_region(role: str, section: str, region: str) -> str:
+    """Regional staff (ST to SE) belong to one region; everyone else has none."""
+    from fastapi import HTTPException
+    if role in REGIONAL_ROLES and section:
+        if region not in REGIONS:
+            raise HTTPException(status_code=422, detail="Choose the region: " + ", ".join(REGIONS))
+        return region
+    return ""
+
+
+def region_allows(user: User, equipment_region: str | None) -> bool:
+    """Unidentified assets (no region yet) stay visible to the whole section until identified."""
+    region = user_region(user)
+    return region is None or not equipment_region or equipment_region == region
+
+
+def region_filter(user: User):
+    """SQL condition on Equipment.region for this person, or None."""
+    region = user_region(user)
+    if region is None:
+        return None
+    return (Equipment.region == region) | (Equipment.region == "")
 
 
 ACTIVE_ASSIGNMENT_STATUSES = ("OPEN", "ACKNOWLEDGED", "IN_PROGRESS")
@@ -124,6 +158,8 @@ def require_fault_scope(user: User, fault: Fault) -> None:
         has_section_assignment = any(item.section == user.section for item in fault.assignments)
         if fault.assigned_section != user.section and (not equipment or equipment.section != user.section) and not has_section_assignment:
             raise HTTPException(status_code=404, detail="Fault not found")
+        if not region_allows(user, equipment.region if equipment else ""):
+            raise HTTPException(status_code=404, detail="Fault not found")
 
 
 def require_equipment_scope(user: User, equipment: Equipment) -> None:
@@ -131,7 +167,7 @@ def require_equipment_scope(user: User, equipment: Equipment) -> None:
     if key in ("hr_officer", "managing_director", "management"):
         raise HTTPException(status_code=403, detail="This role cannot view equipment records")
     if key in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
-        if equipment.section != user.section:
+        if equipment.section != user.section or not region_allows(user, equipment.region):
             raise HTTPException(status_code=404, detail="Equipment not found")
 
 
@@ -144,6 +180,7 @@ def user_payload(user: User) -> dict:
         "role": role_key(user),
         "role_label": role_definition(user)["label"],
         "section": user.section,
+        "region": user.region,
         "active": bool(user.active),
         "availability_status": user.availability_status,
         "competencies": json.loads(user.competencies or "[]"),

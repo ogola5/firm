@@ -32,6 +32,7 @@ test("a technician enrols with a KPC email, is approved, and lands on their own 
   await page.getByLabel("Staff number").fill("KPC-20417");
   await page.getByLabel("Your job").selectOption({ label: "Senior Technician (ST)" });
   await page.getByLabel("Your section").selectOption("Electrical");
+  await page.getByLabel("Your region").selectOption("Coast");
   await page.getByRole("button", { name: "Email me a code" }).click();
   await expect(page.getByText(/Use your KPC email address \(ending @kpc.co.ke\)/)).toBeVisible();
 

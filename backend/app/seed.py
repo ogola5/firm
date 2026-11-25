@@ -11,7 +11,7 @@ from app.models import (
     Fault, FaultAssignment, FaultEvent, Intervention, KnowledgeEntry, KnowledgeReuse, KnowledgeReuseOutcome, ProcedureReview,
     ProcedureUpdate, User, utcnow,
 )
-from app.services.access import ROLE_DEFINITIONS, SECTIONS
+from app.services.access import REGIONAL_ROLES, ROLE_DEFINITIONS, SECTIONS, STATION_REGIONS
 from app.services.audit import add_event
 
 # (tag, name, aliases, station, location). Index % 4 gives the owning section:
@@ -111,6 +111,7 @@ def seed_database():
                 aliases=aliases,
                 category=category,
                 station=station,
+                region=STATION_REGIONS.get(station, ""),
                 location=location,
                 section=sections[i % len(sections)],
                 criticality=["Low", "Medium", "High", "Critical"][i % 4],
@@ -231,7 +232,12 @@ def seed_database():
         if existing:
             existing.role = role
             existing.section = section
+            if role in REGIONAL_ROLES and section and not existing.region:
+                existing.region = "Nairobi"
 
+    # Each section has staff in all three regions. The original demo team works in Nairobi;
+    # Coast and Western have their own technicians, Chief Technician and Senior Engineer.
+    # The Chief Engineer is one per section and covers every region.
     demo_accounts = [
         ("hr", "hr_officer", ""),
         ("gm-om", "general_manager_om", ""),
@@ -250,18 +256,32 @@ def seed_database():
             ("chief-engineer", "chief_engineer"),
         ):
             demo_accounts.append((f"{short}-{section_slug}", role, section))
+        for region in ("Coast", "Western"):
+            for short, role in (("st", "technician_st"), ("pt", "technician_pt"), ("ct", "technician_ct"),
+                                ("senior-engineer", "senior_engineer")):
+                demo_accounts.append((f"{short}-{section_slug}-{region.lower()}", role, section))
 
     for username, role, section in demo_accounts:
-        if not db.scalar(select(User).where(User.username == username)):
-            db.add(User(
-                id=f"USER-{username}",
-                username=username,
-                email=demo_email(username),
-                display_name=f"Demo {ROLE_DEFINITIONS[role]['label']} ({section})" if section else f"Demo {ROLE_DEFINITIONS[role]['label']}",
-                role=role,
-                section=section,
-                password_hash=bcrypt.hashpw(b"demo123", bcrypt.gensalt()).decode(),
-            ))
+        region = ""
+        if role in REGIONAL_ROLES and section:
+            region = next((name for name in ("Coast", "Western") if username.endswith(f"-{name.lower()}")), "Nairobi")
+        existing = db.scalar(select(User).where(User.username == username))
+        if existing:
+            if region and not existing.region:
+                existing.region = region
+            continue
+        label = ROLE_DEFINITIONS[role]['label']
+        where = ", ".join(item for item in (section, region) if item)
+        db.add(User(
+            id=f"USER-{username}",
+            username=username,
+            email=demo_email(username),
+            display_name=f"Demo {label} ({where})" if where else f"Demo {label}",
+            role=role,
+            section=section,
+            region=region,
+            password_hash=bcrypt.hashpw(b"demo123", bcrypt.gensalt()).decode(),
+        ))
     for section in SECTIONS:
         section_slug = section.lower().replace(" ", "-")
         placeholder_id = f"EQ-UNCONFIRMED-{section_slug}"
@@ -497,7 +517,8 @@ def ensure_extra_equipment(db) -> None:
         if db.scalar(select(Equipment).where(Equipment.tag == tag)):
             continue
         db.add(Equipment(
-            id=f"EQ-{tag}", tag=tag, name=name, aliases=aliases, station=station, location=location, section=section,
+            id=f"EQ-{tag}", tag=tag, name=name, aliases=aliases, station=station, region=STATION_REGIONS.get(station, ""),
+            location=location, section=section,
             category=category, criticality=criticality,
             description="Illustrative demonstration asset; not a real KPC operational record.",
         ))

@@ -13,6 +13,7 @@ import { Overview } from "./detail/Overview";
 import { ProcedureForm, ReuseRecords } from "./detail/Procedures";
 import { SimilarFaults } from "./SimilarFaults";
 import { EquipmentKnowledge } from "../library/EquipmentKnowledge";
+import { EscalationCard, type EscalationFields } from "../escalation/Escalation";
 
 /**
  * One breakdown: summary, section handoffs, evidence, troubleshooting history,
@@ -65,6 +66,10 @@ export function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId:
     <DetailContext.Provider value={value}>
       <div className="mt-4 grid gap-4">
         <Overview message={message} error={error} />
+        {!value.offline && (
+          <EscalationCard faultId={faultId} fault={value.context.fault as unknown as EscalationFields}
+            onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["fault", faultId] }); await queryClient.invalidateQueries({ queryKey: ["escalations"] }); await onRefresh(); }} />
+        )}
         <AssignmentPanel />
         <EvidencePanel />
         <RankedCauses />

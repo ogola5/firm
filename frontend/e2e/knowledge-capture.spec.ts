@@ -43,9 +43,9 @@ test("an expert session goes from write-up to the library after the chief approv
   await page.getByRole("button", { name: "Expert sessions" }).click();
   await page.getByText("Write up an expert session").click();
   const expert = page.getByLabel("Expert", { exact: true });
-  await expect(expert.locator("option", { hasText: "Senior Engineer (Instrumentation)" })).toHaveCount(1);
+  await expect(expert.locator("option", { hasText: "Senior Engineer (Instrumentation, Nairobi)" })).toHaveCount(1);
   const options = await expert.locator("option").allTextContents();
-  await expert.selectOption({ label: options.find((text) => text.includes("Senior Engineer (Instrumentation)"))! });
+  await expert.selectOption({ label: options.find((text) => text.includes("Senior Engineer (Instrumentation, Nairobi)"))! });
   await page.getByLabel("Section", { exact: true }).selectOption("Instrumentation");
   await page.getByLabel("Equipment type", { exact: true }).selectOption("LT");
   await page.getByLabel("Title", { exact: true }).fill(title);

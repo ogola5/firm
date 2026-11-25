@@ -14,8 +14,9 @@ import { api } from "../../offline/api";
 import { AuthCard, MailboxLink } from "./AuthCard";
 
 type Options = {
-  roles: Array<{ code: string; label: string; section_required: boolean }>;
+  roles: Array<{ code: string; label: string; section_required: boolean; region_required?: boolean }>;
   sections: string[];
+  regions?: string[];
   demo_mailbox: boolean;
 };
 
@@ -26,6 +27,7 @@ const detailsSchema = z.object({
   job_title: z.string().trim().max(80),
   requested_role: z.string().min(1, "Choose your job"),
   requested_section: z.string(),
+  requested_region: z.string(),
 });
 type Details = z.output<typeof detailsSchema>;
 type DetailsInput = z.input<typeof detailsSchema>;
@@ -64,7 +66,7 @@ export function Enrol() {
 
   const detailsForm = useForm<DetailsInput>({
     resolver: zodResolver(detailsSchema),
-    defaultValues: { email: "", display_name: "", staff_number: "", job_title: "", requested_role: "", requested_section: "" },
+    defaultValues: { email: "", display_name: "", staff_number: "", job_title: "", requested_role: "", requested_section: "", requested_region: "" },
   });
   const verifyForm = useForm<Verify>({ resolver: zodResolver(verifySchema), defaultValues: { code: "", password: "", confirm: "" } });
   const role = options.data?.roles.find((item) => item.code === detailsForm.watch("requested_role"));
@@ -75,11 +77,19 @@ export function Enrol() {
       detailsForm.setError("requested_section", { message: "Choose your section" });
       return;
     }
+    if (role?.region_required && !parsed.requested_region) {
+      detailsForm.setError("requested_region", { message: "Choose your region" });
+      return;
+    }
     setError("");
     try {
       const result = await api<{ message: string }>("/api/v1/enrolment/start", {
         method: "POST",
-        body: JSON.stringify({ ...parsed, requested_section: role?.section_required ? parsed.requested_section : "" }),
+        body: JSON.stringify({
+          ...parsed,
+          requested_section: role?.section_required ? parsed.requested_section : "",
+          requested_region: role?.region_required ? parsed.requested_region : "",
+        }),
       });
       setDetails(parsed);
       setNotice(result.message);
@@ -188,6 +198,14 @@ export function Enrol() {
               <NativeSelect aria-invalid={Boolean(errors.requested_section)} {...register("requested_section")}>
                 <option value="">Choose…</option>
                 {options.data?.sections.map((item) => <option key={item}>{item}</option>)}
+              </NativeSelect>
+            </Field>
+          )}
+          {role?.region_required && (
+            <Field label="Your region" hint="Where you are stationed." error={errors.requested_region?.message}>
+              <NativeSelect aria-invalid={Boolean(errors.requested_region)} {...register("requested_region")}>
+                <option value="">Choose…</option>
+                {options.data?.regions?.map((item) => <option key={item}>{item}</option>)}
               </NativeSelect>
             </Field>
           )}

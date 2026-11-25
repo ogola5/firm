@@ -101,12 +101,12 @@ def contribution_rows(db: Session, start_date: date | None, end_date: date | Non
     return sorted(rows, key=lambda row: (row["section"], row["employee_name"]))
 
 
-def section_technician_payloads(db: Session, section: str) -> list[dict]:
-    technicians = db.scalars(
-        select(User)
-        .where(User.section == section, User.role.in_(ASSIGNABLE_TECHNICIAN_ROLES))
-        .order_by(User.role, User.display_name)
-    ).all()
+def section_technician_payloads(db: Session, section: str, region: str | None = None) -> list[dict]:
+    """The ST/PT pool a Chief Technician allocates from: their section, and their region when they have one."""
+    query = select(User).where(User.section == section, User.role.in_(ASSIGNABLE_TECHNICIAN_ROLES))
+    if region:
+        query = query.where(User.region == region)
+    technicians = db.scalars(query.order_by(User.role, User.display_name)).all()
     assignments = db.scalars(
         select(FaultAssignment).where(
             FaultAssignment.section == section,
@@ -126,6 +126,7 @@ def section_technician_payloads(db: Session, section: str) -> list[dict]:
         "role": role_key(item),
         "role_label": role_definition(item)["label"],
         "section": item.section,
+        "region": item.region,
         "active": bool(item.active),
         "availability_status": item.availability_status,
         "competencies": json.loads(item.competencies or "[]"),

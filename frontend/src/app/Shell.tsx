@@ -1,5 +1,5 @@
 import {
-  Activity, AlertTriangle, BookOpen, GraduationCap, Ruler, Trophy, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Users, Wrench, X,
+  Activity, AlertTriangle, ArrowUpCircle, BookOpen, GraduationCap, Ruler, Trophy, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Users, Wrench, X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
@@ -30,11 +30,13 @@ const Drawings = lazy(() => import("../features/drawings/Drawings").then((m) => 
 const Recognition = lazy(() => import("../features/recognition/Recognition").then((m) => ({ default: m.Recognition })));
 const Reports = lazy(() => import("../features/reports/Reports").then((m) => ({ default: m.Reports })));
 const Analytics = lazy(() => import("../features/analytics/Analytics").then((m) => ({ default: m.Analytics })));
+const Escalations = lazy(() => import("../features/escalation/Escalation").then((m) => ({ default: m.Escalations })));
 
 // Menu entries come from the account's access profile (server-defined per level); only icons and paths live here.
 const AREAS: Record<string, { path: string; icon: ReactNode }> = {
   report: { path: "/report", icon: <Plus /> },
   home: { path: "/dashboard", icon: <Gauge /> },
+  escalations: { path: "/escalations", icon: <ArrowUpCircle /> },
   analytics: { path: "/analytics", icon: <LineChart /> },
   reports: { path: "/reports", icon: <FileText /> },
   watch: { path: "/watch", icon: <Activity /> },
@@ -70,7 +72,7 @@ function NavItem({ to, icon, children }: { to: string; icon: ReactNode; children
 const BOTTOM_TABS: Record<string, string[]> = {
   my_reports: ["report", "home", "faults"],
   my_jobs: ["home", "faults", "watch"],
-  section_engineering: ["home", "faults", "watch"],
+  section_engineering: ["home", "escalations", "faults"],
   section_oversight: ["home", "faults", "approvals"],
   maintenance_overview: ["home", "analytics", "reports"],
   om_overview: ["home", "analytics", "reports"],
@@ -82,7 +84,7 @@ const BOTTOM_TABS: Record<string, string[]> = {
 const SHORT_LABELS: Record<string, string> = {
   report: "Report", faults: "History", watch: "Watch", analytics: "Analytics", reports: "Reports", approvals: "Reviews",
   people: "People", recognition: "Points", expertise: "Experts", knowledge: "Procedures", equipment: "Equipment",
-  drawings: "Drawings", sync: "Sync", account: "Account",
+  drawings: "Drawings", sync: "Sync", account: "Account", escalations: "Escalated",
 };
 const HOME_SHORT: Record<string, string> = {
   my_jobs: "My jobs", my_reports: "My reports", section_oversight: "Section", section_engineering: "Section",
@@ -176,7 +178,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             <strong className="truncate">{user.display_name}</strong>
             <span className="truncate text-sidebar-foreground/70">
               {access.level && <span className="mr-1 rounded bg-white/15 px-1 font-bold text-sidebar-foreground">{access.level}</span>}
-              {user.role_label}{user.section ? ` · ${user.section}` : ""}
+              {user.role_label}{user.section ? ` · ${user.section}` : ""}{user.region ? ` · ${user.region}` : ""}
             </span>
             {user.email && <span className="truncate text-sidebar-foreground/70">{user.email}</span>}
           </NavLink>
@@ -212,6 +214,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             <Route path="/account" element={<MyAccount user={user} onSignOut={onLogout} />} />
             {areas.has("analytics") && <Route path="/analytics" element={<Analytics user={user} />} />}
             {areas.has("reports") && <Route path="/reports" element={<Reports user={user} />} />}
+            {areas.has("escalations") && <Route path="/escalations" element={<Escalations user={user} />} />}
             {areas.has("watch") && <Route path="/watch" element={<WatchList user={user} />} />}
             {areas.has("expertise") && <Route path="/expertise" element={<Expertise user={user} />} />}
             {areas.has("drawings") && <Route path="/drawings" element={<Drawings user={user} />} />}

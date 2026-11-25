@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 
 from app.models import User
-from app.services.access import role_definition, role_key
+from app.services.access import role_definition, role_key, user_region
 
 # Short level codes as used at KPC.
 LEVELS = {
@@ -49,8 +49,8 @@ HOMES = {
     "technician_ct": ("section_oversight", "Section oversight", "Allocate your section's work, review it and sign it off."),
     "assistant_engineer": ("my_jobs", "My jobs", "Jobs in your section that need an engineer."),
     "engineer": ("my_jobs", "My jobs", "Jobs in your section that need an engineer."),
-    "senior_engineer": ("my_jobs", "My jobs", "Jobs in your section; you can confirm equipment back in service."),
-    "chief_engineer": ("section_engineering", "Section engineering", "How your section's equipment and work are going, and what needs attention."),
+    "senior_engineer": ("my_jobs", "My jobs", "Faults escalated to you from your region first, then your section's jobs."),
+    "chief_engineer": ("section_engineering", "Section engineering", "Faults that persist and need you first, then how your section is going across all regions."),
     "maintenance_manager": ("maintenance_overview", "Maintenance overview", "All sections: workload, response and restoration, and recurring problems."),
     "general_manager_om": ("om_overview", "Operations & Maintenance", "How faults move from Operations through each section, and where they wait."),
     "hr_officer": ("workforce", "Workforce overview", "Staff, roles and contribution evidence. No fault details."),
@@ -112,6 +112,15 @@ def capabilities(key: str, permissions: list[str]) -> list[str]:
         can.add("points.view_all")
     if key == "system_administrator":
         can.add("people.retirement")
+    # Escalation: CT -> regional Senior Engineer -> section Chief Engineer (services/escalation.py).
+    if key in ("senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"):
+        can.add("escalations.view")
+    if key == "technician_ct":
+        can.add("escalate.to_se")
+    if key == "senior_engineer":
+        can.add("escalate.to_ce")
+    if key in ("senior_engineer", "chief_engineer"):
+        can.add("escalation.guide")
     return sorted(can)
 
 
@@ -124,6 +133,8 @@ def menu(key: str, can: set[str]) -> list[dict]:
     if operator and "faults.report" in can:
         items.append(("report", "Report a fault"))
     items.append(("home", HOMES.get(key, ("", "Home", ""))[1]))
+    if "escalations.view" in can:
+        items.append(("escalations", "Escalations"))
     if can & {"analytics.org", "analytics.section", "analytics.headline"}:
         items.append(("analytics", "Analytics"))
     if "reports.view" in can:
@@ -154,8 +165,8 @@ def menu(key: str, can: set[str]) -> list[dict]:
 
 
 def access_version(user: User) -> str:
-    """Changes when the role, section or status changes, so the old session stops and the new view loads."""
-    basis = f"{role_key(user)}|{user.section}|{user.account_status}|{user.active}"
+    """Changes when the role, section, region or status changes, so the old session stops and the new view loads."""
+    basis = f"{role_key(user)}|{user.section}|{user.region or ''}|{user.account_status}|{user.active}"
     return hashlib.sha256(basis.encode()).hexdigest()[:16]
 
 
@@ -164,7 +175,12 @@ def access_profile(user: User) -> dict:
     definition = role_definition(user)
     can = capabilities(key, definition["permissions"])
     home, title, purpose = HOMES.get(key, ("none", "Home", "No access has been granted yet."))
-    if definition.get("section_required") or key == "systems_automation":
+    region = user_region(user)
+    if region:
+        scope = f"{user.section} section, {region} region"
+    elif key == "chief_engineer":
+        scope = f"{user.section} section, all regions"
+    elif definition.get("section_required") or key == "systems_automation":
         scope = f"{user.section or 'Systems Automation'} section"
     elif key == "managing_director":
         scope = "Headline figures for the whole company"
@@ -181,6 +197,7 @@ def access_profile(user: User) -> dict:
         "home_title": title,
         "home_purpose": purpose,
         "scope": scope,
+        "region": region or "",
         "menu": menu(key, set(can)),
         "can": can,
         "version": access_version(user),

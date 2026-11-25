@@ -18,6 +18,7 @@ from app.models import (
     Diagnosis, DrawingDifference, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, User, utc_datetime, utcnow,
 )
 from app.schemas import DiagnosisCreate, FaultCreate, InterventionCreate, VisitCreate
+from app.services import escalation
 from app.services.catalogue import ACTION_TYPES, CAUSE_CATEGORIES, check_choice
 from app.services.drawings import find_drawing_id
 from app.services.access import (
@@ -174,6 +175,9 @@ def report_fault(db: Session, user: User, req: FaultCreate, fault_id: str | None
     add_event(db, fault.id, "FAULT_REPORTED", user.id, req.model_dump())
     if req.safety_hazard:
         add_event(db, fault.id, "SAFETY_HAZARD_REPORTED", user.id, {"note": "Reporter says someone or something is at risk."})
+    db.flush()
+    # Came back soon after a fix -> Chief Engineer; safety -> Senior Engineer (services/escalation.py).
+    escalation.on_report(db, fault)
     add_event(db, fault.id, "FAULT_ASSIGNED", user.id, {
         "assignment_id": initial_assignment.id,
         "assigned_section": assigned_section,

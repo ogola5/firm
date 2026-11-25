@@ -19,7 +19,7 @@ from app.models import MailOutbox, User, utcnow
 from app.routers.auth import issue_token
 from app.schemas import EmailOnly, EnrolmentDecision, EnrolmentStart, EnrolmentVerify, PasswordChange, PasswordResetComplete
 from app.services import accounts
-from app.services.access import ROLE_DEFINITIONS, SECTIONS, permission_descriptions, require_roles, role_definition, user_payload
+from app.services.access import REGIONAL_ROLES, REGIONS, ROLE_DEFINITIONS, SECTIONS, check_region, permission_descriptions, require_roles, role_definition, user_payload
 from app.services.audit import audit_user_change
 
 router = APIRouter()
@@ -67,8 +67,10 @@ def enrolment_options():
         "domains": settings.allowed_email_domains,
         "password_min_length": settings.password_min_length,
         "sections": list(SECTIONS),
+        "regions": list(REGIONS),
         "roles": [
-            {"code": code, "label": item["label"], "section_required": bool(item.get("section_required"))}
+            {"code": code, "label": item["label"], "section_required": bool(item.get("section_required")),
+             "region_required": code in REGIONAL_ROLES}
             for code, item in ROLE_DEFINITIONS.items() if code not in NOT_REQUESTABLE
         ],
         "demo_mailbox": settings.demo_mailbox,
@@ -85,6 +87,7 @@ def enrolment_start(req: EnrolmentStart, db: Session = Depends(db_dep)):
     if req.requested_role in NOT_REQUESTABLE:
         raise HTTPException(status_code=422, detail="This role is assigned by the System Administrator, not requested")
     section = check_role_and_section(req.requested_role, req.requested_section)
+    region = check_region(req.requested_role, section, req.requested_region)
 
     existing = accounts.find_by_email(db, email)
     if existing and existing.account_status != accounts.UNVERIFIED:
@@ -104,6 +107,7 @@ def enrolment_start(req: EnrolmentStart, db: Session = Depends(db_dep)):
     user.job_title = req.job_title.strip()[:80]
     user.requested_role = req.requested_role
     user.requested_section = section
+    user.requested_region = region
     if not existing:
         db.add(user)
     code = accounts.issue_code(db, email, accounts.VERIFY_EMAIL)
@@ -131,7 +135,8 @@ def enrolment_verify(req: EnrolmentVerify, db: Session = Depends(db_dep)):
     for admin in admins(db):
         accounts.send_mail(db, admin.email, f"Account request: {user.display_name}",
                            f"{user.display_name} ({email}, staff number {user.staff_number}) asks for access as "
-                           f"{requested}{' — ' + user.requested_section if user.requested_section else ''}.\n"
+                           f"{requested}{' — ' + user.requested_section if user.requested_section else ''}"
+                           f"{', ' + user.requested_region + ' region' if user.requested_region else ''}.\n"
                            "Review it under User management → Account requests.")
     audit_user_change(db, user.id, "ENROLMENT_SUBMITTED", user, {"email": email, "requested_role": user.requested_role,
                                                                 "requested_section": user.requested_section})
@@ -154,7 +159,8 @@ def enrolment_requests(user: User = Depends(current_user), db: Session = Depends
             "id": row.id, "email": row.email, "display_name": row.display_name, "staff_number": row.staff_number,
             "job_title": row.job_title, "requested_role": row.requested_role,
             "requested_role_label": ROLE_DEFINITIONS.get(row.requested_role, {}).get("label", row.requested_role),
-            "requested_section": row.requested_section, "account_status": row.account_status,
+            "requested_section": row.requested_section, "requested_region": row.requested_region or "",
+            "account_status": row.account_status,
             "submitted_at": iso(row.email_verified_at or row.created_at), "decided_at": iso(row.decided_at),
             "decided_by": deciders.get(row.decided_by_id or ""), "decision_note": row.decision_note,
             "warnings": [f"Staff number also used by {other}" for other in staff_numbers.get(row.staff_number, []) if other != row.email],
@@ -176,16 +182,17 @@ def enrolment_approve(user_id: str, req: EnrolmentDecision, user: User = Depends
     target = pending(db, user_id)
     role = req.role or target.requested_role
     section = check_role_and_section(role, req.section if req.role else (req.section or target.requested_section))
-    target.role, target.section = role, section
+    region = check_region(role, section, req.region or target.requested_region or "")
+    target.role, target.section, target.region = role, section, region
     target.account_status, target.active = accounts.ACTIVE, 1
     target.decided_by_id, target.decided_at, target.decision_note = user.id, utcnow(), req.reason.strip()
-    changed = role != target.requested_role or section != target.requested_section
+    changed = role != target.requested_role or section != target.requested_section or region != (target.requested_region or "")
     label = ROLE_DEFINITIONS[role]["label"]
     accounts.send_mail(db, target.email, "Your KPC Maintenance account is ready",
                        f"Hello {target.display_name},\n\nYour account has been approved as {label}"
-                       f"{' — ' + section if section else ''}."
+                       f"{' — ' + section if section else ''}{', ' + region + ' region' if region else ''}."
                        f"{' This differs from what you asked for.' if changed else ''}\nYou can now sign in with {target.email}.")
-    audit_user_change(db, user.id, "ENROLMENT_APPROVED", target, {"role": role, "section": section,
+    audit_user_change(db, user.id, "ENROLMENT_APPROVED", target, {"role": role, "section": section, "region": region,
                                                                   "requested_role": target.requested_role,
                                                                   "requested_section": target.requested_section})
     db.commit()

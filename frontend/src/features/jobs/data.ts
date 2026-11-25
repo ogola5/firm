@@ -15,6 +15,9 @@ export type Job = {
   severity: string;
   /** Reporter said someone or something is at risk: shown first and marked SAFETY. */
   safety_hazard?: boolean;
+  /** 0 with the Chief Technician, 1 with the regional Senior Engineer, 2 with the section Chief Engineer. */
+  escalation_level?: number;
+  escalation_guidance?: string;
   description?: string;
   status: string;
   reported_at: string | null;

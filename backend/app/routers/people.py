@@ -14,7 +14,7 @@ from app.deps import current_user
 from app.models import User, UserAudit, utcnow
 from app.services import accounts
 from app.schemas import UserAccessUpdate, UserCreate, UserStatusUpdate
-from app.services.access import ROLE_DEFINITIONS, SECTIONS, require_roles, role_definition, role_key, user_payload
+from app.services.access import ROLE_DEFINITIONS, SECTIONS, check_region, require_roles, role_definition, role_key, user_payload
 from app.services.audit import audit_user_change
 from app.services.people import contribution_rows
 
@@ -38,7 +38,7 @@ def list_users(user: User = Depends(current_user), db: Session = Depends(db_dep)
     return [
         {"id": item.id, "username": item.username, "email": item.email, "display_name": item.display_name,
          "role": role_key(item), "role_label": role_definition(item)["label"], "section": item.section,
-         "active": bool(item.active), "last_login_at": item.last_login_at.isoformat() if item.last_login_at else None}
+         "region": item.region or "", "active": bool(item.active), "last_login_at": item.last_login_at.isoformat() if item.last_login_at else None}
         for item in users
     ]
 
@@ -132,6 +132,7 @@ def create_user(req: UserCreate, user: User = Depends(current_user), db: Session
         raise HTTPException(status_code=422, detail="A valid maintenance section is required for this role")
     if not section_required and req.section and req.section not in SECTIONS:
         raise HTTPException(status_code=422, detail="Unknown maintenance section")
+    region = check_region(req.role, req.section, req.region)
     accounts.check_password(req.password, email, req.display_name)
     if accounts.find_by_email(db, email):
         raise HTTPException(status_code=409, detail="An account with this email already exists")
@@ -139,7 +140,7 @@ def create_user(req: UserCreate, user: User = Depends(current_user), db: Session
     created = User(
         id=str(uuid.uuid4()), email=email, username=email, display_name=" ".join(req.display_name.split()),
         staff_number=req.staff_number.strip().upper(), job_title=req.job_title.strip(),
-        role=req.role, section=req.section, active=1, account_status=accounts.ACTIVE,
+        role=req.role, section=req.section, region=region, active=1, account_status=accounts.ACTIVE,
         decided_by_id=user.id, decided_at=now, created_at=now, email_verified_at=None,
     )
     accounts.set_password(created, req.password)
@@ -148,7 +149,7 @@ def create_user(req: UserCreate, user: User = Depends(current_user), db: Session
                        f"Hello {created.display_name},\n\nThe System Administrator created an account for you as "
                        f"{ROLE_DEFINITIONS[req.role]['label']}{' — ' + req.section if req.section else ''}.\n"
                        "You will receive a temporary password separately. Change it from My account after you sign in.")
-    audit_user_change(db, user.id, "USER_CREATED", created, {"email": email, "role": created.role, "section": created.section})
+    audit_user_change(db, user.id, "USER_CREATED", created, {"email": email, "role": created.role, "section": created.section, "region": region})
     db.commit()
     return user_payload(created)
 
@@ -186,14 +187,16 @@ def update_user_access(user_id: str, req: UserAccessUpdate, user: User = Depends
     if section_required and req.section not in SECTIONS:
         raise HTTPException(status_code=422, detail="A valid maintenance section is required for this role")
     section = req.section if section_required or req.section in SECTIONS else ""
-    before = {"role": role_key(target), "section": target.section}
-    if before == {"role": req.role, "section": section}:
+    region = check_region(req.role, section, req.region or target.region or "")
+    before = {"role": role_key(target), "section": target.section, "region": target.region or ""}
+    after = {"role": req.role, "section": section, "region": region}
+    if before == after:
         return user_payload(target)
-    target.role, target.section = req.role, section
+    target.role, target.section, target.region = req.role, section, region
     accounts.send_mail(db, target.email, "Your KPC Maintenance access has changed",
                        f"Hello {target.display_name},\n\nYour access is now {ROLE_DEFINITIONS[req.role]['label']}"
-                       f"{' — ' + section if section else ''}. Sign in again to see your updated view.")
-    audit_user_change(db, user.id, "USER_ACCESS_CHANGED", target, {"before": before, "after": {"role": req.role, "section": section}})
+                       f"{' — ' + section if section else ''}{', ' + region + ' region' if region else ''}. Sign in again to see your updated view.")
+    audit_user_change(db, user.id, "USER_ACCESS_CHANGED", target, {"before": before, "after": after})
     db.commit()
     return user_payload(target)
 

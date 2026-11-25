@@ -6,6 +6,8 @@ export type AccessProfile = {
   home_title: string;
   home_purpose: string;
   scope: string;
+  /** Western, Nairobi or Coast for regional staff (ST to SE); empty otherwise. */
+  region?: string;
   menu: Array<{ key: string; label: string }>;
   can: string[];
   version: string;
@@ -20,6 +22,7 @@ export type User = {
   role: string;
   role_label: string;
   section: string;
+  region?: string | null;
   active: boolean;
   availability_status: "AVAILABLE" | "UNAVAILABLE";
   competencies: string[];

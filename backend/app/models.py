@@ -56,6 +56,9 @@ class User(Base):
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=True)
     # Set by HR: used to find knowledge at risk of leaving with the person.
     retirement_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Western, Nairobi or Coast for regional staff (ST/PT/CT/AE/E/SE); empty for CE and company-wide roles.
+    region: Mapped[str] = mapped_column(String, default="")
+    requested_region: Mapped[str] = mapped_column(String, default="")
 
 
 class PointRule(Base):
@@ -269,6 +272,8 @@ class Equipment(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     # Words people actually use for this asset ("t601 inlet mov"), searched with tag and name.
     aliases: Mapped[str] = mapped_column(Text, default="")
+    # From the pump station: Western, Nairobi or Coast.
+    region: Mapped[str] = mapped_column(String, default="")
 
 
 class Fault(Base):
@@ -303,6 +308,11 @@ class Fault(Base):
     # The reporter's answers to the follow-up questions (JSON).
     report_details: Mapped[str] = mapped_column(Text, default="{}")
     callback: Mapped[str] = mapped_column(String, default="")
+    # 0 with the Chief Technician, 1 with the regional Senior Engineer, 2 with the section Chief Engineer.
+    escalation_level: Mapped[int] = mapped_column(Integer, default=0)
+    escalated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    escalation_reason: Mapped[str] = mapped_column(Text, default="")
+    escalation_guidance: Mapped[str] = mapped_column(Text, default="")
     equipment = relationship("Equipment")
     reporter = relationship("User", foreign_keys=[reporter_id])
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])

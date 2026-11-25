@@ -35,7 +35,8 @@ export async function userId(request: APIRequestContext, username: string): Prom
 export async function equipmentIn(request: APIRequestContext, section: string): Promise<Row> {
   const token = await apiToken(request, "operations");
   const rows = await apiGet<Row[]>(request, token, "/api/v1/equipment");
-  return rows.find((row) => row.section === section && !String(row.tag).startsWith("UNCONFIRMED"))!;
+  // The seeded section teams (ct-<section>, st-<section>, ...) work in the Nairobi region.
+  return rows.find((row) => row.section === section && row.region === "Nairobi" && !String(row.tag).startsWith("UNCONFIRMED"))!;
 }
 
 async function activeAssignmentId(request: APIRequestContext, token: string, faultId: string): Promise<string> {

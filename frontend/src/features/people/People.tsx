@@ -18,6 +18,18 @@ import { errorMessage } from "../../lib/query";
 import { api } from "../../offline/api";
 
 const SECTIONS = ["Systems Automation", "Electrical", "Instrumentation", "Mechanical"];
+const REGIONS = ["Western", "Nairobi", "Coast"];
+// Staff who work in one region of their section (ST to SE); the Chief Engineer covers every region.
+const REGIONAL_ROLES = ["technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer"];
+
+function RegionSelect({ value, onChange, label = "Region" }: { value: string; onChange: (value: string) => void; label?: string }) {
+  return (
+    <NativeSelect aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="">Choose region…</option>
+      {REGIONS.map((item) => <option key={item}>{item}</option>)}
+    </NativeSelect>
+  );
+}
 
 export function PeopleSummary() {
   const { data } = useQuery({ queryKey: ["people", "summary"], queryFn: () => api<DataRow>("/api/v1/users/summary") });
@@ -99,18 +111,20 @@ function AppraisalEvidence() {
 
 type EnrolmentRequest = {
   id: string; email: string; display_name: string; staff_number: string; job_title: string;
-  requested_role: string; requested_role_label: string; requested_section: string; account_status: string;
+  requested_role: string; requested_role_label: string; requested_section: string; requested_region?: string; account_status: string;
   submitted_at: string | null; decided_at: string | null; decided_by: string | null; decision_note: string; warnings: string[];
 };
 
 function RequestRow({ request, roles, onDone }: { request: EnrolmentRequest; roles: DataRow[]; onDone: (message: string) => void }) {
   const [role, setRole] = useState(request.requested_role);
   const [section, setSection] = useState(request.requested_section);
+  const [region, setRegion] = useState(request.requested_region ?? "");
   const [reason, setReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const sectionRequired = Boolean(roles.find((item) => item.code === role)?.section_required);
+  const regionRequired = sectionRequired && REGIONAL_ROLES.includes(role);
 
   async function decide(action: "approve" | "reject") {
     setBusy(true);
@@ -118,7 +132,9 @@ function RequestRow({ request, roles, onDone }: { request: EnrolmentRequest; rol
     try {
       await api(`/api/v1/enrolment/requests/${request.id}/${action}`, {
         method: "POST",
-        body: JSON.stringify(action === "approve" ? { role, section: sectionRequired ? section : "" } : { reason }),
+        body: JSON.stringify(action === "approve"
+          ? { role, section: sectionRequired ? section : "", region: regionRequired ? region : "" }
+          : { reason }),
       });
       onDone(action === "approve" ? `Approved ${request.email}. They have been emailed and can sign in now.` : `Rejected ${request.email}. They have been told why.`);
     } catch (reason) {
@@ -134,7 +150,7 @@ function RequestRow({ request, roles, onDone }: { request: EnrolmentRequest; rol
         <div>
           <strong>{request.display_name}</strong> <span className="text-sm text-muted-foreground">· {request.email} · staff no. {request.staff_number}</span>
           <div className="text-sm text-muted-foreground">
-            Asks for: <span className="font-semibold text-foreground">{request.requested_role_label}{request.requested_section ? ` — ${request.requested_section}` : ""}</span>
+            Asks for: <span className="font-semibold text-foreground">{request.requested_role_label}{request.requested_section ? ` — ${request.requested_section}` : ""}{request.requested_region ? `, ${request.requested_region} region` : ""}</span>
             {request.job_title ? ` · "${request.job_title}"` : ""}
           </div>
         </div>
@@ -157,7 +173,10 @@ function RequestRow({ request, roles, onDone }: { request: EnrolmentRequest; rol
               </NativeSelect>
             </Field>
           )}
-          <Button disabled={busy || (sectionRequired && !section)} onClick={() => void decide("approve")}>Approve</Button>
+          {regionRequired && (
+            <Field label="Region" className="w-44"><RegionSelect value={region} onChange={setRegion} /></Field>
+          )}
+          <Button disabled={busy || (sectionRequired && !section) || (regionRequired && !region)} onClick={() => void decide("approve")}>Approve</Button>
           <Button variant="outline" disabled={busy} onClick={() => setRejecting(true)}>Reject…</Button>
         </div>
       ) : (
@@ -214,6 +233,7 @@ const accountSchema = z.object({
   staff_number: z.string().trim(),
   role: z.string().min(1, "Choose a role"),
   section: z.string(),
+  region: z.string(),
   password: newPassword,
 });
 type AccountValues = z.input<typeof accountSchema>;
@@ -221,10 +241,11 @@ type AccountValues = z.input<typeof accountSchema>;
 function CreateAccount({ roles, onCreated }: { roles: DataRow[]; onCreated: (message: string) => void }) {
   const { register, handleSubmit, watch, reset, formState: { errors, isSubmitting } } = useForm<AccountValues>({
     resolver: zodResolver(accountSchema),
-    defaultValues: { display_name: "", email: "", staff_number: "", role: "technician_st", section: "Electrical", password: "" },
+    defaultValues: { display_name: "", email: "", staff_number: "", role: "technician_st", section: "Electrical", region: "Nairobi", password: "" },
   });
   const [error, setError] = useState("");
   const sectionRequired = Boolean(roles.find((item) => item.code === watch("role"))?.section_required);
+  const regionRequired = sectionRequired && REGIONAL_ROLES.includes(watch("role"));
 
   async function submit(values: AccountValues) {
     const parsed = accountSchema.parse(values);
@@ -232,7 +253,7 @@ function CreateAccount({ roles, onCreated }: { roles: DataRow[]; onCreated: (mes
     try {
       const result = await api<DataRow>("/api/v1/users", {
         method: "POST",
-        body: JSON.stringify({ ...parsed, section: sectionRequired ? parsed.section : "" }),
+        body: JSON.stringify({ ...parsed, section: sectionRequired ? parsed.section : "", region: regionRequired ? parsed.region : "" }),
       });
       reset({ ...values, display_name: "", email: "", staff_number: "", password: "" });
       onCreated(`Created ${String(result.email)} as ${String(result.role_label)}. Give them the temporary password separately.`);
@@ -257,6 +278,9 @@ function CreateAccount({ roles, onCreated }: { roles: DataRow[]; onCreated: (mes
             {sectionRequired && (
               <Field label="Section"><NativeSelect {...register("section")}>{SECTIONS.map((item) => <option key={item}>{item}</option>)}</NativeSelect></Field>
             )}
+            {regionRequired && (
+              <Field label="Region"><NativeSelect {...register("region")}>{REGIONS.map((item) => <option key={item}>{item}</option>)}</NativeSelect></Field>
+            )}
             <Field label="Temporary password" hint={PASSWORD_HINT} error={errors.password?.message}><Input type="password" aria-invalid={Boolean(errors.password)} {...register("password")} /></Field>
           </div>
           {error && <Alert variant="destructive">{error}</Alert>}
@@ -272,19 +296,21 @@ function ChangeAccess({ person, roles, onDone }: { person: DataRow; roles: DataR
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState(String(person.role));
   const [section, setSection] = useState(String(person.section || ""));
+  const [region, setRegion] = useState(String(person.region || ""));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const sectionRequired = Boolean(roles.find((item) => item.code === role)?.section_required);
+  const regionRequired = sectionRequired && REGIONAL_ROLES.includes(role);
 
   async function save() {
     setBusy(true);
     setError("");
     try {
       const result = await api<DataRow>(`/api/v1/users/${String(person.id)}/access`, {
-        method: "PATCH", body: JSON.stringify({ role, section: sectionRequired ? section : "" }),
+        method: "PATCH", body: JSON.stringify({ role, section: sectionRequired ? section : "", region: regionRequired ? region : "" }),
       });
       setOpen(false);
-      onDone(`${String(person.email)} is now ${String(result.role_label)}${result.section ? ` — ${String(result.section)}` : ""}. They have been signed out and emailed.`);
+      onDone(`${String(person.email)} is now ${String(result.role_label)}${result.section ? ` — ${String(result.section)}` : ""}${result.region ? `, ${String(result.region)} region` : ""}. They have been signed out and emailed.`);
     } catch (reason) {
       setError(errorMessage(reason, "Access not changed."));
     } finally {
@@ -304,8 +330,9 @@ function ChangeAccess({ person, roles, onDone }: { person: DataRow; roles: DataR
           {SECTIONS.map((item) => <option key={item}>{item}</option>)}
         </NativeSelect>
       )}
+      {regionRequired && <RegionSelect label="New region" value={region} onChange={setRegion} />}
       <div className="flex gap-2">
-        <Button size="sm" disabled={busy || (sectionRequired && !section)} onClick={() => void save()}>Save</Button>
+        <Button size="sm" disabled={busy || (sectionRequired && !section) || (regionRequired && !region)} onClick={() => void save()}>Save</Button>
         <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
       </div>
       {error && <span className="text-xs font-semibold text-destructive">{error}</span>}
@@ -362,7 +389,7 @@ export function People({ user, compact = false }: { user: User; compact?: boolea
                   <TableCell className="font-bold">{String(person.display_name)}</TableCell>
                   <TableCell>{String(person.email ?? person.username)}</TableCell>
                   <TableCell>{String(person.role_label)}</TableCell>
-                  <TableCell>{String(person.section || "—")}</TableCell>
+                  <TableCell>{String(person.section || "—")}{person.region ? <span className="text-muted-foreground"> · {String(person.region)}</span> : null}</TableCell>
                   <TableCell><Badge variant={person.active ? "success" : "outline"}>{person.active ? "Active" : "Inactive"}</Badge></TableCell>
                   {isAdmin && <TableCell className="text-muted-foreground">{person.last_login_at ? spokenTime(String(person.last_login_at)) : "Never"}</TableCell>}
                   {isAdmin && (

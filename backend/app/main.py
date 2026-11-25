@@ -47,10 +47,11 @@ REPORT_CHECK_SECONDS = 600
 
 def _send_due_reports() -> int:
     from app.db import SessionLocal
-    from app.services import points
+    from app.services import escalation, points
     from app.services.reports import send_due
 
     with SessionLocal() as db:
+        escalation.run(db)  # 8 h not back in service -> SE; came back within 30 days -> CE
         points.sync(db)  # credit newly verified contributions
         return send_due(db)
 

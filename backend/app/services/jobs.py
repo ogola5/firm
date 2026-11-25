@@ -41,6 +41,8 @@ def _job(db: Session, fault: Fault, assignment: FaultAssignment | None, **extra)
         "operational_impact": fault.operational_impact,
         "severity": fault.severity,
         "safety_hazard": bool(fault.safety_hazard),
+        "escalation_level": fault.escalation_level or 0,
+        "escalation_guidance": fault.escalation_guidance or "",
         "description": fault.description,
         "status": fault.status,
         "reported_at": _iso(fault.created_at),

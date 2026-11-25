@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     report_send_hour: int = 7
     # Check for due reports in the background while the API runs (the CLI `send-reports` does the same).
     report_scheduler: bool = True
+    # Escalation: to the regional Senior Engineer when not back in service after this many hours;
+    # to the section Chief Engineer when the same equipment fails again within this many days of a fix.
+    se_after_hours: int = 8
+    ce_repeat_days: int = 30
     # Where links in emails point.
     app_url: str = "http://localhost:5173"
 

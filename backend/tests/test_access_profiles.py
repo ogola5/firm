@@ -84,7 +84,7 @@ def test_changing_someones_level_ends_their_session_and_changes_their_view():
     admin = {"Authorization": f"Bearer {sign_in('admin')['access_token']}"}
     email = f"promoted.{uuid.uuid4().hex[:6]}@kpc.co.ke"
     created = client.post("/api/v1/users", headers=admin, json={
-        "email": email, "display_name": "Brian Kiprop", "role": "technician_st", "section": "Electrical", "password": "Valves2026x",
+        "email": email, "display_name": "Brian Kiprop", "role": "technician_st", "section": "Electrical", "region": "Nairobi", "password": "Valves2026x",
     }).json()
     first = client.post("/api/v1/auth/login", json={"email": email, "password": "Valves2026x"}).json()
     old = {"Authorization": f"Bearer {first['access_token']}"}

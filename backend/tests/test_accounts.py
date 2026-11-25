@@ -35,7 +35,7 @@ def latest_code(email: str) -> str:
 def enrol(email: str, role="technician_st", section="Electrical") -> None:
     started = client.post("/api/v1/enrolment/start", json={
         "email": email, "display_name": "Jane Wanjiru", "staff_number": "KPC-10234",
-        "requested_role": role, "requested_section": section,
+        "requested_role": role, "requested_section": section, "requested_region": "Coast",
     })
     assert started.status_code == 202, started.text
     verified = client.post("/api/v1/enrolment/verify", json={"email": email, "code": latest_code(email), "password": GOOD_PASSWORD})

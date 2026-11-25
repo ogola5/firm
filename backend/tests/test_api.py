@@ -141,7 +141,7 @@ def test_descriptive_asset_search_and_unknown_asset_confirmation():
     )
     assert premature_work.status_code == 409
 
-    candidate = candidates[0]
+    candidate = next(item for item in candidates if item["region"] == "Nairobi")
     uncertain_candidate_report = client.post("/api/v1/faults", headers=operations, json={
         "equipment_id": candidate["id"],
         "equipment_confirmed": False,
@@ -201,7 +201,7 @@ def test_chief_controls_section_allocation_and_unavailable_technicians():
     operations = auth_headers(login("operations"))
     asset = next(
         item for item in client.get("/api/v1/equipment", headers=operations).json()
-        if item["section"] == "Electrical"
+        if item.get("region") in ("Nairobi", "") and item["section"] == "Electrical"
     )
     report = client.post("/api/v1/faults", headers=operations, json={
         "equipment_id": asset["id"],
@@ -261,7 +261,7 @@ def test_chief_can_return_and_then_approve_an_escalation():
     operations = auth_headers(login("operations"))
     asset = next(
         item for item in client.get("/api/v1/equipment", headers=operations).json()
-        if item["section"] == "Electrical"
+        if item.get("region") in ("Nairobi", "") and item["section"] == "Electrical"
     )
     report = client.post("/api/v1/faults", headers=operations, json={
         "equipment_id": asset["id"],
@@ -313,7 +313,7 @@ def test_triage_and_workflow():
     chief = auth_headers(login("ct-electrical"))
     faults = client.get("/api/v1/faults", headers=chief).json()
     equipment = client.get("/api/v1/equipment", headers=chief).json()
-    electrical_equipment = {item["id"] for item in equipment if item["section"] == "Electrical"}
+    electrical_equipment = {item["id"] for item in equipment if item.get("region") in ("Nairobi", "") and item["section"] == "Electrical"}
     fault_id = next(
         item["id"] for item in faults
         if item["status"] not in ("RESTORED", "CLOSED")
@@ -429,6 +429,7 @@ def test_section_roles_are_scoped_and_admin_manages_users():
         "display_name": "Synthetic Test Engineer",
         "role": "assistant_engineer",
         "section": "Instrumentation",
+        "region": "Western",
         "password": "prototype123",
     })
     assert created.status_code == 201
@@ -449,7 +450,7 @@ def test_section_roles_are_scoped_and_admin_manages_users():
 def test_seniority_grants_progressively_higher_fault_actions():
     operations = auth_headers(login("operations"))
     electrical_assets = client.get("/api/v1/equipment", headers=operations).json()
-    asset = next(item for item in electrical_assets if item["section"] == "Electrical")
+    asset = next(item for item in electrical_assets if item.get("region") in ("Nairobi", "") and item["section"] == "Electrical")
     reported = client.post("/api/v1/faults", headers=operations, json={
         "equipment_id": asset["id"],
         "category": "Electrical",
@@ -493,7 +494,7 @@ def test_seniority_grants_progressively_higher_fault_actions():
 def test_investigation_review_revision_reuse_and_appraisal_cycle():
     operations = auth_headers(login("operations"))
     equipment = client.get("/api/v1/equipment", headers=operations).json()
-    asset = next(item for item in equipment if item["section"] == "Electrical")
+    asset = next(item for item in equipment if item.get("region") in ("Nairobi", "") and item["section"] == "Electrical")
     report = client.post("/api/v1/faults", headers=operations, json={
         "equipment_id": asset["id"],
         "category": "Electrical",
@@ -681,7 +682,7 @@ def test_sa_to_electrical_to_mechanical_handoffs_operator_confirmation_and_evide
     operations = auth_headers(login("operations"))
     electrical_asset = next(
         item for item in client.get("/api/v1/equipment", headers=operations).json()
-        if item["section"] == "Electrical"
+        if item.get("region") in ("Nairobi", "") and item["section"] == "Electrical"
     )
     reported = client.post("/api/v1/faults", headers=operations, json={
         "equipment_id": electrical_asset["id"],
@@ -885,7 +886,7 @@ def test_repeat_fault_ranking_recognition_and_sap_status():
     operations = auth_headers(login("operations"))
     electrical_asset = next(
         item for item in client.get("/api/v1/equipment", headers=operations).json()
-        if item["section"] == "Electrical"
+        if item.get("region") in ("Nairobi", "") and item["section"] == "Electrical"
     )
     first = client.post("/api/v1/faults", headers=operations, json={
         "equipment_id": electrical_asset["id"],

@@ -11,9 +11,10 @@ from app.db import db_dep
 from app.deps import current_user
 from app.models import Diagnosis, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, KnowledgeEntry, KnowledgeReuse, KnowledgeReuseOutcome, ProcedureReview, ProcedureUpdate, User, utc_datetime, utcnow
 from app.schemas import FaultCreate
-from app.services.access import ACTIVE_ASSIGNMENT_STATUSES, current_assignment, require_fault_scope, require_roles, role_key
+from pydantic import BaseModel, Field
+from app.services.access import ACTIVE_ASSIGNMENT_STATUSES, current_assignment, region_filter, require_fault_scope, require_roles, role_key
 from app.services.procedures import procedure_update_payload
-from app.services import fault_operations
+from app.services import escalation, fault_operations
 from app.models import ExpertSession
 from app.services.analytics import watchlist
 from app.services.analytics.facts import load_facts
@@ -26,6 +27,72 @@ def name_of(db: Session, user_id: str | None) -> str:
     return person.display_name if person else ""
 
 router = APIRouter()
+
+
+def escalation_payload(fault: Fault) -> dict:
+    return {
+        "escalation_level": fault.escalation_level or 0,
+        "escalated_to": escalation.LEVELS[fault.escalation_level] if fault.escalation_level else "",
+        "escalated_at": utc_datetime(fault.escalated_at).isoformat() if fault.escalated_at else None,
+        "escalation_reason": fault.escalation_reason or "",
+        "escalation_guidance": fault.escalation_guidance or "",
+    }
+
+
+class EscalateRequest(BaseModel):
+    to: str = Field(pattern="^(SE|CE)$")
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+class GuidanceRequest(BaseModel):
+    note: str = Field(min_length=5, max_length=2000)
+
+
+def _fault_in_scope(db: Session, user: User, fault_id: str) -> Fault:
+    fault = db.get(Fault, fault_id)
+    if not fault:
+        raise HTTPException(status_code=404, detail="Fault not found")
+    require_fault_scope(user, fault)
+    return fault
+
+
+@router.post("/api/v1/faults/{fault_id}/escalate")
+def escalate_fault(fault_id: str, req: EscalateRequest, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """CT asks the regional Senior Engineer; SE takes it to the section Chief Engineer."""
+    fault = _fault_in_scope(db, user, fault_id)
+    escalation.request_escalation(db, user, fault, req.to, req.reason)
+    db.commit()
+    return {**escalation_payload(fault), "escalation_actions": escalation.allowed_actions(user, fault)}
+
+
+@router.post("/api/v1/faults/{fault_id}/escalation-guidance")
+def escalation_guidance(fault_id: str, req: GuidanceRequest, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    fault = _fault_in_scope(db, user, fault_id)
+    escalation.add_guidance(db, user, fault, req.note)
+    db.commit()
+    return escalation_payload(fault)
+
+
+@router.get("/api/v1/escalations")
+def escalation_queue(user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """Open faults escalated to you: SE (section and region), CE (persisting ones in the section), managers (all)."""
+    rows = []
+    for fault in escalation.queue(db, user):
+        assignment = current_assignment(fault)
+        rows.append({
+            "id": fault.id, "reference": fault.reference,
+            "equipment_tag": fault.equipment.tag if fault.equipment_confirmed and fault.equipment else (fault.reported_equipment_text or "Asset not identified"),
+            "equipment_name": fault.equipment.name if fault.equipment_confirmed and fault.equipment else "",
+            "region": escalation.fault_region(fault), "section": escalation.responsible_section(fault),
+            "symptom": fault.symptom, "severity": fault.severity, "status": fault.status,
+            "safety_hazard": bool(fault.safety_hazard),
+            "assigned_user_name": assignment.assigned_user.display_name if assignment and assignment.assigned_user else "",
+            "hours_open": round((utcnow() - utc_datetime(fault.created_at)).total_seconds() / 3600, 1),
+            **escalation_payload(fault),
+            "escalation_actions": escalation.allowed_actions(user, fault),
+            "created_at": fault.created_at.isoformat(),
+        })
+    return {"reasons_for_ce": escalation.CE_REASONS, "faults": rows}
 
 
 @router.post("/api/v1/faults")
@@ -63,6 +130,9 @@ def fault_list(
             | (Equipment.section == user.section)
             | Fault.id.in_(select(FaultAssignment.fault_id).where(FaultAssignment.section == user.section))
         )
+    in_region = region_filter(user)
+    if in_region is not None:
+        query = query.where(in_region)
     if queue in ("mine", "section_open"):
         query = query.where(Fault.status.notin_(("RESTORED", "CLOSED")))
         if queue == "mine":
@@ -142,6 +212,7 @@ def fault_list(
                 max(0, int((utc_datetime(assignment.completed_at or utcnow()) - utc_datetime(assignment.created_at)).total_seconds() / 60))
                 if assignment else None
             ),
+            **escalation_payload(f),
             "created_at": f.created_at.isoformat(),
         })
     return result
@@ -172,6 +243,8 @@ def fault_detail(fault_id: str, user: User = Depends(current_user), db: Session 
         "callback": f.callback,
         "closure_remarks": f.closure_remarks,
         "active_assignment_id": current_assignment(f).id if current_assignment(f) else None,
+        **escalation_payload(f),
+        "escalation_actions": escalation.allowed_actions(user, f),
         "created_at": f.created_at.isoformat(),
     }
 
@@ -385,6 +458,9 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             "reported_on_behalf_of": fault.raised_by_text,
             "closure_remarks": fault.closure_remarks,
             "suggested_section": equipment.section if fault.equipment_confirmed and equipment else "Systems Automation",
+            **escalation_payload(fault),
+            "escalation_actions": escalation.allowed_actions(user, fault),
+            "region": escalation.fault_region(fault),
             "created_at": fault.created_at.isoformat(),
         },
         "assignments": [{
