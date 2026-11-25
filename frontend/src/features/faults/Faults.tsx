@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { History, Plus, Search } from "lucide-react";
+import { ChevronLeft, History, Plus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { type User } from "../../auth";
@@ -14,6 +14,7 @@ import { db } from "../../db";
 import { useDebounced } from "../../lib/hooks";
 import { withOfflineFallback } from "../../lib/query";
 import { type DataRow } from "../../lib/types";
+import { useIsPhone } from "../../lib/useIsPhone";
 import { cn } from "../../lib/utils";
 import { api } from "../../offline/api";
 import { cacheFaults } from "../../offline/cache";
@@ -67,13 +68,31 @@ export function Faults({ user }: { user: User }) {
   const faults = history.data?.data ?? [];
   const paging = usePagination(faults, 15, `${scope}|${debouncedSearch}`);
 
-  // Open the first breakdown when none is selected yet.
+  const phone = useIsPhone();
+  // Large screens: open the first breakdown beside the list. Phones show one thing at a time instead.
   useEffect(() => {
-    if (mode === "history" && !selectedId && faults.length) select(String(faults[0].id), true);
-  }, [mode, selectedId, faults]);
+    if (!phone && mode === "history" && !selectedId && faults.length) select(String(faults[0].id), true);
+  }, [mode, selectedId, faults, phone]);
 
   function select(faultId: string, replace = false) {
     setSearchParams({ mode: "history", ...(scope ? { scope } : {}), fault: faultId }, { replace });
+    if (phone) window.scrollTo({ top: 0 });
+  }
+
+  function backToList() {
+    setSearchParams({ mode: "history", ...(scope ? { scope } : {}) });
+  }
+
+  // Phones: an opened breakdown takes the whole screen, with a way back to the list.
+  if (phone && mode === "history" && selectedId) {
+    return (
+      <Page>
+        <button type="button" onClick={backToList} className="mb-1 flex min-h-11 items-center gap-1 text-sm font-bold text-primary">
+          <ChevronLeft className="size-5" /> Back to list
+        </button>
+        <FaultDetail key={selectedId} user={user} faultId={selectedId} onRefresh={() => queryClient.invalidateQueries({ queryKey: ["faults"] })} />
+      </Page>
+    );
   }
 
   // The form shows its own confirmation (with "Report another"); just refresh lists.
@@ -98,7 +117,7 @@ export function Faults({ user }: { user: User }) {
             onClick={() => { setMessage(""); setSearchParams({ mode: "report" }); }}
             className={cn("flex min-h-11 items-center gap-2 border-b-[3px] px-3 font-extrabold", mode === "report" ? "border-ring text-foreground" : "border-transparent text-muted-foreground")}
           >
-            <Plus className="size-4" /> Report a breakdown
+            <Plus className="size-4" /> <span className="md:hidden">Report</span><span className="hidden md:inline">Report a breakdown</span>
           </button>
         )}
         <button
@@ -107,7 +126,7 @@ export function Faults({ user }: { user: User }) {
           onClick={() => setSearchParams({ mode: "history" })}
           className={cn("flex min-h-11 items-center gap-2 border-b-[3px] px-3 font-extrabold", mode === "history" ? "border-ring text-foreground" : "border-transparent text-muted-foreground")}
         >
-          <History className="size-4" /> Find previous work
+          <History className="size-4" /> <span className="md:hidden">History</span><span className="hidden md:inline">Find previous work</span>
         </button>
       </div>
 
@@ -138,8 +157,30 @@ export function Faults({ user }: { user: User }) {
           <Alert variant="warning" className="mb-3">Offline: showing breakdowns cached on this device. Investigations opened before going offline are available.</Alert>
         )}
         {history.isError && <Alert variant="destructive" className="mb-3">Could not load breakdowns. Reconnect and try again.</Alert>}
-        <p className="text-sm text-muted-foreground">Select a breakdown to review the reported problem, investigation history, prior fixes and unsuccessful attempts.</p>
-        <Card>
+        <p className="text-sm text-muted-foreground">{phone ? "Tap a breakdown to see what was found and what was tried." : "Select a breakdown to review the reported problem, investigation history, prior fixes and unsuccessful attempts."}</p>
+        {phone ? (
+          <div className="grid gap-2">
+            {paging.visible.map((fault) => (
+              <button
+                key={String(fault.id)}
+                type="button"
+                onClick={() => select(String(fault.id))}
+                className="grid min-h-16 gap-1 rounded-xl border border-border bg-card p-3 text-left active:bg-muted"
+              >
+                <span className="flex items-start justify-between gap-2">
+                  <strong className="min-w-0 truncate">{String(fault.equipment_tag || "Asset not identified")}</strong>
+                  <Badge variant={statusVariant(String(fault.status))} className="shrink-0">{String(fault.status).replace(/_/g, " ")}</Badge>
+                </span>
+                <span className="text-sm">{String(fault.symptom)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {String(fault.reference)} · {String(fault.assigned_section || "Unassigned")}{fault.reporter_name ? ` · ${String(fault.reporter_name)}` : ""}
+                </span>
+                {fault.equipment_confirmed === false && <span className="text-xs font-semibold text-warning">Needs asset confirmation</span>}
+              </button>
+            ))}
+            <Pagination {...paging} />
+          </div>
+        ) : <Card>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -176,9 +217,9 @@ export function Faults({ user }: { user: User }) {
             </Table>
             <Pagination {...paging} />
           </CardContent>
-        </Card>
+        </Card>}
         {!history.isLoading && !faults.length && <div className="mt-3"><EmptyState>No breakdowns match this search.</EmptyState></div>}
-        {selectedId && <FaultDetail key={selectedId} user={user} faultId={selectedId} onRefresh={refresh} />}
+        {selectedId && !phone && <FaultDetail key={selectedId} user={user} faultId={selectedId} onRefresh={refresh} />}
       </>}
     </Page>
   );

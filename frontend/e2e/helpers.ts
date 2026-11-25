@@ -96,16 +96,23 @@ export function cardWithHeading(page: Page, heading: string) {
 export async function signIn(page: Page, username: string) {
   await page.goto("/");
   // Switching user: sign the current one out first (offline data on the device is kept).
-  const logout = page.getByRole("button", { name: "Log out" });
   const emailField = page.getByLabel("KPC email");
-  await expect(emailField.or(logout)).toBeVisible();
-  if (await logout.isVisible()) await logout.click();
+  const signedIn = page.getByRole("button", { name: /Sync now/ });
+  await expect(emailField.or(signedIn)).toBeVisible();
+  if (await signedIn.isVisible()) await signOut(page);
   await expect(emailField).toBeVisible();
   // Typed, like a person would (the demonstration list needs the server; offline it never arrives).
   await emailField.fill(demoEmail(username));
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+  await expect(signedIn).toBeVisible();
+}
+
+/** Log out from the side menu (on a phone, open the menu first). */
+export async function signOut(page: Page) {
+  const logout = page.getByRole("button", { name: "Log out" });
+  if (!(await logout.isVisible())) await page.getByRole("button", { name: /Open menu|More/ }).first().click();
+  await logout.click();
 }
 
 /** Switches the demonstration network simulator (persists across reloads, like a real outage). */

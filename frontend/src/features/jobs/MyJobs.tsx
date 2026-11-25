@@ -53,7 +53,7 @@ function PrintCardLink({ faultId }: { faultId: string }) {
 }
 
 /** A technician's desk: what to write up, what is assigned, what is waiting on others. */
-export function MyJobs({ user, before }: { user: User; before?: ReactNode }) {
+export function MyJobs({ user, before, after }: { user: User; before?: ReactNode; after?: ReactNode }) {
   const queryClient = useQueryClient();
   const jobsQuery = useMyJobs(user);
   const jobs = jobsQuery.data?.data ?? EMPTY_JOBS;
@@ -161,6 +161,7 @@ export function MyJobs({ user, before }: { user: User; before?: ReactNode }) {
             </Card>
           </Section>
         )}
+        {after}
       </div>
     </Page>
   );

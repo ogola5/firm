@@ -10,7 +10,7 @@ export function PageHeader({
       <div className="min-w-0">
         {eyebrow && <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">{eyebrow}</p>}
         <h2 className="mb-1 mt-1">{title}</h2>
-        {description && <p className="m-0 max-w-3xl text-muted-foreground">{description}</p>}
+        {description && <p className="m-0 max-w-3xl text-sm text-muted-foreground md:text-base">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -18,7 +18,7 @@ export function PageHeader({
 }
 
 export function Page({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
-  return <section className={cn("mx-auto w-full max-w-[1400px] p-4 md:p-7", className)} {...props} />;
+  return <section className={cn("mx-auto w-full max-w-[1400px] px-3 py-4 sm:px-4 md:p-7", className)} {...props} />;
 }
 
 export function Stat({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {

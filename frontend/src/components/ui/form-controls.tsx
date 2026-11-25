@@ -1,8 +1,9 @@
 import * as React from "react";
 import { cn } from "../../lib/utils";
 
+// 16 px text on phones (iOS zooms the page into any smaller field); taller targets for thumbs.
 const control =
-  "flex min-h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm font-normal text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive";
+  "flex min-h-11 w-full rounded-md border border-input bg-white px-3 py-2 text-base font-normal md:min-h-10 md:text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive";
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => <input ref={ref} className={cn(control, className)} {...props} />,

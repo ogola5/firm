@@ -308,9 +308,14 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
             <Textarea id="report-details" value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Paste the SCADA alarm text, or what you saw on the site walk" />
             <div className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-dashed border-input bg-muted/60 px-4 py-3 text-[15px]">
               <ImagePlus className="size-5 text-muted-foreground" aria-hidden />
-              <span>Press <kbd className="rounded border border-input bg-white px-1.5 text-sm">Ctrl</kbd> + <kbd className="rounded border border-input bg-white px-1.5 text-sm">V</kbd> here to paste a SCADA screenshot, or</span>
-              <label className="cursor-pointer font-bold text-ring underline">
-                choose a file
+              {/* Desktop: paste a SCADA screenshot. Phones: take a photo or pick from the gallery. */}
+              <span className="hidden md:inline">Press <kbd className="rounded border border-input bg-white px-1.5 text-sm">Ctrl</kbd> + <kbd className="rounded border border-input bg-white px-1.5 text-sm">V</kbd> here to paste a SCADA screenshot, or</span>
+              <label className="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-input bg-white px-3 font-bold text-ring md:hidden">
+                Take a photo
+                <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(event) => addFiles(Array.from(event.target.files || []))} />
+              </label>
+              <label className="inline-flex min-h-11 cursor-pointer items-center font-bold text-ring underline md:min-h-0">
+                <span className="md:hidden">or choose a file</span><span className="hidden md:inline">choose a file</span>
                 <input type="file" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.csv,.txt,.json,.log" className="sr-only" onChange={(event) => addFiles(Array.from(event.target.files || []))} />
               </label>
             </div>
