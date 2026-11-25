@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-25 — Company-email accounts
+
+Everyone signs in with their KPC email (`@kpc.co.ke`); what they see follows from the role and section approved for that address. See [ACCOUNTS.md](ACCOUNTS.md).
+
+- **Enrolment:** the person enters their KPC email, name, staff number and requested job and section. They confirm the address with an emailed 6-digit code and choose a password. The System Administrator then approves (setting the role and section) or rejects with a reason.
+- **Sign-in** by email. Unknown addresses and wrong passwords get the same answer. The account locks for 15 minutes after 5 failures. A clear reason is given when the account is waiting for approval, rejected or disabled.
+- **Forgot password** by emailed code. Changing or resetting a password ends all other sessions.
+- **My account** for everyone: details, who approved them, last sign-in, what they can do and see in plain words, change password, sign out.
+- **User management:** an *Account requests* queue (approve with a corrected role or section, reject with a reason, duplicate staff-number warning); direct account creation now uses a KPC email; last sign-in shown.
+- **Demo mailbox** (`/mailbox`): the prototype never sends real email. Turn it off with `DEMO_MAILBOX=false`.
+- Seeded accounts are now `demo.<name>@kpc.co.ke` (same password). Migration `0004`.
+
 ## 2026-11-25 — Analytics, trends and intelligence
 
 One definition per figure ([METRICS.md](METRICS.md)), computed in one place (`backend/app/services/analytics/`), and shown with the number of faults behind it.

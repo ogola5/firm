@@ -23,6 +23,10 @@ async function errorDetail(response: Response): Promise<string> {
   try {
     const parsed = JSON.parse(text) as { detail?: unknown };
     if (typeof parsed.detail === "string") return parsed.detail;
+    // e.g. a blocked sign-in: { message, account_status }
+    if (parsed.detail && typeof parsed.detail === "object" && typeof (parsed.detail as { message?: unknown }).message === "string") {
+      return (parsed.detail as { message: string }).message;
+    }
     if (Array.isArray(parsed.detail)) {
       return parsed.detail.map((item) => (item as { msg?: string }).msg ?? String(item)).join("; ");
     }

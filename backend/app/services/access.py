@@ -31,6 +31,36 @@ ROLE_DEFINITIONS = {
 }
 
 
+# What each permission lets a person do, in the words shown on "My account".
+PERMISSION_TEXT = {
+    "faults.read": "See faults and their history within your scope",
+    "faults.report": "Report a fault",
+    "faults.confirm": "Confirm that equipment is working again after a repair",
+    "faults.triage": "Sort new faults and send them to the right section",
+    "faults.triage.section": "Pass faults on between sections",
+    "faults.update": "Record visits, findings and what was tried",
+    "faults.restore": "Mark equipment as back in service",
+    "faults.close": "Close finished faults",
+    "faults.assign": "Give jobs to technicians in your section",
+    "faults.review": "Sign off your section's completed work",
+    "team.read": "See your section's team and who is available",
+    "team.manage": "Change your team members' availability",
+    "equipment.read": "Look up equipment",
+    "knowledge.read": "Read approved procedures",
+    "knowledge.contribute": "Draft procedures from your work",
+    "knowledge.approve": "Approve procedures for publication",
+    "analytics.detail": "See detailed analytics and trends",
+    "analytics.executive": "See the headline figures and trends",
+    "people.read": "See the staff directory (names, roles, sections)",
+    "people.manage": "Approve account requests and manage accounts",
+    "people.summary": "See workforce counts",
+}
+
+
+def permission_descriptions(permissions: list[str]) -> list[str]:
+    return [PERMISSION_TEXT.get(item, item) for item in permissions]
+
+
 LEGACY_ROLE_ALIASES = {
     "Operations": "operations",
     "Systems Automation": "systems_automation",
@@ -109,6 +139,7 @@ def user_payload(user: User) -> dict:
     return {
         "id": user.id,
         "username": user.username,
+        "email": user.email,
         "display_name": user.display_name,
         "role": role_key(user),
         "role_label": role_definition(user)["label"],

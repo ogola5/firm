@@ -63,8 +63,8 @@ Technicians and engineers may digitize or submit legacy instructions. New legacy
 
 ## Account administration
 
-Only a System Administrator can create accounts, assign roles/sections, or activate/deactivate accounts. These actions are recorded in an administrator-only audit log. HR has a read-only people directory. The General Manager sees counts only. Passwords are hashed; the directory API never returns password hashes.
+Accounts are tied to a KPC email (`@kpc.co.ke`). Staff enrol themselves and confirm their address, then *request* a role and section. Only a System Administrator can approve that request (granting the role and section, which may differ from the request), reject it with a reason, create accounts directly, assign roles/sections, or activate/deactivate accounts. Everyone has **My account**, which shows their own details, what they can do and see, and lets them change their password. See [ACCOUNTS.md](ACCOUNTS.md). These actions are recorded in an administrator-only audit log. HR has a read-only people directory. The General Manager sees counts only. Passwords are hashed; the directory API never returns password hashes.
 
 ## Demo account naming
 
-The login selector loads synthetic accounts from `/api/v1/auth/demo-accounts`. Section account usernames follow `<level>-<section>`, for example `st-electrical`, `chief-engineer-mechanical` or `ct-systems-automation`. All seeded demo accounts use `demo123`. Do not reuse these credentials.
+The sign-in page lists synthetic accounts from `/api/v1/auth/demo-accounts`. Their emails are `demo.<name>@kpc.co.ke`. Section accounts follow `<level>-<section>`, for example `demo.st-electrical@kpc.co.ke`, `demo.chief-engineer-mechanical@kpc.co.ke` or `demo.ct-systems-automation@kpc.co.ke`. All seeded demo accounts use `demo123`; enrolled accounts follow the real password rules. Do not reuse these credentials.

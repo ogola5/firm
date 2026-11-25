@@ -1,6 +1,8 @@
 export type User = {
   id: string;
   username: string;
+  /** Company email: the sign-in identity. */
+  email: string;
   display_name: string;
   role: string;
   role_label: string;
@@ -66,6 +68,7 @@ export function normalizeUser(value: unknown): User | null {
   return {
     id: raw.id,
     username: raw.username,
+    email: typeof raw.email === "string" ? raw.email : "",
     display_name: typeof raw.display_name === "string" ? raw.display_name : raw.username,
     role,
     role_label: typeof raw.role_label === "string" ? raw.role_label : labels[role] ?? storedRole,

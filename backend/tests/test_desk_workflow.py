@@ -10,7 +10,7 @@ client = TestClient(app)
 
 
 def headers(username: str) -> dict:
-    response = client.post("/api/v1/auth/login", json={"username": username, "password": "demo123"})
+    response = client.post("/api/v1/auth/login", json={"email": f"demo.{username}@kpc.co.ke", "password": "demo123"})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 

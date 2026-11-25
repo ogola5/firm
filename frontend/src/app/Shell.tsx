@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, BookOpen, ClipboardList, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, Wrench, X,
+  AlertTriangle, BookOpen, ClipboardList, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Wrench, X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
@@ -23,6 +23,7 @@ const ReportPage = lazy(() => import("../features/faults/ReportPage").then((m) =
 const WriteUpVisit = lazy(() => import("../features/jobs/WriteUpVisit").then((m) => ({ default: m.WriteUpVisit })));
 const JobCard = lazy(() => import("../features/jobs/JobCard").then((m) => ({ default: m.JobCard })));
 const ProcedureDraft = lazy(() => import("../features/jobs/ProcedureDraft").then((m) => ({ default: m.ProcedureDraft })));
+const MyAccount = lazy(() => import("../features/account/MyAccount").then((m) => ({ default: m.MyAccount })));
 const Analytics = lazy(() => import("../features/analytics/Analytics").then((m) => ({ default: m.Analytics })));
 
 // Mirrors backend/app/routers/insights.py: org-wide, section leads, and the executive (headline and trends only).
@@ -129,13 +130,15 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
           {canSeeMaintenance && canReviewProcedures && <NavItem to="/approvals" icon={<ShieldCheck />}>Procedure review</NavItem>}
           {canSeePeople && <NavItem to="/people" icon={<ShieldCheck />}>{canManageUsers ? "User management" : "People directory"}</NavItem>}
           {canSeeMaintenance && <NavItem to="/sync" icon={<CloudOff />}>Sync{conflicts ? ` (${conflicts})` : ""}</NavItem>}
+          <NavItem to="/account" icon={<UserCircle />}>My account</NavItem>
         </nav>
         <div className="mt-auto grid grid-cols-[10px_1fr_32px] items-center gap-2 border-t border-white/10 p-3 text-xs">
           <span className={cn("size-2 rounded-full", online ? "bg-emerald-400" : "bg-amber-400")} aria-hidden />
-          <div className="grid min-w-0">
+          <NavLink to="/account" className="grid min-w-0 rounded-md text-sidebar-foreground no-underline hover:bg-white/10" title="My account">
             <strong className="truncate">{user.display_name}</strong>
             <span className="truncate text-sidebar-foreground/70">{user.role_label}{user.section ? ` · ${user.section}` : ""}</span>
-          </div>
+            {user.email && <span className="truncate text-sidebar-foreground/70">{user.email}</span>}
+          </NavLink>
           <button className="grid size-8 place-items-center rounded-md hover:bg-white/10" onClick={onLogout} aria-label="Log out"><LogOut className="size-4" /></button>
         </div>
       </aside>
@@ -159,6 +162,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
         <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/dashboard" element={<Dashboard user={user} />} />
+            <Route path="/account" element={<MyAccount user={user} onSignOut={onLogout} />} />
             {canSeeAnalytics && <Route path="/analytics" element={<Analytics user={user} />} />}
             {canSeeMaintenance && permissions.includes("equipment.read") && <Route path="/equipment" element={<Equipment user={user} />} />}
             {canSeeMaintenance && permissions.includes("faults.read") && <Route path="/faults" element={<Faults user={user} />} />}

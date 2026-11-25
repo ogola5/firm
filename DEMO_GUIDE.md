@@ -2,7 +2,9 @@
 
 All data and identities are illustrative.
 
-| Role | Username | Password |
+Sign in with a KPC email address. Each seeded account below is `demo.<name>@kpc.co.ke`: for example, `operations` is `demo.operations@kpc.co.ke`. You can also pick one from the **Demonstration account** list on the sign-in page. No email is ever sent to these addresses. In this guide, "sign in as `operations`" means that account.
+
+| Role | Name (email `demo.<name>@kpc.co.ke`) | Password |
 |---|---|---|
 | Operations | operations | demo123 |
 | Systems Automation | automation | demo123 |
@@ -23,6 +25,16 @@ All data and identities are illustrative.
 Technician and engineer accounts are seeded for each section: Systems Automation, Electrical, Instrumentation and Mechanical. In the login selector, select the section and level. The usernames above are Electrical examples.
 
 See [ROLE_ACCESS_MATRIX.md](ROLE_ACCESS_MATRIX.md) for role scope and visibility rules.
+
+## New staff: enrol with a KPC email
+
+1. On the sign-in page, choose **Create an account**. Enter a KPC address (for example `amina.otieno@kpc.co.ke`), your full name, staff number, and the job and section you need. An address outside `@kpc.co.ke` is refused.
+2. Open the **demo mailbox** (linked on the page). The prototype sends no real email, so the 6-digit code appears there. Enter it and choose a password.
+3. Signing in now says the account is **waiting for approval**.
+4. Sign in as `admin` and open **User management → Account requests**. Check the person, confirm or correct the job and section, and **Approve**, or **Reject** with a reason they will see.
+5. Sign in as the new person. They see the dashboard for the role they were given, and **My account** shows their details, what they can do, and lets them change their password.
+
+**Forgot password?** on the sign-in page sends a code to the KPC email in the same way.
 
 ## Desk workflow (start here)
 

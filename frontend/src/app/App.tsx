@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
+import { Route, Routes } from "react-router-dom";
 import { normalizeUser, type User } from "../auth";
+import { DemoMailbox } from "../features/account/DemoMailbox";
+import { Enrol } from "../features/account/Enrol";
+import { ResetPassword } from "../features/account/ResetPassword";
 import { API_BASE as API } from "../offline/api";
 import { networkFetch } from "../offline/network";
 import { queryClient } from "../lib/query";
@@ -53,5 +57,17 @@ export function App() {
     queryClient.clear();
     setUser(null);
   }
-  return user ? <Shell user={user} onLogout={logout} /> : <Login onLogin={setUser} />;
+  return (
+    <Routes>
+      {/* Demonstration only: where the prototype's emails go (no real mail is sent). */}
+      <Route path="/mailbox" element={<DemoMailbox />} />
+      {user
+        ? <Route path="*" element={<Shell user={user} onLogout={logout} />} />
+        : <>
+          <Route path="/enrol" element={<Enrol />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="*" element={<Login onLogin={setUser} />} />
+        </>}
+    </Routes>
+  );
 }

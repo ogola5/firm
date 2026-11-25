@@ -29,7 +29,7 @@ def stats(samples: list[float]) -> dict:
 
 
 def login(client: httpx.Client, username: str) -> dict:
-    response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
+    response = client.post("/api/v1/auth/login", json={"email": f"demo.{username}@kpc.co.ke", "password": PASSWORD})
     response.raise_for_status()
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 

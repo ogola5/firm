@@ -36,6 +36,45 @@ class User(Base):
     active: Mapped[int] = mapped_column(Integer, default=1)
     availability_status: Mapped[str] = mapped_column(String, default="AVAILABLE")
     competencies: Mapped[str] = mapped_column(Text, default="[]")
+    # Company email is the sign-in identity (services/accounts.py enforces the domain).
+    email: Mapped[str] = mapped_column(String, unique=True)
+    staff_number: Mapped[str] = mapped_column(String, default="")
+    job_title: Mapped[str] = mapped_column(String, default="")
+    account_status: Mapped[str] = mapped_column(String, default="ACTIVE")
+    requested_role: Mapped[str] = mapped_column(String, default="")
+    requested_section: Mapped[str] = mapped_column(String, default="")
+    decision_note: Mapped[str] = mapped_column(Text, default="")
+    decided_by_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    password_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=True)
+
+
+class EmailCode(Base):
+    """A one-time code sent to a company email (stored as a keyed hash, never in clear)."""
+    __tablename__ = "email_codes"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    email: Mapped[str] = mapped_column(String, index=True)
+    purpose: Mapped[str] = mapped_column(String)
+    code_hash: Mapped[str] = mapped_column(String)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MailOutbox(Base):
+    """Every email the system would send. The prototype never sends real mail."""
+    __tablename__ = "mail_outbox"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    recipient: Mapped[str] = mapped_column(String, index=True)
+    subject: Mapped[str] = mapped_column(String)
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class UserAudit(Base):

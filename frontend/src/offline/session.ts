@@ -73,7 +73,7 @@ export async function offlineLogin(
     throw new OfflineLoginError(`Offline access expired. Sign in while connected (offline access lasts ${OFFLINE_SESSION_DAYS} days).`);
   }
   const candidate = await deriveVerifier(password, fromBase64(session.salt), session.iterations);
-  if (!constantTimeEqual(candidate, session.verifier)) throw new OfflineLoginError("Invalid username or password.");
+  if (!constantTimeEqual(candidate, session.verifier)) throw new OfflineLoginError("Wrong email or password.");
   const tokenExpired = Boolean(session.token_expires_at && Date.parse(session.token_expires_at) <= now);
   return { user: session.user, token: session.token, tokenExpired };
 }

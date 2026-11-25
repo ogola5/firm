@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     # Similar-fault score weights: equipment, symptom, category, relevance (METRICS.md).
     similarity_weights: tuple[float, float, float, float] = (0.40, 0.25, 0.20, 0.15)
 
+    # Accounts: only these email domains may enrol or sign in (exact match, no sub-domains).
+    allowed_email_domains: list[str] = ["kpc.co.ke"]
+    # The prototype never sends real email; messages go to the on-screen demo mailbox.
+    # Set DEMO_MAILBOX=false in any real deployment (and connect a mail service first).
+    demo_mailbox: bool = True
+    email_code_minutes: int = 15
+    email_code_attempts: int = 5
+    email_codes_per_hour: int = 5
+    login_attempts_before_lock: int = 5
+    login_lock_minutes: int = 15
+    password_min_length: int = 10
+
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")

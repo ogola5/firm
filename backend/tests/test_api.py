@@ -8,7 +8,7 @@ client = TestClient(app)
 
 
 def login(username="operations"):
-    response = client.post("/api/v1/auth/login", json={"username": username, "password": "demo123"})
+    response = client.post("/api/v1/auth/login", json={"email": f"demo.{username}@kpc.co.ke", "password": "demo123"})
     assert response.status_code == 200
     return response.json()["access_token"]
 
@@ -413,7 +413,7 @@ def test_section_roles_are_scoped_and_admin_manages_users():
 
     hr = auth_headers(login("hr"))
     assert client.post("/api/v1/users", headers=hr, json={
-        "username": "not-allowed",
+        "email": "not.allowed@kpc.co.ke",
         "display_name": "Not Allowed",
         "role": "technician_st",
         "section": "Electrical",
@@ -424,9 +424,8 @@ def test_section_roles_are_scoped_and_admin_manages_users():
     roles = client.get("/api/v1/access/roles", headers=admin)
     assert roles.status_code == 200
     assert any(role["code"] == "technician_ct" for role in roles.json())
-    username = f"test-user-{uuid.uuid4().hex[:8]}"
     created = client.post("/api/v1/users", headers=admin, json={
-        "username": username,
+        "email": f"test.user.{uuid.uuid4().hex[:8]}@kpc.co.ke",
         "display_name": "Synthetic Test Engineer",
         "role": "assistant_engineer",
         "section": "Instrumentation",

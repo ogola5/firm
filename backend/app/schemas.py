@@ -27,8 +27,44 @@ class ConflictResolution(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str
+    email: str
     password: str
+
+
+class EnrolmentStart(BaseModel):
+    email: str
+    display_name: str
+    staff_number: str
+    job_title: str = ""
+    requested_role: str
+    requested_section: str = ""
+
+
+class EnrolmentVerify(BaseModel):
+    email: str
+    code: str
+    password: str
+
+
+class EnrolmentDecision(BaseModel):
+    role: str = ""
+    section: str = ""
+    reason: str = ""
+
+
+class EmailOnly(BaseModel):
+    email: str
+
+
+class PasswordResetComplete(BaseModel):
+    email: str
+    code: str
+    password: str
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class FaultCreate(BaseModel):
@@ -123,8 +159,10 @@ class OperatorConfirmationCreate(BaseModel):
 
 
 class UserCreate(BaseModel):
-    username: str
+    email: str
     display_name: str
+    staff_number: str = ""
+    job_title: str = ""
     role: str
     section: str = ""
     password: str

@@ -2,8 +2,11 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
 export const PASSWORD = "demo123"; // synthetic demo credential
 
+/** Seeded demonstration accounts are demo.<name>@kpc.co.ke. */
+export const demoEmail = (username: string) => `demo.${username}@kpc.co.ke`;
+
 export async function apiToken(request: APIRequestContext, username: string): Promise<string> {
-  const response = await request.post("/api/v1/auth/login", { data: { username, password: PASSWORD } });
+  const response = await request.post("/api/v1/auth/login", { data: { email: demoEmail(username), password: PASSWORD } });
   expect(response.ok()).toBeTruthy();
   return (await response.json()).access_token;
 }
@@ -94,20 +97,13 @@ export async function signIn(page: Page, username: string) {
   await page.goto("/");
   // Switching user: sign the current one out first (offline data on the device is kept).
   const logout = page.getByRole("button", { name: "Log out" });
-  const accountSelect = page.getByLabel("Demonstration account");
-  await expect(accountSelect.or(logout)).toBeVisible();
+  const emailField = page.getByLabel("KPC email");
+  await expect(emailField.or(logout)).toBeVisible();
   if (await logout.isVisible()) await logout.click();
-  await expect(accountSelect).toBeVisible();
-  // The account list loads from the server; offline it never arrives, so type the username.
-  const option = accountSelect.locator(`option[value="${username}"]`);
-  const listed = await option.waitFor({ state: "attached", timeout: 5_000 }).then(() => true, () => false);
-  if (listed) {
-    await accountSelect.selectOption(username);
-  } else {
-    await accountSelect.selectOption("");
-    await page.getByLabel("Username", { exact: true }).fill(username);
-  }
-  await page.getByLabel("Password").fill(PASSWORD);
+  await expect(emailField).toBeVisible();
+  // Typed, like a person would (the demonstration list needs the server; offline it never arrives).
+  await emailField.fill(demoEmail(username));
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
 }
@@ -132,5 +128,5 @@ export async function waitForOfflineVerifier(page: Page, username: string) {
       request.onerror = () => resolve(false);
     };
     open.onerror = () => resolve(false);
-  }), username)).toBe(true);
+  }), demoEmail(username))).toBe(true);
 }

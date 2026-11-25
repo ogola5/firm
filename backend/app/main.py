@@ -16,6 +16,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.db import engine
 from app.routers import (
+    accounts,
     analytics,
     assignments,
     attachments,
@@ -61,7 +62,7 @@ def health() -> dict:
 
 
 for module in (
-    auth, people, team, equipment, faults, investigation, jobs, procedures,
+    auth, accounts, people, team, equipment, faults, investigation, jobs, procedures,
     assignments, attachments, knowledge, intelligence, analytics, insights, integrations, sync,
 ):
     app.include_router(module.router)

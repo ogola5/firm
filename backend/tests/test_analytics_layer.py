@@ -159,7 +159,7 @@ def test_data_quality_counts_gaps():
 # --- API -----------------------------------------------------------------------------------
 
 def headers(username: str) -> dict:
-    response = client.post("/api/v1/auth/login", json={"username": username, "password": "demo123"})
+    response = client.post("/api/v1/auth/login", json={"email": f"demo.{username}@kpc.co.ke", "password": "demo123"})
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 

@@ -54,6 +54,11 @@ BAD_ACTORS = (4, 11, 19)
 PROCEDURE_DRAFTS = 18
 
 
+def demo_email(username: str) -> str:
+    """Seeded accounts are visibly synthetic: demo.<name>@kpc.co.ke. No mail is ever sent to them."""
+    return f"demo.{username}@kpc.co.ke"
+
+
 def seed_database():
     """Load the illustrative demonstration dataset into an empty database.
 
@@ -75,6 +80,7 @@ def seed_database():
             db.add(User(
                 id=f"USER-{username}",
                 username=username,
+                email=demo_email(username),
                 display_name=f"Demo {role} User",
                 role=role,
                 section=role if role in ("Electrical", "Instrumentation", "Mechanical") else "",
@@ -239,6 +245,7 @@ def seed_database():
             db.add(User(
                 id=f"USER-{username}",
                 username=username,
+                email=demo_email(username),
                 display_name=f"Demo {ROLE_DEFINITIONS[role]['label']} ({section})" if section else f"Demo {ROLE_DEFINITIONS[role]['label']}",
                 role=role,
                 section=section,

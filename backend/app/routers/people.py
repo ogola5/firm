@@ -6,13 +6,13 @@ from fastapi import HTTPException
 from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-import bcrypt
 import uuid
 from fastapi import APIRouter
 
 from app.db import db_dep
 from app.deps import current_user
-from app.models import User, UserAudit
+from app.models import User, UserAudit, utcnow
+from app.services import accounts
 from app.schemas import UserCreate, UserStatusUpdate
 from app.services.access import ROLE_DEFINITIONS, SECTIONS, require_roles, role_definition, role_key, user_payload
 from app.services.audit import audit_user_change
@@ -32,9 +32,13 @@ def access_roles(user: User = Depends(current_user)):
 @router.get("/api/v1/users")
 def list_users(user: User = Depends(current_user), db: Session = Depends(db_dep)):
     require_roles(user, "hr_officer", "system_administrator")
-    users = db.scalars(select(User).order_by(User.section, User.role, User.display_name)).all()
+    # Approved accounts only; requests in progress are under /enrolment/requests.
+    users = db.scalars(select(User).where(User.account_status.in_((accounts.ACTIVE, accounts.DISABLED)))
+                       .order_by(User.section, User.role, User.display_name)).all()
     return [
-        {"id": item.id, "username": item.username, "display_name": item.display_name, "role": role_key(item), "role_label": role_definition(item)["label"], "section": item.section, "active": bool(item.active)}
+        {"id": item.id, "username": item.username, "email": item.email, "display_name": item.display_name,
+         "role": role_key(item), "role_label": role_definition(item)["label"], "section": item.section,
+         "active": bool(item.active), "last_login_at": item.last_login_at.isoformat() if item.last_login_at else None}
         for item in users
     ]
 
@@ -42,7 +46,7 @@ def list_users(user: User = Depends(current_user), db: Session = Depends(db_dep)
 @router.get("/api/v1/users/summary")
 def users_summary(user: User = Depends(current_user), db: Session = Depends(db_dep)):
     require_roles(user, "hr_officer", "maintenance_manager", "general_manager_om", "system_administrator")
-    users = db.scalars(select(User)).all()
+    users = db.scalars(select(User).where(User.account_status.in_((accounts.ACTIVE, accounts.DISABLED)))).all()
     by_section: dict[str, int] = {}
     by_role: dict[str, int] = {}
     active_count = 0
@@ -116,28 +120,35 @@ def recognition_leaderboard(user: User = Depends(current_user), db: Session = De
 
 @router.post("/api/v1/users", status_code=status.HTTP_201_CREATED)
 def create_user(req: UserCreate, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """Create an account directly (for someone who cannot enrol themselves). Same email and password rules."""
     require_roles(user, "system_administrator")
+    email = accounts.normalize_email(req.email)
     if req.role not in ROLE_DEFINITIONS:
         raise HTTPException(status_code=422, detail="Unknown role")
-    if not req.username.strip() or not req.display_name.strip() or len(req.password) < 8:
-        raise HTTPException(status_code=422, detail="Username and display name are required; password must be at least 8 characters")
+    if not req.display_name.strip():
+        raise HTTPException(status_code=422, detail="Enter the person's full name")
     section_required = ROLE_DEFINITIONS[req.role].get("section_required", False)
     if section_required and req.section not in SECTIONS:
         raise HTTPException(status_code=422, detail="A valid maintenance section is required for this role")
     if not section_required and req.section and req.section not in SECTIONS:
         raise HTTPException(status_code=422, detail="Unknown maintenance section")
-    if db.scalar(select(User).where(User.username == req.username.strip())):
-        raise HTTPException(status_code=409, detail="Username already exists")
+    accounts.check_password(req.password, email, req.display_name)
+    if accounts.find_by_email(db, email):
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+    now = utcnow()
     created = User(
-        id=str(uuid.uuid4()),
-        username=req.username.strip(),
-        display_name=req.display_name.strip(),
-        role=req.role,
-        section=req.section,
-        password_hash=bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode(),
+        id=str(uuid.uuid4()), email=email, username=email, display_name=" ".join(req.display_name.split()),
+        staff_number=req.staff_number.strip().upper(), job_title=req.job_title.strip(),
+        role=req.role, section=req.section, active=1, account_status=accounts.ACTIVE,
+        decided_by_id=user.id, decided_at=now, created_at=now, email_verified_at=None,
     )
+    accounts.set_password(created, req.password)
     db.add(created)
-    audit_user_change(db, user.id, "USER_CREATED", created, {"username": created.username, "role": created.role, "section": created.section})
+    accounts.send_mail(db, email, "A KPC Maintenance account was created for you",
+                       f"Hello {created.display_name},\n\nThe System Administrator created an account for you as "
+                       f"{ROLE_DEFINITIONS[req.role]['label']}{' — ' + req.section if req.section else ''}.\n"
+                       "You will receive a temporary password separately. Change it from My account after you sign in.")
+    audit_user_change(db, user.id, "USER_CREATED", created, {"email": email, "role": created.role, "section": created.section})
     db.commit()
     return user_payload(created)
 
@@ -150,7 +161,10 @@ def update_user_status(user_id: str, req: UserStatusUpdate, user: User = Depends
         raise HTTPException(status_code=404, detail="User not found")
     if target.id == user.id and not req.active:
         raise HTTPException(status_code=409, detail="You cannot deactivate your own account")
+    if target.account_status not in (accounts.ACTIVE, accounts.DISABLED):
+        raise HTTPException(status_code=409, detail="Decide this account request under Account requests first")
     target.active = int(req.active)
+    target.account_status = accounts.ACTIVE if req.active else accounts.DISABLED
     audit_user_change(db, user.id, "USER_STATUS_CHANGED", target, {"active": bool(target.active)})
     db.commit()
     return {"id": target.id, "active": bool(target.active)}

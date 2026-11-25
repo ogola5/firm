@@ -2,17 +2,31 @@
 
 All application APIs use `/api/v1/`. Interactive OpenAPI documentation is available at `/docs`.
 
-Authentication:
-- `POST /api/v1/auth/login`
+Accounts and sign-in (company email; see [ACCOUNTS.md](ACCOUNTS.md)):
+- `POST /api/v1/auth/login` `{email, password}`. The email must end `@kpc.co.ke` (422 otherwise). Responses:
+  - 401: the same message for an unknown address or a wrong password.
+  - 429: locked after 5 wrong passwords, for 15 minutes.
+  - 403 `{detail: {message, account_status}}`: the password is right, but the account is `UNVERIFIED`, `PENDING_APPROVAL`, `REJECTED` or `DISABLED`.
 - `GET /api/v1/auth/me`
-- `GET /api/v1/auth/demo-accounts` (synthetic account selector)
+- `GET /api/v1/auth/demo-accounts` (seeded synthetic accounts only)
+- `GET /api/v1/enrolment/options` (public): roles a person may request, sections, password length, whether the demo mailbox is on
+- `POST /api/v1/enrolment/start` (public) `{email, display_name, staff_number, job_title?, requested_role, requested_section?}`. Returns 202 with the same message whether or not the address already has an account.
+- `POST /api/v1/enrolment/verify` (public) `{email, code, password}`. The account becomes `PENDING_APPROVAL`, and the administrators are notified.
+- `GET /api/v1/enrolment/requests` (System Administrator): waiting and rejected requests, with duplicate staff-number warnings
+- `POST /api/v1/enrolment/requests/{id}/approve` `{role?, section?}`: the administrator's role and section win over the request
+- `POST /api/v1/enrolment/requests/{id}/reject` `{reason}`: the reason is shown to the person
+- `POST /api/v1/auth/password-reset/start` (public) `{email}`. Always returns 202.
+- `POST /api/v1/auth/password-reset/complete` (public) `{email, code, password}`
+- `GET /api/v1/account`: My account (details, approval, last sign-in, what you can do and see)
+- `POST /api/v1/account/password` `{current_password, new_password}`. Returns a fresh token; all other sessions end.
+- `GET /api/v1/demo/mailbox?email=` (demonstration only; 404 when `DEMO_MAILBOX=false`)
 - `GET /api/v1/access/roles` (System Administrator)
 
 People and access:
 - `GET /api/v1/users` (HR Officer and System Administrator)
 - `GET /api/v1/users/summary` (HR, Maintenance Manager, General Manager O&M and System Administrator; counts only)
 - `GET /api/v1/hr/appraisal?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD` (HR-only attributed contribution evidence and timing measures; no fault narratives)
-- `POST /api/v1/users` (System Administrator)
+- `POST /api/v1/users` (System Administrator; `{email, display_name, staff_number?, job_title?, role, section, password}`, with the same email and password rules as enrolment)
 - `PATCH /api/v1/users/{id}/status` (System Administrator)
 - `GET /api/v1/users/audit` (System Administrator)
 - `GET /api/v1/chief/team` (Chief Technician; active status, availability, workload and competencies for the Chief's ST/PT pool)
