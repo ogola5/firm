@@ -223,6 +223,8 @@ class ProcedureUpdateCreate(BaseModel):
     diagnostic_procedure: str
     corrective_action: str
     safety: str = ""
+    # Adds to an existing approved procedure (a new version credited to this author) instead of starting a new one.
+    builds_on_id: str = ""
 
 
 class ProcedureReviewRequest(BaseModel):

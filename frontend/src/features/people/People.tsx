@@ -62,6 +62,7 @@ function AppraisalEvidence() {
     },
   });
   const rows = (appraisal.data?.rows || []) as DataRow[];
+  const knowledge = appraisal.data?.knowledge_in_appraisal as { status: string; note: string } | undefined;
   return (
     <Card className="mb-4">
       <CardHeader>
@@ -77,10 +78,15 @@ function AppraisalEvidence() {
         {appraisal.isError && <Alert variant="destructive">Appraisal evidence is unavailable for this period.</Alert>}
         {appraisal.data && <>
           <p className="text-sm text-muted-foreground">{String(appraisal.data.data_type)} · {String(appraisal.data.point_definition)}</p>
+          {knowledge && (
+            <Alert variant={knowledge.status === "APPROVED" ? "success" : "warning"} className="mb-3">
+              <strong>Knowledge contribution in appraisal: {knowledge.status === "APPROVED" ? "approved" : "proposed"}.</strong> {knowledge.note}
+            </Alert>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
-                {["Employee", "Role / section", "Reports*", "Diagnoses", "Successful / failed interventions", "Procedure updates approved", "Colleague reuses", "Mean ack / restore", "Illustrative points†"]
+                {["Employee", "Role / section", "Reports*", "Diagnoses", "Successful / failed interventions", "Procedure updates approved", "Colleague reuses", "Improved colleagues' procedures‡", "Expert sessions given‡", "Types owned‡", "Mean ack / restore", "Illustrative points†"]
                   .map((heading) => <TableHead key={heading}>{heading}</TableHead>)}
               </TableRow>
             </TableHeader>
@@ -94,6 +100,9 @@ function AppraisalEvidence() {
                   <TableCell>{String(item.successful_interventions)} / {String(item.failed_interventions)}</TableCell>
                   <TableCell>{String(item.procedure_updates_approved)} / {String(item.procedure_updates_authored)}</TableCell>
                   <TableCell>{String(item.colleague_reuses)}</TableCell>
+                  <TableCell>{String(item.improved_colleagues_procedures ?? 0)}</TableCell>
+                  <TableCell>{String(item.expert_sessions_given ?? 0)}</TableCell>
+                  <TableCell>{String(item.knowledge_types_owned ?? 0)}</TableCell>
                   <TableCell>
                     {item.mean_acknowledgement_minutes == null ? "—" : `${String(item.mean_acknowledgement_minutes)} min`} / {item.mean_report_to_restore_hours == null ? "—" : `${String(item.mean_report_to_restore_hours)} h`}
                   </TableCell>
@@ -102,7 +111,7 @@ function AppraisalEvidence() {
               ))}
             </TableBody>
           </Table>
-          <p className="mb-0 text-xs text-muted-foreground">* Context only, not rewarded. † Illustrative prototype weighting, not an approved KPC appraisal score.</p>
+          <p className="mb-0 text-xs text-muted-foreground">* Context only, not rewarded. † Illustrative prototype weighting, not an approved KPC appraisal score. ‡ Knowledge contribution: {knowledge?.status === "APPROVED" ? "counts in appraisal (approved by management)" : "evidence only until management approves it for appraisal"}.</p>
         </>}
       </CardContent>
     </Card>

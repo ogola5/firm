@@ -195,3 +195,4 @@ Fault list, detail, context and My jobs include:
 - Regional staff (ST, PT, CT, AE, E, SE) see equipment and faults only in their region, plus unidentified equipment.
 - Out-of-region faults return 404, like out-of-section ones.
 - Enrolment, approval, account creation and access changes take `requested_region` or `region` (Western, Nairobi, Coast). It is required for regional roles.
+Knowledge library by equipment type: see [KNOWLEDGE_LIBRARY.md](KNOWLEDGE_LIBRARY.md#api) for the library, owner, withdrawal, write-up match and impact endpoints.

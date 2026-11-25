@@ -493,6 +493,8 @@ def seed_database():
     db.commit()
     seed_knowledge_capture(db)
     ensure_extra_equipment(db)
+    from app.seed_library import seed_library
+    seed_library(db)  # worked cases and procedures for the types that fail most; knowledge owners
     db.close()
 
 

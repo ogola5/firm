@@ -14,6 +14,11 @@ import { api } from "../../offline/api";
 import { loadFaultContext } from "../faults/detail/context";
 import { skipProcedure } from "./data";
 
+type ProcedureMatch = {
+  id: string; reference: string; title: string; version: number; author: string; reasons: string[];
+  evidence: { worked: number; fading: boolean };
+};
+
 type Draft = { title: string; symptom: string; cause: string; check: string; fix: string; avoid: string; safety: string };
 
 /** Builds the draft from what the technician already recorded, so nothing is retyped. */
@@ -66,6 +71,13 @@ export function ProcedureDraft({ user }: { user: User }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  // Approved procedures this fix might add to (same equipment type, problem or cause): a new version, not a duplicate.
+  const matches = useQuery({
+    queryKey: ["fault", faultId, "procedure-matches"],
+    queryFn: () => api<ProcedureMatch[]>(`/api/v1/faults/${encodeURIComponent(faultId)}/procedure-matches`),
+  });
+  const [buildsOn, setBuildsOn] = useState<string | null>(null); // null: not chosen yet; "": a new procedure
+  const chosen = matches.data?.find((item) => item.id === buildsOn);
 
   useEffect(() => {
     if (query.data && !draft) setDraft(draftFromContext(query.data.context, user.id));
@@ -90,6 +102,7 @@ export function ProcedureDraft({ user }: { user: User }) {
             .filter(Boolean).join("\n"),
           corrective_action: draft.fix.trim(),
           safety: draft.safety.trim(),
+          ...(buildsOn ? { builds_on_id: buildsOn } : {}),
         }),
       });
       setSent(true);
@@ -115,8 +128,38 @@ export function ProcedureDraft({ user }: { user: User }) {
           <Card>
             <CardContent className="grid gap-3 pt-6" aria-live="polite">
               <div className="flex items-center gap-3"><CheckCircle2 className="size-8 text-success" aria-hidden /><h2 className="m-0 text-2xl">Sent for review</h2></div>
-              <p className="m-0">Your Chief Technician reviews it. Once a Supervisor publishes it, everyone sees it, with your name on it.</p>
+              <p className="m-0">
+                {chosen
+                  ? `It becomes version ${chosen.version + 1} of ${chosen.reference} once published, with your name added to it. The earlier version stays in the history.`
+                  : "Your Chief Technician reviews it. Once a Supervisor publishes it, everyone sees it, with your name on it."}
+              </p>
               <div><Button asChild><Link to="/dashboard">Back to My jobs</Link></Button></div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!sent && draft && matches.data && matches.data.length > 0 && (
+          <Card aria-label="Similar procedures">
+            <CardContent className="grid gap-3 pt-6">
+              <h2 className="m-0 text-lg">Does this add to a procedure we already have?</h2>
+              <p className="m-0 text-sm text-muted-foreground">Improving an existing procedure keeps one clear answer for everyone and credits you as a contributor.</p>
+              {matches.data.map((item) => (
+                <label key={item.id} className={`grid cursor-pointer gap-1 rounded-lg border p-3 ${buildsOn === item.id ? "border-primary bg-primary/5" : "border-border"}`}>
+                  <span className="flex items-start gap-2">
+                    <input type="radio" name="builds-on" className="mt-1 size-4" checked={buildsOn === item.id} onChange={() => setBuildsOn(item.id)} />
+                    <span>
+                      <strong>Add to {item.reference} (v{item.version})</strong>: {item.title}
+                      <span className="block text-xs text-muted-foreground">
+                        {item.reasons.join(" · ")} · worked {item.evidence.worked} time(s){item.author ? ` · by ${item.author}` : ""}
+                      </span>
+                    </span>
+                  </span>
+                </label>
+              ))}
+              <label className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 ${buildsOn === "" ? "border-primary bg-primary/5" : "border-border"}`}>
+                <input type="radio" name="builds-on" className="size-4" checked={buildsOn === ""} onChange={() => setBuildsOn("")} />
+                <strong>No, this is a different problem: start a new procedure</strong>
+              </label>
             </CardContent>
           </Card>
         )}
@@ -144,10 +187,14 @@ export function ProcedureDraft({ user }: { user: User }) {
                 })}
                 {error && <Alert variant="destructive">{error}</Alert>}
                 <div className="flex flex-wrap items-center gap-4 border-t border-border pt-5">
-                  <Button type="submit" size="lg" disabled={missing.length > 0 || sending}>{sending ? "Sending…" : "Send for review"}</Button>
+                  <Button type="submit" size="lg" disabled={missing.length > 0 || sending || (Boolean(matches.data?.length) && buildsOn === null)}>
+                    {sending ? "Sending…" : chosen ? `Send as an improvement to ${chosen.reference}` : "Send for review"}
+                  </Button>
                   <Button type="button" variant="outline" onClick={() => { skipProcedure(user.id, faultId); navigate("/dashboard"); }}>Nothing new to add</Button>
                   <span className="text-sm text-muted-foreground">
-                    {missing.length ? `Still needed: ${missing.join(", ")}.` : "Your Chief Technician checks it, then a Supervisor publishes it."}
+                    {missing.length ? `Still needed: ${missing.join(", ")}.`
+                      : matches.data?.length && buildsOn === null ? "First say whether it adds to an existing procedure (above)."
+                        : "Your Chief Technician checks it, then a Supervisor publishes it."}
                   </span>
                 </div>
               </form>

@@ -65,7 +65,8 @@ def _approval_time(db: Session, update: ProcedureUpdate) -> datetime:
 
 def _candidates(db: Session) -> list[Candidate]:
     found: list[Candidate] = []
-    for update in db.scalars(select(ProcedureUpdate).where(ProcedureUpdate.status == "APPROVED")):
+    # Superseded and withdrawn versions were approved once: the credit stays.
+    for update in db.scalars(select(ProcedureUpdate).where(ProcedureUpdate.status.in_(("APPROVED", "SUPERSEDED", "WITHDRAWN")))):
         kind = "PROCEDURE_APPROVED" if update.version == 1 else "REVISION_APPROVED"
         found.append(Candidate(update.author_id, kind, "procedure", update.id, _approval_time(db, update),
                                f"{'Procedure' if update.version == 1 else 'Improvement'} approved: {update.title}", "/knowledge"))

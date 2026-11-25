@@ -15,7 +15,7 @@ async function expectNoSidewaysScroll(page: Page, where: string) {
 
 const PAGES: Array<{ user: string; paths: string[]; tabs: string[] }> = [
   { user: "operations", paths: ["/dashboard", "/report", "/faults?mode=history"], tabs: ["Report", "My reports", "History", "More"] },
-  { user: "st-electrical", paths: ["/dashboard", "/faults?mode=history", "/watch", "/recognition", "/account"], tabs: ["My jobs", "History", "Watch", "More"] },
+  { user: "st-electrical", paths: ["/dashboard", "/faults?mode=history", "/library", "/library/MOV", "/watch", "/recognition", "/account"], tabs: ["My jobs", "Library", "History", "More"] },
   { user: "ct-electrical", paths: ["/dashboard", "/drawings", "/expertise", "/approvals"], tabs: ["Section", "History", "Reviews", "More"] },
   { user: "maintenance-manager", paths: ["/dashboard", "/analytics", "/reports", "/watch"], tabs: ["Overview", "Analytics", "Reports", "More"] },
   { user: "hr", paths: ["/dashboard", "/recognition", "/expertise", "/people"], tabs: ["Workforce", "Points", "People", "More"] },

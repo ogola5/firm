@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 import uuid
 from fastapi import APIRouter
 
+from app.core.config import settings
 from app.db import db_dep
 from app.deps import current_user
 from app.models import User, UserAudit, utcnow
@@ -82,6 +83,15 @@ def hr_appraisal(
         "data_type": "Illustrative synthetic contribution evidence; not an approved appraisal score",
         "point_definition": "10 per approved procedure, 2 additional per approved revision, and 5 per colleague-confirmed successful reuse",
         "rows": contribution_rows(db, start_date, end_date),
+        # Management decides whether knowledge contribution formally counts in appraisal.
+        "knowledge_in_appraisal": {
+            "status": settings.appraisal_knowledge_status,
+            "note": ("Approved by management: knowledge contribution counts in appraisal."
+                     if settings.appraisal_knowledge_status == "APPROVED" else
+                     "Proposed: counting knowledge contribution in appraisal needs management approval. Shown as evidence only until then."),
+            "measures": ["Procedures approved", "Improvements to colleagues' procedures", "Colleagues helped (confirmed reuse)",
+                         "Expert sessions given", "Equipment types owned"],
+        },
     }
 
 

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 import json
 
-from app.models import Diagnosis, Fault, FaultAssignment, FaultEvent, Intervention, KnowledgeReuse, KnowledgeReuseOutcome, ProcedureUpdate, User, utc_datetime
+from app.models import Diagnosis, EquipmentTypeOwner, ExpertSession, Fault, FaultAssignment, FaultEvent, Intervention, KnowledgeReuse, KnowledgeReuseOutcome, ProcedureUpdate, User, utc_datetime
 from app.services.access import ACTIVE_ASSIGNMENT_STATUSES, ASSIGNABLE_TECHNICIAN_ROLES, TECHNICAL_ROLES, current_assignment, role_definition, role_key
 
 def contribution_rows(db: Session, start_date: date | None, end_date: date | None) -> list[dict]:
@@ -27,6 +27,11 @@ def contribution_rows(db: Session, start_date: date | None, end_date: date | Non
     diagnoses = db.scalars(select(Diagnosis)).all()
     interventions = db.scalars(select(Intervention)).all()
     updates = db.scalars(select(ProcedureUpdate)).all()
+    first_authors = {item.lineage_id: item.author_id for item in updates if item.version == 1}
+    sessions = db.scalars(select(ExpertSession).where(ExpertSession.status == "APPROVED")).all()
+    owned_types: dict[str, int] = {}
+    for row in db.scalars(select(EquipmentTypeOwner)):
+        owned_types[row.owner_id] = owned_types.get(row.owner_id, 0) + 1
     reuse_rows = db.execute(
         select(KnowledgeReuse, KnowledgeReuseOutcome, ProcedureUpdate)
         .join(ProcedureUpdate, KnowledgeReuse.procedure_update_id == ProcedureUpdate.id)
@@ -50,7 +55,10 @@ def contribution_rows(db: Session, start_date: date | None, end_date: date | Non
             else:
                 restored.append(minutes / 60)
         authored = [item for item in updates if item.author_id == employee.id and in_period(item.created_at)]
-        approved = [item for item in authored if item.status == "APPROVED"]
+        # Superseded and withdrawn versions were approved once and still count.
+        approved = [item for item in authored if item.status in ("APPROVED", "SUPERSEDED", "WITHDRAWN")]
+        improved_colleagues = [item for item in approved if item.version > 1 and first_authors.get(item.lineage_id) not in (None, employee.id)]
+        expert_sessions = [item for item in sessions if item.expert_id == employee.id and in_period(item.decided_at or item.created_at)]
         approved_revisions = [item for item in approved if item.version > 1]
         authored_ids = {item.id for item in authored}
         verified_peer_reuse = [
@@ -92,6 +100,10 @@ def contribution_rows(db: Session, start_date: date | None, end_date: date | Non
             "procedure_updates_approved": approved_count,
             "approved_revisions": len(approved_revisions),
             "colleague_reuses": len(verified_peer_reuse),
+            # Knowledge contribution (proposed for appraisal; see appraisal_knowledge_status).
+            "improved_colleagues_procedures": len(improved_colleagues),
+            "expert_sessions_given": len(expert_sessions),
+            "knowledge_types_owned": owned_types.get(employee.id, 0),
             "reuses_recorded_by_employee": len(own_reuses),
             "reuses_confirmed_successful_by_employee": sum(
                 bool(outcome and outcome.outcome == "SUCCESS") for _, outcome, _ in own_reuses

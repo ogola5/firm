@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-11-28 — Knowledge library by equipment type
+
+See [KNOWLEDGE_LIBRARY.md](KNOWLEDGE_LIBRARY.md) for the philosophy and the decisions.
+
+- **Library** (menu, and a bottom tab for technicians on phones):
+  - pick the equipment type, then the problem
+  - each problem shows likely causes with how often they were confirmed and what to check first, what worked and what didn't, approved procedures with evidence and "last confirmed working", and the cases
+  - each type also shows its owner, watch-outs (expert notes, drawing differences, safety) and older work instructions
+- **Knowledge owners:** a named CT or SE per equipment type, appointed by the Chief Engineer. Owners are emailed about new and improved procedures, see what needs checking, and can withdraw what no longer applies.
+- **One clear answer:**
+  - the write-up asks whether it adds to an existing procedure; if so it becomes the next version, credited to the new contributor
+  - publishing a newer version marks the earlier ones **Superseded**
+  - **Withdrawn** procedures stay in the history
+  - credit stays in both cases
+- **Freshness:** procedures not confirmed working for a year are marked "check before relying on it".
+- **"Your knowledge at work"** on technician, CT and CE homes; the author is emailed when a colleague's fix used their procedure.
+- **HR appraisal:** knowledge contribution columns, shown as *proposed* until management approves (`APPRAISAL_KNOWLEDGE_STATUS`).
+- **Worked illustrative cases** for pumps, valves, level transmitters, strainers, RTUs and drives.
+- **Fix:** the desktop sidebar scrolls when the menu is longer than the screen.
+- Migration `0009` (knowledge owners).
+
 ## 2026-11-27 — Regions and escalation to the Senior and Chief Engineers
 
 See [ESCALATION.md](ESCALATION.md).

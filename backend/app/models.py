@@ -61,6 +61,15 @@ class User(Base):
     requested_region: Mapped[str] = mapped_column(String, default="")
 
 
+class EquipmentTypeOwner(Base):
+    """The named person (CT or SE) who keeps an equipment type's knowledge current."""
+    __tablename__ = "equipment_type_owners"
+    equipment_type: Mapped[str] = mapped_column(String, primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    assigned_by_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class PointRule(Base):
     """How many points a kind of verified contribution earns (HR sets these)."""
     __tablename__ = "point_rules"

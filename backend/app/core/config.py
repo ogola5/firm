@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     # to the section Chief Engineer when the same equipment fails again within this many days of a fix.
     se_after_hours: int = 8
     ce_repeat_days: int = 30
+    # Knowledge library: a procedure not confirmed working for this long is shown as fading (check before relying on it).
+    knowledge_fade_days: int = 365
+    # Knowledge contribution in HR appraisal: "PROPOSED" until management approves it, then "APPROVED".
+    appraisal_knowledge_status: str = "PROPOSED"
     # Where links in emails point.
     app_url: str = "http://localhost:5173"
 

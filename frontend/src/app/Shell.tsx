@@ -1,5 +1,5 @@
 import {
-  Activity, AlertTriangle, ArrowUpCircle, BookOpen, GraduationCap, Ruler, Trophy, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Users, Wrench, X,
+  Activity, AlertTriangle, ArrowUpCircle, Library as LibraryIcon, BookOpen, GraduationCap, Ruler, Trophy, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Users, Wrench, X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
@@ -30,6 +30,8 @@ const Drawings = lazy(() => import("../features/drawings/Drawings").then((m) => 
 const Recognition = lazy(() => import("../features/recognition/Recognition").then((m) => ({ default: m.Recognition })));
 const Reports = lazy(() => import("../features/reports/Reports").then((m) => ({ default: m.Reports })));
 const Analytics = lazy(() => import("../features/analytics/Analytics").then((m) => ({ default: m.Analytics })));
+const LibraryIndex = lazy(() => import("../features/library/TypeLibrary").then((m) => ({ default: m.LibraryIndex })));
+const TypeLibraryPage = lazy(() => import("../features/library/TypeLibrary").then((m) => ({ default: m.TypeLibraryPage })));
 const Escalations = lazy(() => import("../features/escalation/Escalation").then((m) => ({ default: m.Escalations })));
 
 // Menu entries come from the account's access profile (server-defined per level); only icons and paths live here.
@@ -45,6 +47,7 @@ const AREAS: Record<string, { path: string; icon: ReactNode }> = {
   recognition: { path: "/recognition", icon: <Trophy /> },
   faults: { path: "/faults", icon: <AlertTriangle /> },
   equipment: { path: "/equipment", icon: <Search /> },
+  library: { path: "/library", icon: <LibraryIcon /> },
   knowledge: { path: "/knowledge", icon: <BookOpen /> },
   approvals: { path: "/approvals", icon: <ShieldCheck /> },
   people: { path: "/people", icon: <Users /> },
@@ -71,7 +74,7 @@ function NavItem({ to, icon, children }: { to: string; icon: ReactNode; children
 // Phones: three tabs chosen for each level's daily work, plus "More" for the full menu.
 const BOTTOM_TABS: Record<string, string[]> = {
   my_reports: ["report", "home", "faults"],
-  my_jobs: ["home", "faults", "watch"],
+  my_jobs: ["home", "library", "faults"],
   section_engineering: ["home", "escalations", "faults"],
   section_oversight: ["home", "faults", "approvals"],
   maintenance_overview: ["home", "analytics", "reports"],
@@ -84,7 +87,7 @@ const BOTTOM_TABS: Record<string, string[]> = {
 const SHORT_LABELS: Record<string, string> = {
   report: "Report", faults: "History", watch: "Watch", analytics: "Analytics", reports: "Reports", approvals: "Reviews",
   people: "People", recognition: "Points", expertise: "Experts", knowledge: "Procedures", equipment: "Equipment",
-  drawings: "Drawings", sync: "Sync", account: "Account", escalations: "Escalated",
+  drawings: "Drawings", sync: "Sync", account: "Account", escalations: "Escalated", library: "Library",
 };
 const HOME_SHORT: Record<string, string> = {
   my_jobs: "My jobs", my_reports: "My reports", section_oversight: "Section", section_engineering: "Section",
@@ -158,7 +161,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
   return (
     <div className="min-h-screen md:grid md:grid-cols-[220px_1fr] print:block">
       <aside className={cn(
-        "flex flex-col bg-sidebar text-sidebar-foreground md:sticky md:top-0 md:h-screen print:hidden",
+        "flex flex-col bg-sidebar text-sidebar-foreground md:sticky md:top-0 md:h-screen md:overflow-y-auto print:hidden",
         menuOpen ? "fixed inset-0 z-50 overflow-y-auto pb-[env(safe-area-inset-bottom)]" : "hidden md:flex",
       )}>
         <div className="flex h-16 items-center justify-between gap-2.5 border-b border-white/10 px-4 pt-[env(safe-area-inset-top)]">
@@ -221,6 +224,8 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             {areas.has("recognition") && <Route path="/recognition" element={<Recognition user={user} />} />}
             {areas.has("equipment") && <Route path="/equipment" element={<Equipment user={user} />} />}
             {seesFaults && <Route path="/faults" element={<Faults user={user} />} />}
+            {areas.has("library") && <Route path="/library" element={<LibraryIndex user={user} />} />}
+            {areas.has("library") && <Route path="/library/:code" element={<TypeLibraryPage user={user} />} />}
             {areas.has("knowledge") && <Route path="/knowledge" element={<Knowledge user={user} />} />}
             {areas.has("approvals") && <Route path="/approvals" element={<ProcedureReview user={user} />} />}
             {areas.has("people") && <Route path="/people" element={<People user={user} />} />}

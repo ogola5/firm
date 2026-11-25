@@ -115,6 +115,11 @@ def capabilities(key: str, permissions: list[str]) -> list[str]:
     # Escalation: CT -> regional Senior Engineer -> section Chief Engineer (services/escalation.py).
     if key in ("senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"):
         can.add("escalations.view")
+    # Knowledge library by equipment type (shared across sections and regions).
+    if key in SECTION_TECHNICAL or key in ANALYTICS_ORG_WIDE or key == "general_manager_om":
+        can.add("library.view")
+    if key in ("chief_engineer", "maintenance_manager", "system_administrator"):
+        can.add("library.assign_owner")
     if key == "technician_ct":
         can.add("escalate.to_se")
     if key == "senior_engineer":
@@ -143,6 +148,8 @@ def menu(key: str, can: set[str]) -> list[dict]:
         items.append(("faults", "Find previous work" if field or operator or key == "technician_ct" else "Faults"))
     if maintenance and "equipment.read" in can:
         items.append(("equipment", "Equipment"))
+    if "library.view" in can:
+        items.append(("library", "Library"))
     if maintenance and "knowledge.read" in can:
         items.append(("knowledge", "Procedures" if field else "Knowledge"))
     if "watch.view" in can:

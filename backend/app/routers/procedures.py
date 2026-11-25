@@ -14,6 +14,8 @@ from app.schemas import KnowledgeReuseCreate, KnowledgeReuseOutcomeCreate, Proce
 from app.services.access import INVESTIGATION_ROLES, PROCEDURE_AUTHOR_ROLES, TECHNICAL_ROLES, require_fault_scope, require_roles, role_key
 from app.services.audit import add_event
 from app.services.procedures import procedure_update_payload
+from app.services import knowledge_library as library
+from app.services.catalogue import type_of
 
 router = APIRouter()
 
@@ -36,24 +38,39 @@ def submit_procedure_update(fault_id: str, req: ProcedureUpdateCreate, user: Use
         raise HTTPException(status_code=422, detail="Title, symptom, cause, diagnostic procedure and corrective action are required")
     update_id = str(uuid.uuid4())
     count = db.query(ProcedureUpdate).count() + 1
+    # Adding to a colleague's approved procedure: a new version in its lineage, credited to this author.
+    base = None
+    if req.builds_on_id:
+        base = db.get(ProcedureUpdate, req.builds_on_id)
+        if not base or base.status != "APPROVED":
+            raise HTTPException(status_code=404, detail="The procedure to add to is not a current approved procedure")
+        if library.procedure_type(db, base) != type_of(fault.equipment.tag):
+            raise HTTPException(status_code=422, detail="Only add to a procedure for the same type of equipment")
+    version = (max(db.scalars(select(ProcedureUpdate.version).where(ProcedureUpdate.lineage_id == base.lineage_id)).all(), default=base.version) + 1) if base else 1
     update = ProcedureUpdate(
         id=update_id,
         reference=f"PU-DMO-{count:05d}",
         fault_id=fault.id,
         author_id=user.id,
-        section=fault.equipment.section,
+        section=base.section if base else fault.equipment.section,
         title=req.title.strip(),
         observed_symptom=req.observed_symptom.strip(),
         confirmed_cause=req.confirmed_cause.strip(),
         diagnostic_procedure=req.diagnostic_procedure.strip(),
         corrective_action=req.corrective_action.strip(),
         safety=req.safety.strip(),
-        version=1,
-        lineage_id=update_id,
+        version=version,
+        lineage_id=base.lineage_id if base else update_id,
+        previous_update_id=base.id if base else None,
         status="SUBMITTED",
     )
     db.add(update)
-    add_event(db, fault.id, "PROCEDURE_UPDATE_SUBMITTED", user.id, {"procedure_update_id": update.id, "reference": update.reference})
+    add_event(db, fault.id, "PROCEDURE_REVISION_SUBMITTED" if base else "PROCEDURE_UPDATE_SUBMITTED", user.id, {
+        "procedure_update_id": update.id, "reference": update.reference,
+        **({"builds_on": base.reference, "version": version} if base else {}),
+    })
+    db.flush()
+    library.notify_owner(db, update, "New version written" if base else "New procedure written")
     db.commit()
     return procedure_update_payload(update, user)
 
@@ -179,6 +196,9 @@ def review_procedure_update(update_id: str, req: ProcedureReviewRequest, user: U
                 raise HTTPException(status_code=409, detail="A section chief must complete technical review before publication")
             update.status = "APPROVED"
             review_decision = "SUPERVISOR_APPROVED"
+            # Earlier versions stay in the history, marked Superseded; only the newest is current guidance.
+            library.supersede_earlier(db, update, user.id)
+            library.notify_owner(db, update, "Procedure published")
         else:
             if update.status not in ("SUBMITTED", "CHIEF_APPROVED"):
                 raise HTTPException(status_code=409, detail="This procedure update is not awaiting review")
@@ -280,5 +300,6 @@ def confirm_procedure_reuse(reuse_id: str, req: KnowledgeReuseOutcomeCreate, use
         "reuse_id": reuse.id,
         "outcome": req.outcome,
     })
+    library.thank_author(db, reuse, req.outcome)
     db.commit()
     return {"reuse_id": reuse.id, "outcome": outcome.outcome, "confirmed_at": outcome.confirmed_at.isoformat()}
