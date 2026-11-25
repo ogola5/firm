@@ -34,10 +34,12 @@ test("@screens desk workflow", async ({ page }) => {
 const shots: Array<{ user: string; pages: Array<[string, string]> }> = [
   { user: "operations", pages: [["dashboard", "/dashboard"], ["report", "/faults?mode=report"], ["faults", "/faults?mode=history"]] },
   { user: "automation", pages: [["work", "/dashboard"], ["equipment", "/equipment"], ["knowledge", "/knowledge"], ["sync", "/sync"]] },
-  { user: "ct-electrical", pages: [["oversight", "/dashboard"], ["review", "/approvals"]] },
+  { user: "ct-electrical", pages: [["oversight", "/dashboard"], ["review", "/approvals"], ["drawings", "/drawings"]] },
   { user: "maintenance-manager", pages: [["dashboard", "/dashboard"], ["analytics", "/analytics"]] },
   { user: "ceo", pages: [["home", "/dashboard"], ["analytics", "/analytics"]] },
   { user: "chief-engineer-electrical", pages: [["home", "/dashboard"]] },
+  { user: "st-instrumentation", pages: [["home", "/dashboard"], ["watch", "/watch"], ["expertise", "/expertise?tab=sessions"]] },
+  { user: "hr", pages: [["recognition", "/recognition"], ["at-risk", "/expertise"]] },
   { user: "admin", pages: [["home", "/dashboard"], ["people", "/people"]] },
 ];
 

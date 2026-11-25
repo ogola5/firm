@@ -7,7 +7,10 @@ import { Field, Input, NativeSelect, Textarea } from "../../../components/ui/for
 import { dateTimeLocal } from "../../../lib/format";
 import { type DataRow } from "../../../lib/types";
 import { api } from "../../../offline/api";
+import { can as hasAbility, type User } from "../../../auth";
 import { ALL_SECTIONS, useDetail } from "./context";
+
+const canPairAdviser = (user: User) => hasAbility(user, "jobs.adviser");
 
 function AllocationForm({ assignment }: { assignment: DataRow }) {
   const { faultId, context, done, fail } = useDetail();
@@ -147,8 +150,44 @@ function HandoffForm({ assignment }: { assignment: DataRow }) {
   );
 }
 
+/** Chief Technician pairs an experienced colleague with the person doing the job (shadowing; both credited). */
+function AdviserForm({ assignment }: { assignment: DataRow }) {
+  const { faultId, done, fail } = useDetail();
+  const people = useQuery({ queryKey: ["expertise", "people"], queryFn: () => api<Array<{ id: string; name: string; role_label: string; section: string; retirement_date: string | null }>>("/api/v1/expertise/people") });
+  const [adviser, setAdviser] = useState(String(assignment.adviser_id || ""));
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    try {
+      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/assignments/${encodeURIComponent(String(assignment.id))}/adviser`, {
+        method: "PATCH", body: JSON.stringify({ adviser_id: adviser || null }),
+      });
+      await done(adviser ? "Adviser paired with this job." : "Adviser removed.");
+    } catch (reason) {
+      fail(reason, "The adviser was not saved.");
+    }
+  }
+
+  const options = (people.data ?? []).filter((person) => person.id !== assignment.assigned_user_id);
+  return (
+    <form onSubmit={save} className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-3">
+      <Field label="Pair an experienced adviser (optional)" hint="Passes on know-how; both are credited when the job is done." className="min-w-[16rem] flex-1">
+        <NativeSelect value={adviser} onChange={(event) => setAdviser(event.target.value)}>
+          <option value="">No adviser</option>
+          {options.map((person) => (
+            <option key={person.id} value={person.id}>
+              {person.name} · {person.role_label}{person.retirement_date ? ` · retires ${new Date(person.retirement_date).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}` : ""}
+            </option>
+          ))}
+        </NativeSelect>
+      </Field>
+      <Button type="submit" variant="outline">Save adviser</Button>
+    </form>
+  );
+}
+
 export function AssignmentPanel() {
-  const { context, can, offline } = useDetail();
+  const { context, can, offline, user } = useDetail();
   if (!context.assignments.length) return null;
   const active = can.activeAssignment;
   return (
@@ -175,6 +214,7 @@ export function AssignmentPanel() {
               </small>
               {Boolean(item.reason) && <p className="m-0"><strong>Handoff reason:</strong> {String(item.reason)}</p>}
               {Boolean(item.instructions) && <p className="m-0"><strong>Chief Technician instructions:</strong> {String(item.instructions)}</p>}
+              {Boolean(item.adviser_name) && <p className="m-0"><strong>Adviser:</strong> {String(item.adviser_name)}</p>}
               {Boolean(item.response_due_at) && <p className="m-0"><strong>Expected response:</strong> {new Date(String(item.response_due_at)).toLocaleString()}</p>}
               {Boolean(item.findings) && <p className="m-0"><strong>Findings:</strong> {String(item.findings)}</p>}
               {Boolean(item.recommendation) && <p className="m-0"><strong>Recommended next action:</strong> {String(item.recommendation)}</p>}
@@ -185,6 +225,7 @@ export function AssignmentPanel() {
         </ol>
         {/* These steps decide against current server state, so they are online-only. */}
         {!offline && active && can.canReviewSection && can.assetConfirmed && <AllocationForm key={String(active.id)} assignment={active} />}
+        {!offline && active && canPairAdviser(user) && active.section === user.section && Boolean(active.assigned_user_id) && <AdviserForm key={`adviser-${String(active.id)}`} assignment={active} />}
         {!offline && active && can.canReviewSection && active.escalation_status === "PENDING" && <SectionReview assignment={active} kind="ESCALATION" />}
         {!offline && active && can.canReviewSection && active.completion_review_status === "PENDING" && <SectionReview assignment={active} kind="COMPLETION" />}
         {!offline && active && can.canEscalate && !can.awaitingChiefReview && can.assetConfirmed && <HandoffForm assignment={active} />}

@@ -14,9 +14,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Diagnosis, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, User, utc_datetime, utcnow,
+    Diagnosis, DrawingDifference, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, User, utc_datetime, utcnow,
 )
 from app.schemas import DiagnosisCreate, FaultCreate, InterventionCreate, VisitCreate
+from app.services.catalogue import ACTION_TYPES, CAUSE_CATEGORIES, check_choice
+from app.services.drawings import find_drawing_id
 from app.services.access import (
     INVESTIGATION_ROLES, current_assignment, require_current_assignment,
     require_equipment_scope, require_fault_scope, require_roles, role_key,
@@ -398,6 +400,14 @@ def record_visit(db: Session, user: User, fault_id: str, req: VisitCreate) -> di
         raise HTTPException(status_code=422, detail="Say what you found")
     if not attempts:
         raise HTTPException(status_code=422, detail="Say what you did")
+    check_choice(req.cause_category, CAUSE_CATEGORIES, "the kind of cause")
+    for attempt in attempts:
+        check_choice(attempt.action_type, ACTION_TYPES, "what kind of action")
+    difference = req.drawing_difference
+    if difference and not difference.description.strip():
+        raise HTTPException(status_code=422, detail="Say what differs from the drawing")
+    if difference and not fault.equipment_confirmed:
+        raise HTTPException(status_code=422, detail="Identify the equipment before recording a drawing difference")
 
     reported_at = utc_datetime(fault.created_at)
     earliest = utc_datetime(fault.observed_at) if fault.observed_at else reported_at
@@ -438,6 +448,7 @@ def record_visit(db: Session, user: User, fault_id: str, req: VisitCreate) -> di
         test_results="",
         verification_status="CONFIRMED" if fixed else "UNVERIFIED",
         workaround=int(req.workaround),
+        cause_category=req.cause_category,
         created_at=on_site_at,
     )
     db.add(diagnosis)
@@ -460,6 +471,7 @@ def record_visit(db: Session, user: User, fault_id: str, req: VisitCreate) -> di
             tools_materials=req.parts.strip() if attempt.result == "worked" else "",
             outcome=VISIT_OUTCOMES[attempt.result],
             notes="",
+            action_type=attempt.action_type,
             created_at=done_at,
         )
         db.add(intervention)
@@ -468,6 +480,20 @@ def record_visit(db: Session, user: User, fault_id: str, req: VisitCreate) -> di
             "intervention_id": intervention.id, "corrective_action": intervention.corrective_action,
             "recorded_at": recorded_at.isoformat(),
         }, created_at=done_at)
+
+    difference_id = None
+    if difference:
+        # Waits for the section chief to verify before it is shown as fact on job cards.
+        difference_id = str(uuid.uuid4())
+        db.add(DrawingDifference(
+            id=difference_id, equipment_id=fault.equipment_id, drawing_id=find_drawing_id(db, difference.drawing_number),
+            drawing_number_text=difference.drawing_number.strip(), description=difference.description.strip(),
+            permanence=difference.permanence, fault_id=fault.id, reported_by_id=user.id, reported_at=on_site_at,
+        ))
+        add_event(db, fault.id, "DRAWING_DIFFERENCE_REPORTED", user.id, {
+            "difference_id": difference_id, "description": difference.description.strip(),
+            "recorded_at": recorded_at.isoformat(),
+        }, created_at=on_site_at)
 
     fault.status = "DIAGNOSED"
     assignment.status = "IN_PROGRESS"
@@ -478,7 +504,9 @@ def record_visit(db: Session, user: User, fault_id: str, req: VisitCreate) -> di
         "on_site_at": on_site_at.isoformat(),
         "back_in_service_at": back_at.isoformat() if back_at else None,
         "found": found,
-        "attempts": [{"action": item.action.strip(), "result": item.result} for item in attempts],
+        "cause_category": req.cause_category,
+        "attempts": [{"action": item.action.strip(), "result": item.result, "action_type": item.action_type} for item in attempts],
+        "drawing_difference_id": difference_id,
         "parts": req.parts.strip(),
         "workaround": req.workaround,
         "recorded_at": recorded_at.isoformat(),

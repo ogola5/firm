@@ -91,6 +91,27 @@ def capabilities(key: str, permissions: list[str]) -> list[str]:
         can.add("recognition.view")
     if key == "operations":
         can.add("faults.confirm")
+    # Knowledge, drawings, recognition and the watch list.
+    if key in SECTION_TECHNICAL or key in ANALYTICS_ORG_WIDE or key == "general_manager_om":
+        can.update({"watch.view", "expertise.view"})
+    if key in SECTION_TECHNICAL:
+        can.update({"expertise.contribute", "drawings.report"})
+    if key in ("technician_ct", "chief_engineer"):
+        can.update({"expertise.review", "drawings.verify"})
+    if key == "technician_ct":
+        can.add("jobs.adviser")
+    if key in ("system_administrator", "maintenance_manager"):
+        can.add("drawings.incorporate")
+    if key == "system_administrator":
+        can.add("drawings.register")
+    if key in ("technician_ct", "chief_engineer", "system_administrator", "maintenance_manager", "general_manager_om", "supervisor"):
+        can.add("drawings.queue")
+    if key == "hr_officer":
+        can.update({"points.manage", "expertise.view", "people.retirement"})
+    if key in ("hr_officer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"):
+        can.add("points.view_all")
+    if key == "system_administrator":
+        can.add("people.retirement")
     return sorted(can)
 
 
@@ -113,6 +134,12 @@ def menu(key: str, can: set[str]) -> list[dict]:
         items.append(("equipment", "Equipment"))
     if maintenance and "knowledge.read" in can:
         items.append(("knowledge", "Procedures" if field else "Knowledge"))
+    if "watch.view" in can:
+        items.append(("watch", "Likely to fail"))
+    if "expertise.view" in can:
+        items.append(("expertise", "Expert knowledge"))
+    if "drawings.queue" in can:
+        items.append(("drawings", "Drawing differences"))
     if "procedures.review" in can:
         items.append(("approvals", "Procedure review"))
     if "people.manage" in can:
@@ -121,6 +148,7 @@ def menu(key: str, can: set[str]) -> list[dict]:
         items.append(("people", "People directory"))
     if maintenance:
         items.append(("sync", "Sync"))
+    items.append(("recognition", "Recognition" if "points.view_all" in can else "My points & awards"))
     items.append(("account", "My account"))
     return [{"key": item_key, "label": label} for item_key, label in items]
 

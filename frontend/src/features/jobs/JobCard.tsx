@@ -35,6 +35,9 @@ export function JobCard({ user }: { user: User }) {
   const active = context.assignments.find((item) => item.is_active);
   const previous = context.previous_faults.slice(0, 2);
   const procedure = context.approved_procedures[0];
+  const differences = context.drawing_differences ?? [];
+  const notes = (context.expert_notes ?? []).slice(0, 1);
+  const drawings = context.drawings ?? [];
   const seen = fault.seen_via === "SCADA" ? "On SCADA" : fault.seen_via === "SITE_WALK" ? "On a site walk" : "Reported";
 
   return (
@@ -90,6 +93,34 @@ export function JobCard({ user }: { user: User }) {
           {procedure && <div><strong>Procedure:</strong> {String(procedure.reference)}, “{String(procedure.title)}”</div>}
         </section>
 
+        {differences.length > 0 && (
+          <section className="grid gap-1 border-[2.5px] border-black px-3.5 py-2.5">
+            <div className="text-[13px] font-extrabold tracking-[0.1em]">DIFFERS FROM THE DRAWING: CHECK BEFORE YOU WORK</div>
+            {differences.map((item) => (
+              <div key={item.id}>
+                <strong>{item.description}</strong>
+                {item.drawing_number ? ` (drawing ${item.drawing_number}${item.drawing_revision ? ` rev ${item.drawing_revision}` : ""})` : ""}
+                {item.permanence === "TEMPORARY" ? " · temporary" : ""}{item.status === "REPORTED" ? " · reported, not yet verified" : ""}
+              </div>
+            ))}
+          </section>
+        )}
+
+        {(notes.length > 0 || drawings.length > 0 || Boolean(active?.adviser_name)) && (
+          <section className="grid gap-1">
+            {notes.map((note) => (
+              <div key={note.id}>
+                <strong>From an experienced colleague ({note.credit.replace("Expert knowledge: ", "")}):</strong> first check {note.first_checks}
+                {note.what_fools_people ? ` What fools people: ${note.what_fools_people}` : ""}
+              </div>
+            ))}
+            {drawings.length > 0 && (
+              <div><strong>Drawings:</strong> {drawings.map((item) => `${item.number}${item.revision ? ` rev ${item.revision}` : ""}${item.status === "PAPER" ? " (paper)" : ""}`).join("; ")}</div>
+            )}
+            {Boolean(active?.adviser_name) && <div><strong>Adviser on this job:</strong> {String(active?.adviser_name)}</div>}
+          </section>
+        )}
+
         <section className="flex flex-1 flex-col gap-3.5 border-t-2 border-black pt-3">
           <div className="text-[13px] font-extrabold tracking-[0.1em]">YOUR NOTES (SAME ORDER AS THE WRITE-UP SCREEN)</div>
           <div className="flex flex-wrap items-end gap-7">
@@ -109,6 +140,7 @@ export function JobCard({ user }: { user: User }) {
             ))}
           </div>
           <div className="grid gap-1"><strong>Parts and materials used</strong><Line /></div>
+          <div className="flex flex-wrap items-end gap-4"><strong>Anything different from the drawing?</strong><Tick label="No" /><Tick label="Yes:" /><span className="h-6 flex-1 border-b-[1.5px] border-black" /></div>
           <div className="grid gap-1"><strong>Other notes</strong><Line /><Line /><Line /></div>
         </section>
 

@@ -30,4 +30,31 @@ export type FaultContext = {
   reuse_records: DataRow[];
   ranked_causes: DataRow[];
   repeat_routing: DataRow;
+  // Optional: contexts cached on a device before these existed lack them.
+  drawing_differences?: DrawingDifference[];
+  drawings?: DrawingInfo[];
+  expert_notes?: ExpertNote[];
+  equipment_type?: string;
+  watch?: { reasons: string[]; level: string } | null;
 };
+
+export type DrawingDifference = {
+  id: string; equipment_id: string; equipment_tag: string; equipment_name: string; section: string;
+  drawing_number: string; drawing_revision: string; drawing_in_register: boolean; description: string;
+  permanence: "PERMANENT" | "TEMPORARY"; fault_id: string | null; reported_by: string; reported_at: string;
+  status: "REPORTED" | "VERIFIED" | "REJECTED" | "INCORPORATED"; status_label: string; verified_by: string | null;
+  verified_at: string | null; review_note: string; incorporated_revision: string;
+};
+
+export type DrawingInfo = {
+  id: string; number: string; title: string; revision: string; discipline: string; status: "PAPER" | "DIGITISED";
+  status_label: string; document_url: string | null; source: string; equipment_tags: string[];
+};
+
+export type ExpertNote = {
+  id: string; title: string; credit: string; how_it_fails: string; first_checks: string; what_fools_people: string;
+  tricks: string; safety: string;
+};
+
+export type Choice = { value: string; label: string };
+export type Catalogue = { cause_categories: Choice[]; action_types: Choice[]; difference_permanence: Choice[] };

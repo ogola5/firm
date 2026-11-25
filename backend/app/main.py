@@ -33,6 +33,9 @@ from app.routers import (
     knowledge,
     people,
     procedures,
+    recognition,
+    library,
+    expertise,
     reports,
     sync,
     team,
@@ -44,9 +47,11 @@ REPORT_CHECK_SECONDS = 600
 
 def _send_due_reports() -> int:
     from app.db import SessionLocal
+    from app.services import points
     from app.services.reports import send_due
 
     with SessionLocal() as db:
+        points.sync(db)  # credit newly verified contributions
         return send_due(db)
 
 
@@ -95,7 +100,7 @@ def health() -> dict:
 
 
 for module in (
-    auth, accounts, people, team, reports, equipment, faults, investigation, jobs, procedures,
+    auth, accounts, people, team, reports, recognition, library, expertise, equipment, faults, investigation, jobs, procedures,
     assignments, attachments, knowledge, intelligence, analytics, insights, integrations, sync,
 ):
     app.include_router(module.router)

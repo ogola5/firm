@@ -14,6 +14,16 @@ from app.schemas import FaultCreate
 from app.services.access import ACTIVE_ASSIGNMENT_STATUSES, current_assignment, require_fault_scope, require_roles, role_key
 from app.services.procedures import procedure_update_payload
 from app.services import fault_operations
+from app.models import ExpertSession
+from app.services.analytics import watchlist
+from app.services.analytics.facts import load_facts
+from app.services.catalogue import ACTION_TYPES, CAUSE_CATEGORIES, type_of
+from app.services.drawings import differences_for_equipment, drawings_for_equipment
+
+
+def name_of(db: Session, user_id: str | None) -> str:
+    person = db.get(User, user_id) if user_id else None
+    return person.display_name if person else ""
 
 router = APIRouter()
 
@@ -313,7 +323,26 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             select(ProcedureReview).where(ProcedureReview.procedure_update_id == item.id).order_by(ProcedureReview.created_at)
         ).all()
         updates.append(procedure_update_payload(item, author, reviews))
+    identified = bool(fault.equipment_confirmed and equipment)
+    equipment_code = type_of(equipment.tag) if identified else ""
+    expert_notes = db.scalars(
+        select(ExpertSession).where(ExpertSession.status == "APPROVED", ExpertSession.equipment_type == equipment_code)
+        .order_by(ExpertSession.created_at.desc()).limit(3)
+    ).all() if identified else []
+    watch = None
+    if identified:
+        listed = watchlist.build(db, load_facts(db, equipment.section), utcnow())
+        watch = next(({"reasons": row["reasons"], "level": row["level"]} for row in listed if row["equipment_id"] == equipment.id), None)
     return {
+        "drawing_differences": differences_for_equipment(db, equipment.id) if identified else [],
+        "drawings": drawings_for_equipment(db, equipment.id) if identified else [],
+        "expert_notes": [{
+            "id": item.id, "title": item.title, "credit": f"Expert knowledge: {name_of(db, item.expert_id)}, {item.created_at:%Y}",
+            "how_it_fails": item.how_it_fails, "first_checks": item.first_checks, "what_fools_people": item.what_fools_people,
+            "tricks": item.tricks, "safety": item.safety,
+        } for item in expert_notes],
+        "equipment_type": equipment_code,
+        "watch": watch,
         "fault": {
             "id": fault.id,
             "reference": fault.reference,
@@ -355,6 +384,8 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             "assigned_by_name": item.assigned_by.display_name if item.assigned_by else "",
             "assigned_user_id": item.assigned_user_id,
             "assigned_user_name": item.assigned_user.display_name if item.assigned_user else "",
+            "adviser_id": item.adviser_id,
+            "adviser_name": name_of(db, item.adviser_id),
             "previous_assignment_id": item.previous_assignment_id,
             "reason": item.reason,
             "findings": item.findings,
@@ -410,6 +441,8 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             "fix_summary": item.fix_summary,
             "workaround": bool(item.workaround),
             "risk_level": item.risk_level,
+            "cause_category": item.cause_category,
+            "cause_category_label": CAUSE_CATEGORIES.get(item.cause_category, ""),
             "created_at": item.created_at.isoformat(),
         } for item in diagnoses],
         "interventions": [{
@@ -423,6 +456,8 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             "tools_materials": item.tools_materials,
             "outcome": item.outcome,
             "notes": item.notes,
+            "action_type": item.action_type,
+            "action_type_label": ACTION_TYPES.get(item.action_type, ""),
             "created_at": item.created_at.isoformat(),
         } for item in interventions],
         "previous_faults": history,

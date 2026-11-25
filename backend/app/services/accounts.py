@@ -162,4 +162,5 @@ def status_message(user: User) -> str | None:
 
 def password_version(user: User) -> int:
     """Changes whenever the password changes, so older sessions stop working."""
-    return int(utc_datetime(user.password_changed_at).timestamp()) if user.password_changed_at else 0
+    # Milliseconds: a session started in the same second as a password change must still end.
+    return int(utc_datetime(user.password_changed_at).timestamp() * 1000) if user.password_changed_at else 0

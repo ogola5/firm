@@ -88,6 +88,14 @@ class FaultCreate(BaseModel):
 class VisitAttempt(BaseModel):
     action: str = Field(max_length=2000)
     result: Literal["worked", "failed", "partly"]
+    action_type: str = ""  # services/catalogue.ACTION_TYPES
+
+
+class DrawingDifferenceIn(BaseModel):
+    """Something on site that differs from the drawing (cable moved, relay swapped, link fitted…)."""
+    description: str = Field(max_length=2000)
+    drawing_number: str = Field(default="", max_length=120)
+    permanence: Literal["PERMANENT", "TEMPORARY"] = "PERMANENT"
 
 
 class VisitCreate(BaseModel):
@@ -95,6 +103,8 @@ class VisitCreate(BaseModel):
     on_site_at: datetime
     back_in_service_at: datetime | None = None
     found: str = Field(max_length=2000)
+    cause_category: str = ""  # services/catalogue.CAUSE_CATEGORIES
+    drawing_difference: DrawingDifferenceIn | None = None
     attempts: list[VisitAttempt] = Field(min_length=1, max_length=20)
     parts: str = Field(default="", max_length=2000)
     notes: str = Field(default="", max_length=4000)

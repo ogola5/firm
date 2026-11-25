@@ -8,6 +8,7 @@ import { ChiefTechnicianDashboard } from "./ChiefTechnicianDashboard";
 import { PersonalWorkspace } from "./PersonalWorkspace";
 import { RecognitionPanel } from "./RecognitionPanel";
 import { SectionPicture } from "./SectionPicture";
+import { WatchPanel } from "../watch/WatchList";
 
 // Charts are only needed by management roles; technicians never download them.
 const ManagementOverview = lazy(() => import("./ManagementOverview").then((m) => ({ default: m.ManagementOverview })));
@@ -18,11 +19,11 @@ export function Dashboard({ user }: { user: User }) {
     case "my_reports":
       return <PersonalWorkspace user={user} />;
     case "my_jobs":
-      return <MyJobs user={user} />;
+      return <MyJobs user={user} before={<WatchPanel user={user} />} />;
     case "section_oversight":
       return <ChiefTechnicianDashboard user={user} />;
     case "section_engineering":
-      return <MyJobs user={user} before={<SectionPicture user={user} />} />;
+      return <MyJobs user={user} before={<><SectionPicture user={user} /><WatchPanel user={user} /></>} />;
     case "administration":
       return <AdminHome user={user} />;
     case "workforce":

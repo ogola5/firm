@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from sqlalchemy import select
 import bcrypt
 import uuid
 
 from app.db import SessionLocal
-from app.models import Diagnosis, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, KnowledgeEntry, KnowledgeReuse, KnowledgeReuseOutcome, ProcedureReview, ProcedureUpdate, User, utcnow
+from app.models import (
+    Award, Diagnosis, Drawing, DrawingDifference, DrawingEquipment, Equipment, ExpertAnswer, ExpertQuestion, ExpertSession,
+    Fault, FaultAssignment, FaultEvent, Intervention, KnowledgeEntry, KnowledgeReuse, KnowledgeReuseOutcome, ProcedureReview,
+    ProcedureUpdate, User, utcnow,
+)
 from app.services.access import ROLE_DEFINITIONS, SECTIONS
 from app.services.audit import add_event
 
@@ -52,6 +56,13 @@ RECENT_FAULTS = 24
 BAD_ACTORS = (4, 11, 19)
 # Resolved faults (most recent first) that also get a procedure draft in the review workflow.
 PROCEDURE_DRAFTS = 18
+# Seeded causes -> (cause category, usual action) from services/catalogue.py.
+CAUSE_CODES = {
+    "Loose terminal connection": ("loose_connection", "tighten"),
+    "Sensor drift": ("setting", "adjust"),
+    "Blocked filter": ("contamination", "clean"),
+    "Incorrect controller parameter": ("setting", "adjust"),
+}
 
 
 def demo_email(username: str) -> str:
@@ -332,6 +343,7 @@ def seed_database():
                 test_results="Illustrative test result; verify against site procedures before use.",
                 confidence=0.8,
                 verification_status="CONFIRMED",
+                cause_category=CAUSE_CODES[cause][0],
                 created_at=fault.created_at + timedelta(hours=2),
             )
             db.add(diagnosis)
@@ -347,6 +359,7 @@ def seed_database():
                     corrective_action="Initial adjustment did not resolve the reported symptom.",
                     tools_materials="Approved test equipment",
                     outcome="FAILED",
+                    action_type="adjust",
                     notes="Failed attempt retained in the history to prevent repeating an ineffective workaround.",
                     created_at=fault.created_at + timedelta(hours=2, minutes=20),
                 ))
@@ -358,6 +371,8 @@ def seed_database():
                 corrective_action="Correct the confirmed cause using the approved maintenance procedure and verify operation.",
                 tools_materials="Approved tools and replacement materials, where required",
                 outcome="SUCCESS",
+                # Every ninth fix is a temporary one still in place (shows on the watch list).
+                action_type="temporary" if index % 9 == 4 else CAUSE_CODES[cause][1],
                 notes="Synthetic successful intervention; illustrative only.",
                 created_at=fault.created_at + timedelta(hours=2, minutes=45),
             ))
@@ -456,4 +471,108 @@ def seed_database():
         ))
         fault.assigned_section = section
     db.commit()
+    seed_knowledge_capture(db)
     db.close()
+
+
+def _slug(section: str) -> str:
+    return section.lower().replace(" ", "-")
+
+
+def seed_knowledge_capture(db) -> None:
+    """Illustrative retirements, drawings, drawing differences, an expert session, a question and an award."""
+    if db.query(Drawing).count():
+        return
+    now = utcnow()
+    by_tag = {item.tag: item for item in db.scalars(select(Equipment))}
+    # HR has recorded two people retiring soon (illustrative).
+    for user_id, retires in (("USER-pt-systems-automation", date(2026, 12, 31)), ("USER-senior-engineer-instrumentation", date(2027, 3, 31)),
+                             ("USER-engineer-electrical", date(2028, 6, 30))):
+        person = db.get(User, user_id)
+        if person:
+            person.retirement_date = retires
+
+    # Placeholder drawing register: paper drawings awaiting KPC's digitisation.
+    drawings = [
+        ("ILL-PS02-E-0412", "Tank 601 inlet valve: actuator control wiring", "C", "Electrical", ["11-MOV-601"]),
+        ("ILL-PS02-E-0413", "Tank 601 outlet valve: actuator control wiring", "B", "Electrical", ["11-MOV-602"]),
+        ("ILL-PS02-E-0388", "Tank 501 inlet valve: actuator control wiring", "D", "Electrical", ["11-MOV-501"]),
+        ("ILL-PS02-C-0101", "Pump station 2 RTU: I/O and communications", "F", "Control", ["RTU-201", "11-RAD-201"]),
+        ("ILL-PS02-C-0102", "Pump station 2 PLC: panel layout and I/O", "E", "Control", ["11-PLC-201"]),
+        ("ILL-PS02-I-0207", "Tank 501 instruments: loop diagrams", "B", "Instrumentation", ["11-LT-501"]),
+        ("ILL-PS02-I-0208", "Tank 601 instruments: loop diagrams", "C", "Instrumentation", ["11-LT-601", "11-TT-601", "11-PT-601"]),
+        ("ILL-PS02-M-0310", "Tank 501 transfer pump: general arrangement", "A", "Mechanical", ["11-P-501"]),
+        ("ILL-PS01-E-0120", "Booster pumps: drive power and control", "G", "Electrical", ["VFD-101", "VFD-102"]),
+        ("ILL-PS01-I-0150", "Line 1 metering: instrument loops", "D", "Instrumentation", ["FT-101", "PT-102"]),
+        ("ILL-PS02-E-0001", "Pump station 2: single-line diagram", "H", "Electrical", ["TX-201"]),
+    ]
+    numbers = {}
+    for number, title, revision, discipline, tags in drawings:
+        drawing = Drawing(id=f"DWG-{number}", number=number, title=title, revision=revision, discipline=discipline,
+                          status="PAPER", source="Illustrative register (awaiting KPC digitisation)", created_at=now)
+        db.add(drawing)
+        db.flush()
+        numbers[number] = drawing.id
+        for tag in tags:
+            if tag in by_tag:
+                db.add(DrawingEquipment(drawing_id=drawing.id, equipment_id=by_tag[tag].id))
+    db.flush()
+
+    differences = [
+        ("11-MOV-601", "ILL-PS02-E-0412", "Close limit switch is wired to terminal X5; the drawing shows X3 (changed when the actuator was replaced).",
+         "PERMANENT", "VERIFIED", 40),
+        ("11-P-501", "ILL-PS02-M-0310", "Temporary bypass link fitted on the low-flow trip after the switch failed; to be removed when the new switch arrives.",
+         "TEMPORARY", "VERIFIED", 20),
+        ("RTU-201", "ILL-PS02-C-0101", "Radio link moved to spare serial port COM3; the drawing shows COM1.", "PERMANENT", "REPORTED", 6),
+    ]
+    for index, (tag, number, text, permanence, status, days_ago) in enumerate(differences):
+        equipment = by_tag.get(tag)
+        if not equipment:
+            continue
+        slug = _slug(equipment.section)
+        reported = now - timedelta(days=days_ago)
+        db.add(DrawingDifference(
+            id=f"DIFF-DEMO-{index + 1:03d}", equipment_id=equipment.id, drawing_id=numbers.get(number), drawing_number_text=number,
+            description=text, permanence=permanence, reported_by_id=f"USER-st-{slug}", reported_at=reported, status=status,
+            verified_by_id=f"USER-ct-{slug}" if status == "VERIFIED" else None,
+            verified_at=reported + timedelta(days=1) if status == "VERIFIED" else None,
+        ))
+
+    # An approved expert session from someone retiring soon, written up by a junior colleague.
+    rtu = by_tag.get("RTU-201")
+    if rtu:
+        slug = _slug(rtu.section)
+        expert = "USER-pt-systems-automation" if rtu.section == "Systems Automation" else f"USER-senior-engineer-{slug}"
+        db.add(ExpertSession(
+            id="EXPERT-DEMO-001", expert_id=expert, scribe_id=f"USER-st-{slug}", equipment_type="RTU", section=rtu.section,
+            title="RTUs: why they drop off SCADA and what to check first",
+            how_it_fails="Most often the radio or serial link, not the RTU itself. Second: the 24 V supply sagging when the battery is old.",
+            first_checks="1. Link LED on the radio. 2. Battery voltage under load (should stay above 24 V). 3. Serial cable seated at both ends.",
+            what_fools_people="The RTU shows healthy locally while SCADA says offline: that is the link, not the RTU. Do not reload the configuration first.",
+            tricks="Power-cycle the radio before the RTU; it recovers in two minutes. Keep a spare serial cable in the panel.",
+            parts="Serial cable, radio fuse, 24 V battery pack.",
+            safety="Panel is live; follow the isolation procedure before touching terminals.",
+            status="APPROVED", reviewer_id=f"USER-ct-{slug}", created_at=now - timedelta(days=12), decided_at=now - timedelta(days=11),
+        ))
+
+    # Ask the expert: a question with an accepted answer.
+    level = by_tag.get("11-LT-501")
+    if level:
+        slug = _slug(level.section)
+        db.add(ExpertQuestion(id="QUESTION-DEMO-001", equipment_type="LT", section=level.section, asked_by_id=f"USER-st-{slug}",
+                              text="Tank 501 level reading creeps up at night with no transfer running. What should I check first?",
+                              status="ANSWERED", created_at=now - timedelta(days=9)))
+        db.flush()
+        db.add(ExpertAnswer(id="ANSWER-DEMO-001", question_id="QUESTION-DEMO-001", author_id=f"USER-senior-engineer-{slug}",
+                            text="Check for condensation in the transmitter housing first: it shows as a slow rise when it cools at night. "
+                                 "Dry it, replace the gland seal, and compare with a manual dip before recalibrating.",
+                            accepted=1, accepted_by_id=f"USER-st-{slug}", accepted_at=now - timedelta(days=8),
+                            created_at=now - timedelta(days=8, hours=6)))
+
+    # One past award, so the awards wall is not empty (illustrative).
+    month = (now.replace(day=1) - timedelta(days=1)).replace(day=1) - timedelta(days=1)
+    db.add(Award(id="AWARD-DEMO-001", award_type="MONTH", period_key=month.strftime("%Y-%m"), scope="Overall",
+                 user_id="USER-senior-engineer-instrumentation",
+                 citation="Wrote the level transmitter procedures that colleagues used to fix four repeat faults first time.",
+                 prize="Certificate and voucher (illustrative)", decided_by_id="USER-hr", created_at=now - timedelta(days=20)))
+    db.commit()

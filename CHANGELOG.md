@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-11-26 — Knowledge capture, recognition, drawings and "likely to fail"
+
+See [KNOWLEDGE_CAPTURE.md](KNOWLEDGE_CAPTURE.md).
+
+- **Recognition points**, earned only from verified contributions:
+  - approved procedures, and colleagues' fixes using them
+  - expert sessions, verified drawing differences, accepted answers
+  - shadowing jobs, and complete write-ups
+
+  Speed and volume never count. Each person sees every point and why. HR sets the values and the monthly cap, records redemptions (cash, voucher, day off), and records Employee of the Month, Quarter (financial-year quarters) and Year from a shortlist with the evidence. Awards are visible to everyone.
+- **Write-up pick-lists:** the kind of cause (required) and the kind of action per step (a simplified ISO 14224 list). They work offline.
+- **Drawing differences:**
+  - recorded in the write-up, or directly against the equipment
+  - verified by the section chief, then printed on every job card and shown on the fault page
+  - verified ones become red-lines for the drawing office until a new revision is issued
+- **Drawing register** as a placeholder for KPC's digitisation: paper only until a file is linked.
+- **Expert knowledge:**
+  - knowledge at risk, from HR's retirement dates and who actually fixes each equipment type
+  - expert sessions, approved by the chief and credited by name, shown on job cards
+  - Ask the expert
+  - shadowing: an adviser paired by the Chief Technician
+- **Likely to fail:** an explainable watch list per section, with reasons, usual cause and procedure, shown at the top of My jobs. Its accuracy is back-tested against what actually failed.
+- Migration `0006`. Demo data: retirement dates, an illustrative drawing register and differences, an expert session, an answered question and one past award.
+
 ## 2026-11-25 — Weekly, monthly and financial-year reports
 
 - **Reports** (menu, for CT, CE, MM, GM, Supervisor, System Administrator and CEO).

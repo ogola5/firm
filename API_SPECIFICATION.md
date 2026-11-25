@@ -81,6 +81,48 @@ Knowledge and intelligence:
 - `GET /api/v1/integrations/sap/status` (read-only integration is deferred; write-back is disabled)
 - `GET /api/v1/analytics/overview`
 
+### Knowledge capture, recognition, drawings and watch list ([KNOWLEDGE_CAPTURE.md](KNOWLEDGE_CAPTURE.md))
+
+- **Pick-lists:**
+  - `GET /api/v1/catalogue`: cause categories, action types and difference permanence.
+  - `POST /faults/{id}/visits` also takes:
+    - `cause_category`
+    - `attempts[].action_type`
+    - `drawing_difference {description, drawing_number?, permanence}`
+- **Points:**
+  - `GET /api/v1/points/me`: own balance, entries with reasons, redemptions, awards and rules.
+  - `GET /api/v1/points/people?period_type=MONTH|QUARTER|YEAR&period=` (HR, MM, GM, SUP, ADMIN).
+  - `GET /api/v1/points/people/{id}` (same roles).
+  - `POST /api/v1/points/redemptions` (HR, never for themselves).
+  - `GET` / `PUT /api/v1/points/rules` (PUT by HR; new values apply from then on).
+- **Awards:**
+  - `GET /api/v1/awards/shortlist?award_type=&period=&scope=`: the top five with evidence (HR, MM, GM, SUP, ADMIN). Quarters are financial-year quarters, for example `2026/27-Q2`.
+  - `POST /api/v1/awards` (HR; one per type, period and scope).
+  - `GET /api/v1/awards` (everyone).
+- **Drawings:**
+  - `GET /api/v1/equipment/{id}/drawings`
+  - `POST /api/v1/equipment/{id}/drawing-differences` (technical roles)
+  - `GET /api/v1/drawing-differences?status=REPORTED|VERIFIED|INCORPORATED|ALL`: chiefs see their own section; MM, GM, SUP and ADMIN see all.
+  - `POST /api/v1/drawing-differences/{id}/review` `{decision: VERIFIED|REJECTED, note}`: CT or CE of the section, not the reporter.
+  - `POST /api/v1/drawing-differences/{id}/incorporated` `{revision}`: ADMIN or MM, standing in for the drawing office.
+  - `GET /api/v1/drawings?search=`, `POST /api/v1/drawings` and `PATCH /api/v1/drawings/{id}` `{document_url, revision}` (ADMIN). Linking a file marks the drawing DIGITISED.
+- **Expert knowledge:**
+  - `GET /api/v1/expertise/at-risk` (technical roles: own section; org-wide and HR: all)
+  - `GET /api/v1/expertise/types`
+  - `GET /api/v1/expertise/people`
+  - `GET` / `POST /api/v1/expertise/sessions`
+  - `POST /api/v1/expertise/sessions/{id}/review` (CT or CE of the section, not the expert or the writer)
+  - `GET` / `POST /api/v1/expertise/questions`
+  - `POST /api/v1/expertise/questions/{id}/answers`
+  - `POST /api/v1/expertise/answers/{id}/accept` (the asker or the section chief; never your own answer)
+  - `PATCH /api/v1/users/{id}/retirement` (HR or ADMIN)
+  - `PATCH /api/v1/faults/{id}/assignments/{aid}/adviser` (Chief Technician of the section)
+- **Watch list:** `GET /api/v1/analytics/watch-list?section=&limit=`: equipment with reasons, guidance and the back-tested accuracy. Technical roles see their own section; org-wide roles and GM see all.
+- **Fault context** now includes:
+  - `drawing_differences`, `drawings`, `expert_notes`, `equipment_type` and `watch`
+  - `cause_category_label` on diagnoses and `action_type_label` on interventions
+  - `adviser_name` on assignments
+
 ### Periodic reports ([REPORTS.md](REPORTS.md))
 
 - `GET /api/v1/reports/periods?kind=week|month|year`: the current period and recent complete ones, plus the default (the last complete one)

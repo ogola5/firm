@@ -13,6 +13,7 @@ from app.services.access import SECTIONS, require_fault_scope, require_roles, ro
 from app.services.analytics import insights, measures
 from app.services.analytics.facts import UNIDENTIFIED, load_facts
 from app.services.analytics.periods import Granularity, resolve_period
+from app.services.analytics import watchlist
 from app.services.analytics.similarity import similar_faults
 from app.services.workspace import ANALYTICS_HEADLINE_ONLY, ANALYTICS_ORG_WIDE, ANALYTICS_SECTION_LEADS, SECTION_TECHNICAL
 
@@ -114,6 +115,26 @@ def analytics_data_quality(
     period = resolve_period(start, end)
     return {"period": period.as_dict(), "scope": scope_note(scope),
             "checks": insights.data_quality(load_facts(db, scope), period, utcnow())}
+
+
+@router.get("/api/v1/analytics/watch-list")
+def watch_list(section: str = "", limit: int = Query(default=15, ge=1, le=50),
+               user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """Equipment likely to need attention soon, with reasons in words, and how often the list has been right."""
+    require_roles(user, *SECTION_ROLES, *ORG_WIDE, "general_manager_om")
+    if role_key(user) in SECTION_ROLES:
+        scope = user.section or "Systems Automation"
+    else:
+        if section and section not in SECTIONS:
+            raise HTTPException(status_code=422, detail="Unknown section")
+        scope = section or None
+    now = utcnow()
+    facts = load_facts(db, scope, now)
+    rows = watchlist.add_guidance(db, watchlist.build(db, facts, now)[:limit])
+    return {"scope": scope_note(scope), "equipment": rows, "accuracy": watchlist.backtest(db, facts, now),
+            "how": "Each asset is listed for the reasons shown: how often it fails and when it last did, repeats, "
+                   "faults that came back after a fix, temporary fixes still in place, the same type failing elsewhere, "
+                   "and unverified differences from its drawing. Check it on your next visit; it is a guide, not a certainty."}
 
 
 @router.get("/api/v1/intelligence/similar-faults")

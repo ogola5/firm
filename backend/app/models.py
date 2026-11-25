@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import date
 from datetime import datetime
 from datetime import timezone
+from sqlalchemy import Date
 from sqlalchemy import DateTime
 from sqlalchemy import Float
 from sqlalchemy import ForeignKey
@@ -52,6 +54,150 @@ class User(Base):
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     password_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=True)
+    # Set by HR: used to find knowledge at risk of leaving with the person.
+    retirement_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+
+class PointRule(Base):
+    """How many points a kind of verified contribution earns (HR sets these)."""
+    __tablename__ = "point_rules"
+    kind: Mapped[str] = mapped_column(String, primary_key=True)
+    label: Mapped[str] = mapped_column(String)
+    points: Mapped[int] = mapped_column(Integer)
+    description: Mapped[str] = mapped_column(Text, default="")
+    active: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class HRSetting(Base):
+    __tablename__ = "hr_settings"
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(String)
+
+
+class PointEntry(Base):
+    """One line in a person's points record: always with the reason and the work behind it."""
+    __tablename__ = "points_ledger"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String)
+    points: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(Text)
+    source_type: Mapped[str] = mapped_column(String, default="")
+    source_id: Mapped[str] = mapped_column(String, default="")
+    link: Mapped[str] = mapped_column(String, default="")
+    earned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
+class PointRedemption(Base):
+    __tablename__ = "point_redemptions"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    points: Mapped[int] = mapped_column(Integer)
+    option: Mapped[str] = mapped_column(String)
+    value_text: Mapped[str] = mapped_column(String, default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    recorded_by_id: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Award(Base):
+    """Employee of the month, quarter or (financial) year, per section or overall."""
+    __tablename__ = "awards"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    award_type: Mapped[str] = mapped_column(String)
+    period_key: Mapped[str] = mapped_column(String)
+    scope: Mapped[str] = mapped_column(String)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    citation: Mapped[str] = mapped_column(Text)
+    prize: Mapped[str] = mapped_column(String, default="")
+    decided_by_id: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Drawing(Base):
+    """Drawing register. Placeholder until KPC's digitised drawings can be linked (document_url)."""
+    __tablename__ = "drawings"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    number: Mapped[str] = mapped_column(String, unique=True)
+    title: Mapped[str] = mapped_column(String)
+    revision: Mapped[str] = mapped_column(String, default="")
+    discipline: Mapped[str] = mapped_column(String, default="")
+    status: Mapped[str] = mapped_column(String, default="PAPER")
+    document_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    source: Mapped[str] = mapped_column(String, default="Local register")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DrawingEquipment(Base):
+    __tablename__ = "drawing_equipment"
+    drawing_id: Mapped[str] = mapped_column(ForeignKey("drawings.id"), primary_key=True)
+    equipment_id: Mapped[str] = mapped_column(ForeignKey("equipment.id"), primary_key=True)
+
+
+class DrawingDifference(Base):
+    """Where the installed equipment no longer matches its drawing (a red-line for the drawing office)."""
+    __tablename__ = "drawing_differences"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    equipment_id: Mapped[str] = mapped_column(ForeignKey("equipment.id"), index=True)
+    drawing_id: Mapped[Optional[str]] = mapped_column(ForeignKey("drawings.id"), nullable=True)
+    drawing_number_text: Mapped[str] = mapped_column(String, default="")
+    description: Mapped[str] = mapped_column(Text)
+    permanence: Mapped[str] = mapped_column(String)
+    fault_id: Mapped[Optional[str]] = mapped_column(ForeignKey("faults.id"), nullable=True)
+    reported_by_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String, default="REPORTED")
+    verified_by_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    incorporated_revision: Mapped[str] = mapped_column(String, default="")
+    incorporated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ExpertSession(Base):
+    """An experienced person's knowledge of an equipment type, written up by a colleague."""
+    __tablename__ = "expert_sessions"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    expert_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    scribe_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    equipment_type: Mapped[str] = mapped_column(String)
+    section: Mapped[str] = mapped_column(String)
+    title: Mapped[str] = mapped_column(String)
+    how_it_fails: Mapped[str] = mapped_column(Text, default="")
+    first_checks: Mapped[str] = mapped_column(Text, default="")
+    what_fools_people: Mapped[str] = mapped_column(Text, default="")
+    tricks: Mapped[str] = mapped_column(Text, default="")
+    parts: Mapped[str] = mapped_column(Text, default="")
+    safety: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String, default="SUBMITTED")
+    reviewer_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ExpertQuestion(Base):
+    __tablename__ = "expert_questions"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    equipment_type: Mapped[str] = mapped_column(String)
+    section: Mapped[str] = mapped_column(String)
+    asked_by_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String, default="OPEN")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ExpertAnswer(Base):
+    __tablename__ = "expert_answers"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    question_id: Mapped[str] = mapped_column(ForeignKey("expert_questions.id"), index=True)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    text: Mapped[str] = mapped_column(Text)
+    accepted: Mapped[int] = mapped_column(Integer, default=0)
+    accepted_by_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class EmailCode(Base):
@@ -194,6 +340,8 @@ class FaultAssignment(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # Technician-entered time the equipment was working again (from their notes).
     back_in_service_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # An experienced colleague advising on this job (shadowing; both are credited).
+    adviser_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     fault = relationship("Fault", back_populates="assignments")
     assigned_by = relationship("User", foreign_keys=[assigned_by_id])
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])
@@ -230,6 +378,8 @@ class Diagnosis(Base):
     fix_summary: Mapped[str] = mapped_column(Text, default="")
     workaround: Mapped[int] = mapped_column(Integer, default=0)
     risk_level: Mapped[str] = mapped_column(String, default="Normal")
+    # Pick-list (services/catalogue.py): what kind of cause, so the library can be analysed.
+    cause_category: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -244,6 +394,8 @@ class Intervention(Base):
     tools_materials: Mapped[str] = mapped_column(Text, default="")
     outcome: Mapped[str] = mapped_column(String)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Pick-list (services/catalogue.py): replaced, adjusted, reset, temporary fix…
+    action_type: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

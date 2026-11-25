@@ -90,11 +90,17 @@ test("Scenario 1 + 3: first-time fault to published knowledge, keeping the faile
   await page.getByLabel("Arrived on site", { exact: true }).fill(hhmm(0));
   await page.getByLabel("Back in service", { exact: true }).fill(hhmm(0));
   await page.getByLabel("What did you find?").fill(cause);
+  await page.getByLabel("What kind of cause?").selectOption("loose_connection");
   await page.getByLabel("Step 1: what you did").fill("Reset the actuator controller");
+  await page.getByLabel("Step 1: kind of action").selectOption("reset");
   await page.getByRole("group", { name: "Step 1: did it work?" }).getByRole("button", { name: "Didn't work" }).click();
   await page.getByRole("button", { name: "Add another thing you did" }).click();
   await page.getByLabel("Step 2: what you did").fill("Tightened and replaced the supply terminal");
   await page.getByRole("group", { name: "Step 2: did it work?" }).getByRole("button", { name: "Worked" }).click();
+  await page.getByLabel("Step 2: kind of action").selectOption("tighten");
+  // The supply terminal had been moved at some point: record it against the drawing.
+  await page.getByRole("group", { name: "Differs from the drawing" }).getByRole("button", { name: "Yes" }).click();
+  await page.getByLabel("What is different?").fill("Supply on terminal X4; drawing shows X1");
   await page.getByLabel(/Parts and materials used/).fill("1 x terminal block");
   await page.getByRole("button", { name: "Save and ask Chief to sign off" }).click();
   await expect(page.getByRole("heading", { name: "Sent to your Chief Technician for sign-off" })).toBeVisible();

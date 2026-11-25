@@ -12,6 +12,7 @@ import { InvestigationForms } from "./detail/InvestigationForms";
 import { Overview } from "./detail/Overview";
 import { ProcedureForm, ReuseRecords } from "./detail/Procedures";
 import { SimilarFaults } from "./SimilarFaults";
+import { EquipmentKnowledge } from "../library/EquipmentKnowledge";
 
 /**
  * One breakdown: summary, section handoffs, evidence, troubleshooting history,
@@ -67,6 +68,7 @@ export function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId:
         <AssignmentPanel />
         <EvidencePanel />
         <RankedCauses />
+        <EquipmentKnowledge context={value.context} />
         <EquipmentHistory />
         <SimilarFaults user={user} faultId={faultId} />
         <InvestigationForms />

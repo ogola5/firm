@@ -7,7 +7,8 @@ import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { ChoiceButtons, SectionLabel, type Choice } from "../../components/ui/choice";
-import { Input, Textarea } from "../../components/ui/form-controls";
+import { Input, NativeSelect, Textarea } from "../../components/ui/form-controls";
+import { EquipmentKnowledge, useCatalogue } from "../library/EquipmentKnowledge";
 import { Page } from "../../components/ui/page";
 import { clockTime, isoFromDayAndTime, shortEffect, spokenTime } from "../../lib/format";
 import { errorMessage } from "../../lib/query";
@@ -20,9 +21,10 @@ import { SimilarFaults } from "../faults/SimilarFaults";
 
 type Day = "today" | "yesterday";
 type Result = "worked" | "failed" | "partly";
-type Attempt = { action: string; result: Result | "" };
+type Attempt = { action: string; result: Result | ""; action_type?: string };
 
 const DAYS: Array<Choice<Day>> = [{ value: "today", label: "Today" }, { value: "yesterday", label: "Yesterday" }];
+const DIFFERS: Array<Choice<"no" | "yes">> = [{ value: "no", label: "No" }, { value: "yes", label: "Yes" }];
 const RESULTS: Array<Choice<Result>> = [
   { value: "worked", label: "Worked" }, { value: "failed", label: "Didn't work" }, { value: "partly", label: "Partly" },
 ];
@@ -68,6 +70,10 @@ export function WriteUpVisit({ user }: { user: User }) {
   const [parts, setParts] = useState("");
   const [notes, setNotes] = useState("");
   const [workaround, setWorkaround] = useState(false);
+  const [causeCategory, setCauseCategory] = useState("");
+  const [differs, setDiffers] = useState<"no" | "yes">("no");
+  const [difference, setDifference] = useState({ description: "", drawing_number: "", permanence: "PERMANENT" });
+  const catalogue = useCatalogue();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState<{ signoff: boolean; offline: boolean } | null>(null);
@@ -91,7 +97,9 @@ export function WriteUpVisit({ user }: { user: User }) {
   const missing = [
     !onSite && "arrival time",
     !found.trim() && "what you found",
+    !causeCategory && "what kind of cause",
     !filled.length && "what you did",
+    differs === "yes" && !difference.description.trim() && "what differs from the drawing",
     filled.some((item) => !item.result) && "whether each step worked",
     fixed && !back && "back-in-service time",
   ].filter(Boolean) as string[];
@@ -111,7 +119,11 @@ export function WriteUpVisit({ user }: { user: User }) {
       on_site_at: onSiteIso,
       back_in_service_at: fixed ? backIso : null,
       found: found.trim(),
-      attempts: filled.map((item) => ({ action: item.action.trim(), result: item.result })),
+      cause_category: causeCategory,
+      attempts: filled.map((item) => ({ action: item.action.trim(), result: item.result, action_type: item.action_type ?? "" })),
+      drawing_difference: differs === "yes"
+        ? { description: difference.description.trim(), drawing_number: difference.drawing_number.trim(), permanence: difference.permanence }
+        : null,
       parts: parts.trim(),
       notes: notes.trim(),
       workaround,
@@ -227,6 +239,13 @@ export function WriteUpVisit({ user }: { user: User }) {
                           ))}
                         </div>
                       )}
+                      <div className="grid gap-1.5 sm:max-w-md">
+                        <label htmlFor="visit-cause-category" className="text-sm font-bold">What kind of cause?</label>
+                        <NativeSelect id="visit-cause-category" value={causeCategory} onChange={(event) => setCauseCategory(event.target.value)}>
+                          <option value="">Choose one…</option>
+                          {catalogue.data?.cause_categories.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                        </NativeSelect>
+                      </div>
                     </div>
 
                     <div className="grid gap-3">
@@ -248,6 +267,15 @@ export function WriteUpVisit({ user }: { user: User }) {
                             onChange={(result) => updateAttempt(index, { result })}
                             tone="result"
                           />
+                          <NativeSelect
+                            aria-label={`Step ${index + 1}: kind of action`}
+                            className="w-auto min-w-[12rem]"
+                            value={attempt.action_type ?? ""}
+                            onChange={(event) => updateAttempt(index, { action_type: event.target.value })}
+                          >
+                            <option value="">Kind of action (optional)</option>
+                            {catalogue.data?.action_types.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                          </NativeSelect>
                           {attempts.length > 1 && (
                             <Button type="button" variant="ghost" size="icon" aria-label={`Remove step ${index + 1}`} onClick={() => setAttempts((current) => current.filter((_, i) => i !== index))}>
                               <Trash2 />
@@ -263,6 +291,37 @@ export function WriteUpVisit({ user }: { user: User }) {
                     <div className="grid gap-1.5">
                       <label htmlFor="visit-parts" className="text-[15px] font-bold">Parts and materials used <span className="font-medium text-muted-foreground">(optional)</span></label>
                       <Input id="visit-parts" value={parts} onChange={(event) => setParts(event.target.value)} placeholder="For example: 1 × terminal block" />
+                    </div>
+
+                    <div className="grid gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <SectionLabel>Did you find or change anything that differs from the drawing?</SectionLabel>
+                        <ChoiceButtons label="Differs from the drawing" options={DIFFERS} value={differs} onChange={setDiffers} />
+                      </div>
+                      {differs === "yes" && (
+                        <div className="grid gap-3 rounded-lg border border-border bg-muted/50 p-3">
+                          <div className="grid gap-1.5">
+                            <label htmlFor="visit-difference" className="text-sm font-bold">What is different?</label>
+                            <Input id="visit-difference" value={difference.description} placeholder="For example: close limit switch on terminal X5, drawing shows X3"
+                              onChange={(event) => setDifference({ ...difference, description: event.target.value })} />
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="grid gap-1.5">
+                              <label htmlFor="visit-drawing-number" className="text-sm font-bold">Drawing number <span className="font-medium text-muted-foreground">(if you know it)</span></label>
+                              <Input id="visit-drawing-number" value={difference.drawing_number}
+                                onChange={(event) => setDifference({ ...difference, drawing_number: event.target.value })} />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <label htmlFor="visit-permanence" className="text-sm font-bold">Is it permanent?</label>
+                              <NativeSelect id="visit-permanence" value={difference.permanence} onChange={(event) => setDifference({ ...difference, permanence: event.target.value })}>
+                                <option value="PERMANENT">Permanent change</option>
+                                <option value="TEMPORARY">Temporary (to be put back)</option>
+                              </NativeSelect>
+                            </div>
+                          </div>
+                          <p className="m-0 text-xs text-muted-foreground">Your Chief Technician verifies it; then it is printed on every job card for this equipment and sent to the drawing office.</p>
+                        </div>
+                      )}
                     </div>
 
                     <details className="rounded-lg border border-border px-4 py-3">
@@ -300,6 +359,7 @@ export function WriteUpVisit({ user }: { user: User }) {
             )}
           </div>
           <div className="grid min-w-0 flex-[1_1_300px] content-start gap-4">
+            <EquipmentKnowledge context={context} compact />
             <HistoryPanel context={context} />
             <SimilarFaults user={user} faultId={faultId} compact />
           </div>

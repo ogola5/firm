@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, BookOpen, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Users, Wrench, X,
+  Activity, AlertTriangle, BookOpen, GraduationCap, Ruler, Trophy, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Users, Wrench, X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
@@ -24,6 +24,10 @@ const WriteUpVisit = lazy(() => import("../features/jobs/WriteUpVisit").then((m)
 const JobCard = lazy(() => import("../features/jobs/JobCard").then((m) => ({ default: m.JobCard })));
 const ProcedureDraft = lazy(() => import("../features/jobs/ProcedureDraft").then((m) => ({ default: m.ProcedureDraft })));
 const MyAccount = lazy(() => import("../features/account/MyAccount").then((m) => ({ default: m.MyAccount })));
+const WatchList = lazy(() => import("../features/watch/WatchList").then((m) => ({ default: m.WatchList })));
+const Expertise = lazy(() => import("../features/expertise/Expertise").then((m) => ({ default: m.Expertise })));
+const Drawings = lazy(() => import("../features/drawings/Drawings").then((m) => ({ default: m.Drawings })));
+const Recognition = lazy(() => import("../features/recognition/Recognition").then((m) => ({ default: m.Recognition })));
 const Reports = lazy(() => import("../features/reports/Reports").then((m) => ({ default: m.Reports })));
 const Analytics = lazy(() => import("../features/analytics/Analytics").then((m) => ({ default: m.Analytics })));
 
@@ -33,6 +37,10 @@ const AREAS: Record<string, { path: string; icon: ReactNode }> = {
   home: { path: "/dashboard", icon: <Gauge /> },
   analytics: { path: "/analytics", icon: <LineChart /> },
   reports: { path: "/reports", icon: <FileText /> },
+  watch: { path: "/watch", icon: <Activity /> },
+  expertise: { path: "/expertise", icon: <GraduationCap /> },
+  drawings: { path: "/drawings", icon: <Ruler /> },
+  recognition: { path: "/recognition", icon: <Trophy /> },
   faults: { path: "/faults", icon: <AlertTriangle /> },
   equipment: { path: "/equipment", icon: <Search /> },
   knowledge: { path: "/knowledge", icon: <BookOpen /> },
@@ -156,6 +164,10 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             <Route path="/account" element={<MyAccount user={user} onSignOut={onLogout} />} />
             {areas.has("analytics") && <Route path="/analytics" element={<Analytics user={user} />} />}
             {areas.has("reports") && <Route path="/reports" element={<Reports user={user} />} />}
+            {areas.has("watch") && <Route path="/watch" element={<WatchList user={user} />} />}
+            {areas.has("expertise") && <Route path="/expertise" element={<Expertise user={user} />} />}
+            {areas.has("drawings") && <Route path="/drawings" element={<Drawings user={user} />} />}
+            {areas.has("recognition") && <Route path="/recognition" element={<Recognition user={user} />} />}
             {areas.has("equipment") && <Route path="/equipment" element={<Equipment user={user} />} />}
             {seesFaults && <Route path="/faults" element={<Faults user={user} />} />}
             {areas.has("knowledge") && <Route path="/knowledge" element={<Knowledge user={user} />} />}
