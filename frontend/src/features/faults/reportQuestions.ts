@@ -171,7 +171,7 @@ export type ReportDraft = {
 export function composeReport(draft: ReportDraft): string[] {
   const lines: string[] = [];
   if (draft.hazard === "yes") lines.push("⚠ SAFETY OR ENVIRONMENT HAZARD reported.");
-  lines.push(`${draft.equipment || "Equipment not given"}: ${draft.problem ? lower(draft.problem) : "problem not chosen"}.`);
+  lines.push(`${draft.equipment || "Equipment not given"}${draft.problem ? `: ${lower(draft.problem)}` : ""}.`);
   const detail = problemSentence(draft.problem, draft.answers);
   if (detail) lines.push(detail);
   if (draft.seen) lines.push(draft.seen);

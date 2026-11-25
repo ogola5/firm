@@ -9,7 +9,8 @@ const OFFLINE_CATALOGUE: Catalogue = {
   cause_categories: [
     ["loose_connection", "Loose or broken connection"], ["component_failed", "Electrical or electronic part failed"],
     ["wear", "Wear or end of life"], ["setting", "Wrong setting, parameter or calibration"], ["contamination", "Dirt, water or blockage"],
-    ["power_supply", "Power supply problem"], ["communication", "Communication or signal lost"], ["mechanical_damage", "Mechanical damage"],
+    ["power_supply", "Power supply problem"], ["communication", "Communication or signal lost"],
+    ["trip_latched", "Protection trip latched / alarms would not reset"], ["mechanical_damage", "Mechanical damage"],
     ["leak_seal", "Leak or seal failure"], ["modification", "Unrecorded change (differs from drawing)"],
     ["external", "Operating error or outside cause"], ["not_found", "Cause not found yet"],
   ].map(([value, label]) => ({ value, label })),

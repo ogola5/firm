@@ -14,6 +14,7 @@ CAUSE_CATEGORIES: dict[str, str] = {
     "contamination": "Dirt, water or blockage",
     "power_supply": "Power supply problem",
     "communication": "Communication or signal lost",
+    "trip_latched": "Protection trip latched / alarms would not reset",
     "mechanical_damage": "Mechanical damage",
     "leak_seal": "Leak or seal failure",
     "modification": "Unrecorded change (differs from drawing)",

@@ -32,10 +32,32 @@ def _compact(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
+# A single letter after these words names a unit ("pump A", "line B"), so it is kept, not dropped as "a".
+UNIT_NOUNS = {"pump", "line", "unit", "train", "motor", "fan", "compressor", "tank", "filter", "skid", "panel"}
+
+
+def _terms(query: str) -> list[str]:
+    words = _words(query)
+    kept = []
+    for index, word in enumerate(words):
+        unit_letter = len(word) == 1 and word.isalpha() and index > 0 and words[index - 1] in UNIT_NOUNS
+        if unit_letter or word not in STOP_WORDS:
+            kept.append(word)
+    return kept
+
+
+def extra_name_words(item: Equipment, query: str) -> int:
+    """Words in the name that the query did not ask for: fewer means a closer match (the pump, not the pump's panel)."""
+    asked = set(_terms(query))
+    for term in list(asked):
+        asked |= SYNONYMS.get(term, set())
+    return len([word for word in _words(item.name) if word not in asked and word not in STOP_WORDS])
+
+
 def match_score(item: Equipment, query: str) -> int:
     if _compact(item.tag) == _compact(query):
         return 1000
-    terms = [word for word in _words(query) if word not in STOP_WORDS]
+    terms = _terms(query)
     if not terms:
         return 0
     words = set(_words(" ".join((item.tag, item.name, item.aliases or "", item.location, item.station))))
@@ -53,5 +75,6 @@ def rank_equipment(items: list[Equipment], query: str) -> list[Equipment]:
     scored = [(match_score(item, query), item) for item in items]
     return [item for score, item in sorted(
         (entry for entry in scored if entry[0] > 0),
-        key=lambda entry: (-entry[0], entry[1].tag),
+        # Equal scores: the record whose name adds the fewest words beyond the query, then by tag.
+        key=lambda entry: (-entry[0], extra_name_words(entry[1], query), entry[1].tag),
     )]

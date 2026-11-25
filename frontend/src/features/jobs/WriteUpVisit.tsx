@@ -223,7 +223,7 @@ export function WriteUpVisit({ user }: { user: User }) {
 
                     <div className="grid gap-2">
                       <SectionLabel htmlFor="visit-found">What did you find?</SectionLabel>
-                      <Input id="visit-found" value={found} onChange={(event) => setFound(event.target.value)} placeholder="The cause, as you would tell a colleague" />
+                      <Textarea id="visit-found" rows={2} className="min-h-0 [field-sizing:content]" value={found} onChange={(event) => setFound(event.target.value)} placeholder="The cause, as you would tell a colleague" />
                       {suggestions.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm text-muted-foreground">Found before on this equipment:</span>
@@ -253,12 +253,14 @@ export function WriteUpVisit({ user }: { user: User }) {
                       {attempts.map((attempt, index) => (
                         <div key={index} className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/50 p-3">
                           <span className="w-5 font-extrabold text-muted-foreground">{index + 1}</span>
-                          <Input
+                          {/* Two lines that grow: a long step stays readable on a phone. */}
+                          <Textarea
                             aria-label={`Step ${index + 1}: what you did`}
+                            rows={2}
                             value={attempt.action}
                             onChange={(event) => updateAttempt(index, { action: event.target.value })}
                             placeholder="What you did"
-                            className="min-w-0 flex-[999_1_240px]"
+                            className="min-h-0 min-w-0 flex-[999_1_240px] [field-sizing:content]"
                           />
                           <ChoiceButtons
                             label={`Step ${index + 1}: did it work?`}

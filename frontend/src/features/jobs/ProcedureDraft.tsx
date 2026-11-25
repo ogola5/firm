@@ -24,7 +24,12 @@ export function draftFromContext(context: FaultContext, userId: string): Draft {
   const interventions = mine(context.interventions, "actor_id");
   const diagnosis = [...diagnoses].reverse().find((item) => item.verification_status === "CONFIRMED") ?? diagnoses[diagnoses.length - 1];
   const cause = String(diagnosis?.possible_cause ?? "");
-  const worked = [...interventions].reverse().find((item) => item.outcome === "SUCCESS");
+  // The fix is what got it working: one step, or the whole sequence in order when it took several
+  // (steps that partly worked are part of the sequence; steps that did not work go under "Don't bother with").
+  const sequence = interventions.filter((item) => item.outcome === "SUCCESS" || item.outcome === "IN_PROGRESS");
+  const fix = sequence.length === 1
+    ? String(sequence[0].corrective_action)
+    : sequence.map((item, index) => `${index + 1}. ${String(item.corrective_action)}`).join("\n");
   const failedHere = interventions.filter((item) => item.outcome === "FAILED").map((item) => String(item.corrective_action));
   const failedBefore = context.previous_faults.flatMap((item) => ((item.interventions || []) as DataRow[])
     .filter((step) => step.outcome === "FAILED").map((step) => String(step.corrective_action)));
@@ -35,7 +40,7 @@ export function draftFromContext(context: FaultContext, userId: string): Draft {
     symptom: `${String(fault.symptom)} on ${String(fault.equipment_tag)} (${equipment}).`,
     cause,
     check: String(diagnosis?.quick_check || "") || (cause ? `Check for: ${cause}.` : ""),
-    fix: String(worked?.corrective_action ?? ""),
+    fix,
     avoid: avoid.length ? `${avoid.join("; ")}. These did not fix it.` : "",
     safety: "",
   };
@@ -44,9 +49,9 @@ export function draftFromContext(context: FaultContext, userId: string): Draft {
 const FIELDS: Array<{ key: keyof Draft; label: string; from?: string; multiline?: boolean; placeholder?: string }> = [
   { key: "title", label: "Title" },
   { key: "symptom", label: "When you see", from: "From the fault report", multiline: true },
-  { key: "cause", label: "Likely cause", from: "From “What did you find?”" },
+  { key: "cause", label: "Likely cause", from: "From “What did you find?”", multiline: true },
   { key: "check", label: "Check this first", multiline: true },
-  { key: "fix", label: "Fix", from: "From the step that worked", multiline: true },
+  { key: "fix", label: "Fix", from: "From the steps that got it working, in order", multiline: true },
   { key: "avoid", label: "Don't bother with", from: "From the steps that didn't work, on this job and earlier ones", multiline: true },
   { key: "safety", label: "Safety", from: "Add permit or isolation points if this job needs them", multiline: true, placeholder: "For example: isolate the actuator supply at the MCC before opening the terminal box" },
 ];

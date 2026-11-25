@@ -472,7 +472,36 @@ def seed_database():
         fault.assigned_section = section
     db.commit()
     seed_knowledge_capture(db)
+    ensure_extra_equipment(db)
     db.close()
+
+
+# Equipment added after the first demo data load; created on any database that lacks it (also on Render).
+# (tag, name, aliases, station, location, section, category, criticality). Illustrative only.
+EXTRA_EQUIPMENT = [
+    ("11-P-401", "Line 4 main pump A (pump 401)", "line 4 pump a line4 pump a pump 401 main pump line 4 p401", "PS04",
+     "Line 4 pump house", "Mechanical", "Mechanical", "Critical"),
+    ("11-VFD-401", "Line 4 pump A variable speed drive", "line 4 pump a vfd drive panel 4 p401 vfd", "PS04",
+     "Line 4 MCC room, panel 4", "Electrical", "Electrical", "High"),
+    ("11-LOP-401", "Line 4 pump A lube oil pumps panel", "lop panel line 4 lube oil pumps lop pump 401 panel 4", "PS04",
+     "Line 4 MCC room", "Electrical", "Electrical", "High"),
+    ("11-VMS-401", "Line 4 pump A vibration monitor (Bentley Nevada)", "bentley nevada bn hmi vibration monitor pump 401 line 4", "PS04",
+     "Line 4 control room", "Instrumentation", "Instrumentation", "High"),
+    ("11-RTU-401", "Line 4 station RTU and local workstation", "line 4 workstation local scada station 4 rtu", "PS04",
+     "Line 4 control room", "Systems Automation", "Automation", "High"),
+]
+
+
+def ensure_extra_equipment(db) -> None:
+    for tag, name, aliases, station, location, section, category, criticality in EXTRA_EQUIPMENT:
+        if db.scalar(select(Equipment).where(Equipment.tag == tag)):
+            continue
+        db.add(Equipment(
+            id=f"EQ-{tag}", tag=tag, name=name, aliases=aliases, station=station, location=location, section=section,
+            category=category, criticality=criticality,
+            description="Illustrative demonstration asset; not a real KPC operational record.",
+        ))
+    db.commit()
 
 
 def _slug(section: str) -> str:
