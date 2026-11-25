@@ -11,6 +11,7 @@ import { EquipmentHistory, InvestigationLog, RankedCauses } from "./detail/Histo
 import { InvestigationForms } from "./detail/InvestigationForms";
 import { Overview } from "./detail/Overview";
 import { ProcedureForm, ReuseRecords } from "./detail/Procedures";
+import { SimilarFaults } from "./SimilarFaults";
 
 /**
  * One breakdown: summary, section handoffs, evidence, troubleshooting history,
@@ -67,6 +68,7 @@ export function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId:
         <EvidencePanel />
         <RankedCauses />
         <EquipmentHistory />
+        <SimilarFaults user={user} faultId={faultId} />
         <InvestigationForms />
         <InvestigationLog onRevise={setRevision} />
         <ProcedureForm revision={revision} onDone={() => setRevision(null)} />

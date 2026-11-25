@@ -21,7 +21,6 @@ def contribution_rows(db: Session, start_date: date | None, end_date: date | Non
 
     users = db.scalars(select(User).where(User.active == 1)).all()
     contributors = [item for item in users if role_key(item) in TECHNICAL_ROLES or role_key(item) == "systems_automation"]
-    user_by_id = {item.id: item for item in users}
     faults = db.scalars(select(Fault)).all()
     fault_by_id = {item.id: item for item in faults}
     events = db.scalars(select(FaultEvent)).all()

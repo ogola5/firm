@@ -46,6 +46,14 @@ ILLUSTRATIVE_EQUIPMENT = [
 ]
 
 
+# Demo fault history: the most recent faults cover every workflow stage; older ones are finished.
+RECENT_FAULTS = 24
+# Equipment indexes (0-based, EQ-001 = 0) that fail more often than the rest in the demo history.
+BAD_ACTORS = (4, 11, 19)
+# Resolved faults (most recent first) that also get a procedure draft in the review workflow.
+PROCEDURE_DRAFTS = 18
+
+
 def seed_database():
     """Load the illustrative demonstration dataset into an empty database.
 
@@ -93,11 +101,29 @@ def seed_database():
             ))
         db.commit()
 
-        first_equipment = db.query(Equipment).all()[0]
+        effects = ["Stopped: Operation stopped or at risk", "Running reduced: Working, but limited", "No effect yet: Needs attention, not urgent"]
+        statuses = ["REPORTED", "TRIAGED", "ASSIGNED", "ACKNOWLEDGED", "ON_SITE", "DIAGNOSED", "RESTORED", "CLOSED"]
         for i in range(105):
-            equipment = db.query(Equipment).filter(Equipment.id == f"EQ-{(i % 30) + 1:03d}").one()
-            status_name = ["REPORTED", "TRIAGED", "ASSIGNED", "ACKNOWLEDGED", "ON_SITE", "DIAGNOSED", "RESTORED", "CLOSED"][i % 8]
-            date = utcnow() - timedelta(days=i % 180)
+            if i < RECENT_FAULTS:
+                # The last few weeks: every stage of the workflow is represented, for the work queues.
+                equipment_index = i % 30
+                status_name = statuses[i % 8]
+                days_ago = i
+            else:
+                # A year of history, mostly finished. A few "bad actor" assets fail far more often
+                # than the rest, so repeats are a minority pattern worth finding, not the norm.
+                older = i - RECENT_FAULTS
+                equipment_index = BAD_ACTORS[older // 5 % len(BAD_ACTORS)] if older % 5 == 0 else (older * 7) % 30
+                status_name = "RESTORED" if older % 9 == 0 else "CLOSED"
+                days_ago = RECENT_FAULTS + older * (365 - RECENT_FAULTS) // (105 - RECENT_FAULTS)
+            equipment = db.query(Equipment).filter(Equipment.id == f"EQ-{equipment_index + 1:03d}").one()
+            date = utcnow() - timedelta(days=days_ago, hours=(i * 7) % 24)
+            # Deterministic, varied timings so trends are not flat lines. No improvement is built in.
+            ack_minutes = 8 + (i * 37) % 110
+            on_site_minutes = ack_minutes + 25 + (i * 53) % 150
+            diagnose_minutes = on_site_minutes + 20 + (i * 17) % 90
+            # Never before the seeded fix at +2 h 45 min (see the interventions below).
+            restore_minutes = max(diagnose_minutes + 30 + (i * 131) % (26 * 60), 180)
             fault = Fault(
                 id=f"FAULT-{i + 1:05d}",
                 reference=f"KPC-DMO-{i + 1:05d}",
@@ -110,8 +136,11 @@ def seed_database():
                 status=status_name,
                 assigned_section=equipment.section,
                 created_at=date,
-                acknowledged_at=date + timedelta(minutes=35) if i % 3 else None,
-                restored_at=date + timedelta(hours=4) if status_name in ("RESTORED", "CLOSED") else None,
+                acknowledged_at=date + timedelta(minutes=ack_minutes) if i % 3 else None,
+                restored_at=date + timedelta(minutes=restore_minutes) if status_name in ("RESTORED", "CLOSED") else None,
+                operational_impact=effects[i % 3],
+                seen_via="SCADA" if i % 3 else "SITE_WALK",
+                observed_at=date - timedelta(minutes=(i * 11) % 40),
             )
             db.add(fault)
             state_rank = {
@@ -129,15 +158,15 @@ def seed_database():
                     "repeat_routed_to_owner": i >= 30,
                 }, date + timedelta(minutes=20))
             if state_rank >= 3:
-                add_event(db, fault.id, "FAULT_ACKNOWLEDGE", f"USER-st-{section_slug}", {}, date + timedelta(minutes=35))
+                add_event(db, fault.id, "FAULT_ACKNOWLEDGE", f"USER-st-{section_slug}", {}, date + timedelta(minutes=ack_minutes))
             if state_rank >= 4:
-                add_event(db, fault.id, "FAULT_ON_SITE", f"USER-st-{section_slug}", {}, date + timedelta(hours=1))
+                add_event(db, fault.id, "FAULT_ON_SITE", f"USER-st-{section_slug}", {}, date + timedelta(minutes=on_site_minutes))
             if state_rank >= 5:
-                add_event(db, fault.id, "FAULT_DIAGNOSE", f"USER-pt-{section_slug}", {}, date + timedelta(hours=2))
+                add_event(db, fault.id, "FAULT_DIAGNOSE", f"USER-pt-{section_slug}", {}, date + timedelta(minutes=diagnose_minutes))
             if state_rank >= 6:
-                add_event(db, fault.id, "FAULT_RESTORE", f"USER-pt-{section_slug}", {}, date + timedelta(hours=4))
+                add_event(db, fault.id, "FAULT_RESTORE", f"USER-pt-{section_slug}", {}, date + timedelta(minutes=restore_minutes))
             if state_rank >= 7:
-                add_event(db, fault.id, "FAULT_CLOSE", f"USER-ct-{section_slug}", {}, date + timedelta(hours=5))
+                add_event(db, fault.id, "FAULT_CLOSE", f"USER-ct-{section_slug}", {}, date + timedelta(minutes=restore_minutes + 60))
         db.commit()
 
         for i in range(30):
@@ -277,11 +306,12 @@ def seed_database():
             select(Fault)
             .where(Fault.status.in_(("RESTORED", "CLOSED")))
             .order_by(Fault.created_at.desc())
-            .limit(18)
         ).all()
         causes = ["Loose terminal connection", "Sensor drift", "Blocked filter", "Incorrect controller parameter"]
         authors = ("pt", "senior-engineer", "engineer", "assistant-engineer")
         for index, fault in enumerate(resolved_faults):
+            if index >= PROCEDURE_DRAFTS and index % 7 == 6:
+                continue  # some older restorations have no recorded cause, as in real records
             section_slug = fault.equipment.section.lower().replace(" ", "-")
             author_id = f"USER-{authors[index % len(authors)]}-{section_slug}"
             cause = causes[index % len(causes)]
@@ -324,6 +354,8 @@ def seed_database():
                 notes="Synthetic successful intervention; illustrative only.",
                 created_at=fault.created_at + timedelta(hours=2, minutes=45),
             ))
+            if index >= PROCEDURE_DRAFTS:
+                continue  # procedure drafts only for the most recent resolved faults
 
             update_id = f"PROC-DEMO-{index + 1:04d}"
             if index < 9:

@@ -45,7 +45,7 @@ Live checklist. A feature is ticked only when it works and is covered by tests.
 
 - [ ] Notifications and overdue escalation
 - [ ] QR generation and scanning
-- [ ] Weighted similar-fault ranking with explanations and configurable weights
+- [x] Weighted similar-fault ranking with explanations and configurable weights (`services/analytics/similarity.py`)
 - [ ] Legacy system documentation area
 - [ ] SAP integration simulator (read-only mappings, unresolved identifiers)
 

@@ -64,6 +64,22 @@ Knowledge and intelligence:
 - `GET /api/v1/integrations/sap/status` (read-only integration is deferred; write-back is disabled)
 - `GET /api/v1/analytics/overview`
 
+### Analytics and intelligence
+
+Every measure is defined in [METRICS.md](METRICS.md). Dates are local calendar days (Kenya time, `YYYY-MM-DD`); a period is at most three years. Every value is returned with `n`, the number of faults behind it.
+
+| Endpoint | Who | Returns |
+| --- | --- | --- |
+| `GET /api/v1/analytics/measures` | analytics roles | Measure definitions, units, which direction is better, `min_n_to_compare` |
+| `GET /api/v1/analytics/summary?start&end&section` | analytics roles | Headline measures for the period (default last 84 days), each with the previous period of the same length and a verdict: `better`, `worse`, `same`, `context` (volume), `too_few` (n < 5) or `no_data` |
+| `GET /api/v1/analytics/trends?start&end&section&granularity=week\|month&measure=…` | analytics roles | `buckets` (`label`, `from`, `days`, `full_days`, `partial`) and `series[measure] = [{value, n}]`. Weeks start Monday. Partial buckets are cut short by the period edges. |
+| `GET /api/v1/analytics/equipment-attention?start&end&section&limit` | org-wide, section leads | Equipment ranked by faults + repeats + 2 × came back after fix, with the reasons in words and the most common recorded cause |
+| `GET /api/v1/analytics/sections?start&end` | org-wide, section leads (own section) | Per-section faults, first response, restore time, first-time fix, repeats, open now |
+| `GET /api/v1/analytics/data-quality?start&end&section` | org-wide, section leads | Record completeness checks (unidentified equipment, no back-in-service time, late write-up, no cause, stale) |
+| `GET /api/v1/intelligence/similar-faults?fault_id&limit` | technical roles, org-wide | Earlier faults most like this one: score 0–1, reasons, causes, what worked and what did not. Section roles only see their section's history (Systems Automation sees all). |
+
+Analytics roles: org-wide (Maintenance Manager, GM O&M, Supervisor, System Administrator); section leads (Chief Technician, Chief Engineer), always limited to their own section whatever `section` is sent; and the Managing Director/CEO, who gets `summary` and `trends` only. Operations, HR and field technicians get 403. Similarity weights (`SIMILARITY_WEIGHTS`, default equipment 0.40, symptom 0.25, category 0.20, recency 0.15) and the reporting time zone (`REPORTING_TIMEZONE`) are configuration.
+
 The HR appraisal endpoint returns attributed work evidence and time measures without equipment identifiers or individual fault narratives. Report volume is contextual only. The prototype recognition weighting is illustrative and not an approved appraisal policy.
 
 The Chief Technician APIs are section-scoped. Only a Chief Technician can allocate/reassign or review work for their section; allocation accepts only active, available ST/PT accounts from that section. Technical completion approval requires a successful intervention on the active assignment. Operations confirmation remains a separate action and is required to close the fault.

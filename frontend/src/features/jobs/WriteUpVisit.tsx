@@ -16,6 +16,7 @@ import { cn } from "../../lib/utils";
 import { api, isOfflineError } from "../../offline/api";
 import { queueVisit } from "../../offline/outbox";
 import { loadFaultContext } from "../faults/detail/context";
+import { SimilarFaults } from "../faults/SimilarFaults";
 
 type Day = "today" | "yesterday";
 type Result = "worked" | "failed" | "partly";
@@ -298,8 +299,9 @@ export function WriteUpVisit({ user }: { user: User }) {
               </Card>
             )}
           </div>
-          <div className="min-w-0 flex-[1_1_300px]">
+          <div className="grid min-w-0 flex-[1_1_300px] content-start gap-4">
             <HistoryPanel context={context} />
+            <SimilarFaults user={user} faultId={faultId} compact />
           </div>
         </div>
       </div>

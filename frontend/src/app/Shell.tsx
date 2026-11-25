@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, BookOpen, ClipboardList, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, Wrench, X,
+  AlertTriangle, BookOpen, ClipboardList, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, Wrench, X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
@@ -23,6 +23,13 @@ const ReportPage = lazy(() => import("../features/faults/ReportPage").then((m) =
 const WriteUpVisit = lazy(() => import("../features/jobs/WriteUpVisit").then((m) => ({ default: m.WriteUpVisit })));
 const JobCard = lazy(() => import("../features/jobs/JobCard").then((m) => ({ default: m.JobCard })));
 const ProcedureDraft = lazy(() => import("../features/jobs/ProcedureDraft").then((m) => ({ default: m.ProcedureDraft })));
+const Analytics = lazy(() => import("../features/analytics/Analytics").then((m) => ({ default: m.Analytics })));
+
+// Mirrors backend/app/routers/insights.py: org-wide, section leads, and the executive (headline and trends only).
+const ANALYTICS_ROLES = [
+  "maintenance_manager", "general_manager_om", "supervisor", "system_administrator",
+  "technician_ct", "chief_engineer", "managing_director",
+];
 
 const FIELD_ROLES = ["systems_automation", "technician_st", "technician_pt", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"];
 
@@ -95,6 +102,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
   const fieldWorker = FIELD_ROLES.includes(user.role);
   const operator = user.role === "operations";
   const canReport = permissions.includes("faults.report");
+  const canSeeAnalytics = ANALYTICS_ROLES.includes(user.role);
   const homeLabel = user.role === "technician_ct" ? "Section oversight"
     : fieldWorker ? "My jobs"
       : operator ? "My reports"
@@ -114,6 +122,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
         <nav className="grid gap-1 p-2.5" aria-label="Main">
           {operator && canReport && <NavItem to="/report" icon={<Plus />}>Report a fault</NavItem>}
           <NavItem to="/dashboard" icon={technicianView && user.role !== "technician_ct" ? <ClipboardList /> : <Gauge />}>{homeLabel}</NavItem>
+          {canSeeAnalytics && <NavItem to="/analytics" icon={<LineChart />}>Analytics</NavItem>}
           {canSeeMaintenance && permissions.includes("faults.read") && <NavItem to="/faults" icon={<AlertTriangle />}>{technicianView || operator ? "Find previous work" : "Faults"}</NavItem>}
           {canSeeMaintenance && permissions.includes("equipment.read") && <NavItem to="/equipment" icon={<Search />}>Equipment</NavItem>}
           {canSeeMaintenance && permissions.includes("knowledge.read") && <NavItem to="/knowledge" icon={<BookOpen />}>{fieldWorker ? "Procedures" : "Knowledge"}</NavItem>}
@@ -150,6 +159,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
         <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/dashboard" element={<Dashboard user={user} />} />
+            {canSeeAnalytics && <Route path="/analytics" element={<Analytics user={user} />} />}
             {canSeeMaintenance && permissions.includes("equipment.read") && <Route path="/equipment" element={<Equipment user={user} />} />}
             {canSeeMaintenance && permissions.includes("faults.read") && <Route path="/faults" element={<Faults user={user} />} />}
             {canSeeMaintenance && permissions.includes("knowledge.read") && <Route path="/knowledge" element={<Knowledge user={user} />} />}

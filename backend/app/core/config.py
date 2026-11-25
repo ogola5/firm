@@ -35,6 +35,11 @@ class Settings(BaseSettings):
         ".webp": "image/webp",
     }
 
+    # Periods and weekly/monthly buckets are cut in this time zone.
+    reporting_timezone: str = "Africa/Nairobi"
+    # Similar-fault score weights: equipment, symptom, category, relevance (METRICS.md).
+    similarity_weights: tuple[float, float, float, float] = (0.40, 0.25, 0.20, 0.15)
+
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")

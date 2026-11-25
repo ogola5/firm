@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-25 — Analytics, trends and intelligence
+
+One definition per figure ([METRICS.md](METRICS.md)), computed in one place (`backend/app/services/analytics/`), and shown with the number of faults behind it.
+
+- **Measures:** faults reported, time to first response, time to get on site, time to restore (medians), first-time fix, repeat faults (90 days), came back after fix (30 days), failed attempts per fault, open at period end. Periods are cut at midnight Kenya time; weeks start Monday.
+- **Comparison with the previous period**, stated in words (better/worse by each measure's direction). Fewer than 5 faults: "too few to compare". Volume is shown as context, never as performance.
+- **Analytics page** (`/analytics`): headline tiles, one trend chart per measure (single line, tooltip with n, "Show as table"). Weeks or months cut short by the period are drawn hollow and labelled "(3 of 7 days)", so a part-week is not read as a drop. Also the equipment needing attention, with reasons; the section comparison; and record completeness.
+- **Similar earlier faults** on the fault page and beside the visit write-up: ranked by equipment, symptom, category and recency (configurable weights), each with its reasons and what worked or didn't. Labelled "Similar is not the same cause".
+- **Access:** org-wide roles see all sections; Chief Technicians and Chief Engineers are held to their own section; the CEO sees headlines and trends only; Operations, HR and field technicians have no analytics.
+- **Demo data:** a year of mostly-finished history, with a few assets that fail more often than the rest, varied response and restore times, and recorded causes and fixes on most restored faults. Illustrative only.
+
 ## 2026-11-25 — Desk workflow (control room and technician desks)
 
 Designed for how the work is actually done: operators report from the control-room desk after seeing a fault on SCADA or a site walk, and technicians carry no device on site, writing up from a notebook afterwards.
