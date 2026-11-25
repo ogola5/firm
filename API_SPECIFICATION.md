@@ -28,6 +28,9 @@ People and access:
 - `GET /api/v1/hr/appraisal?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD` (HR-only attributed contribution evidence and timing measures; no fault narratives)
 - `POST /api/v1/users` (System Administrator; `{email, display_name, staff_number?, job_title?, role, section, password}`, with the same email and password rules as enrolment)
 - `PATCH /api/v1/users/{id}/status` (System Administrator)
+- `PATCH /api/v1/users/{id}/access` `{role, section}` (System Administrator; not their own account): change a person's level and section. The person's current session ends at once, and they are emailed. The change is audited as `USER_ACCESS_CHANGED`.
+
+The user payload (`/auth/login`, `/auth/me`) includes `access`: `{level, level_label, home, home_title, home_purpose, scope, menu[{key,label}], can[], version}`. It is built on the server from the account's approved role and section (see ACCOUNTS.md).
 - `GET /api/v1/users/audit` (System Administrator)
 - `GET /api/v1/chief/team` (Chief Technician; active status, availability, workload and competencies for the Chief's ST/PT pool)
 - `PATCH /api/v1/me/availability` (Senior/Principal Technician; set `availability_status` to `AVAILABLE` or `UNAVAILABLE`)

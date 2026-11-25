@@ -1,4 +1,5 @@
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { formatValue } from "../../features/analytics/SummaryTile";
 
 /** One measure over time. Single series, so no legend: the title names it. */
 const LINE = "#2c6688"; // 6.24:1 on the white card
@@ -23,12 +24,7 @@ function TooltipBody({ active, payload, unit }: { active?: boolean; payload?: Ar
   );
 }
 
-export function formatValue(value: number, unit: string): string {
-  if (unit === "%") return `${value}%`;
-  if (unit === "faults") return `${Math.round(value)}`;
-  if (unit === "attempts") return `${value}`;
-  return `${value} ${unit}`;
-}
+export { formatValue };
 
 /**
  * The last point with data gets an end marker (8 px with a 2 px surface ring).

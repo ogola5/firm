@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { type User } from "../../auth";
+import { Link } from "react-router-dom";
+import { can, type User } from "../../auth";
+import { Alert } from "../../components/ui/alert";
 import { RankedBars } from "../../components/charts/RankedBars";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { EmptyState, Page, PageHeader, Stat } from "../../components/ui/page";
@@ -25,19 +27,18 @@ type Overview = {
 
 /** Management and executive analytics (loaded on demand: it carries the chart library). */
 export function ManagementOverview({ user }: { user: User }) {
-  const executive = user.role === "managing_director" || user.role === "management";
+  const executive = user.access.home === "executive";
   const { data, isLoading } = useQuery({
     queryKey: ["analytics", "overview"],
     queryFn: () => api<Overview>("/api/v1/analytics/overview"),
   });
-  const title = executive ? "Executive summary"
-    : user.role === "general_manager_om" ? "Operations & Maintenance workflow"
-      : user.section ? `${user.section} overview` : "Operational overview";
+  const title = user.access.home_title;
+  const eyebrow = `${user.access.level} · ${user.role_label} · illustrative demonstration data`;
 
   if (!data) {
     return (
       <Page>
-        <PageHeader eyebrow="Illustrative demonstration data" title={title} />
+        <PageHeader eyebrow={eyebrow} title={title} />
         <EmptyState>{isLoading ? "Loading summary…" : "Summary data is unavailable. Reconnect and try again."}</EmptyState>
       </Page>
     );
@@ -45,7 +46,12 @@ export function ManagementOverview({ user }: { user: User }) {
   const categories = Object.entries(data.by_category || {}).map(([label, value]) => ({ label, value }));
   return (
     <Page>
-      <PageHeader eyebrow="Illustrative demonstration data" title={title} description={`${data.view_level || "Summary"} · not verified operating performance`} />
+      <PageHeader eyebrow={eyebrow} title={title} description={`${user.access.home_purpose} ${data.view_level || "Summary"} · not verified operating performance.`} />
+      {user.access.home === "supervision" && (
+        <Alert variant="warning" className="mb-4">
+          Procedures that chiefs have approved wait for your publication. <Link to="/approvals" className="font-bold">Open procedure review</Link>
+        </Alert>
+      )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Total faults" value={data.total_faults ?? 0} />
         <Stat label="Open faults" value={data.open_faults ?? 0} />
@@ -80,8 +86,8 @@ export function ManagementOverview({ user }: { user: User }) {
         </div>
       )}
       {data.workflow && <WorkflowPanel workflow={data.workflow} />}
-      {["maintenance_manager", "general_manager_om", "system_administrator"].includes(user.role) && <PeopleSummary />}
-      {["maintenance_manager", "general_manager_om", "supervisor", "system_administrator"].includes(user.role) && <RecognitionPanel />}
+      {can(user, "people.counts") && <PeopleSummary />}
+      {can(user, "recognition.view") && <RecognitionPanel />}
       {executive && (
         <Card className="mt-4">
           <CardHeader><CardTitle>Access level</CardTitle></CardHeader>

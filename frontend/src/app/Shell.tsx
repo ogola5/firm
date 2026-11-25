@@ -1,9 +1,9 @@
 import {
-  AlertTriangle, BookOpen, ClipboardList, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Wrench, X,
+  AlertTriangle, BookOpen, ClipboardList, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Users, Wrench, X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { type User } from "../auth";
+import { can, type User } from "../auth";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
@@ -26,18 +26,20 @@ const ProcedureDraft = lazy(() => import("../features/jobs/ProcedureDraft").then
 const MyAccount = lazy(() => import("../features/account/MyAccount").then((m) => ({ default: m.MyAccount })));
 const Analytics = lazy(() => import("../features/analytics/Analytics").then((m) => ({ default: m.Analytics })));
 
-// Mirrors backend/app/routers/insights.py: org-wide, section leads, and the executive (headline and trends only).
-const ANALYTICS_ROLES = [
-  "maintenance_manager", "general_manager_om", "supervisor", "system_administrator",
-  "technician_ct", "chief_engineer", "managing_director",
-];
-
-const FIELD_ROLES = ["systems_automation", "technician_st", "technician_pt", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"];
-
-const TECHNICIAN_ROLES = [
-  "systems_automation", "technician_st", "technician_pt", "technician_ct",
-  "assistant_engineer", "engineer", "senior_engineer", "chief_engineer",
-];
+// Menu entries come from the account's access profile (server-defined per level); only icons and paths live here.
+const AREAS: Record<string, { path: string; icon: ReactNode }> = {
+  report: { path: "/report", icon: <Plus /> },
+  home: { path: "/dashboard", icon: <Gauge /> },
+  analytics: { path: "/analytics", icon: <LineChart /> },
+  faults: { path: "/faults", icon: <AlertTriangle /> },
+  equipment: { path: "/equipment", icon: <Search /> },
+  knowledge: { path: "/knowledge", icon: <BookOpen /> },
+  approvals: { path: "/approvals", icon: <ShieldCheck /> },
+  people: { path: "/people", icon: <Users /> },
+  sync: { path: "/sync", icon: <CloudOff /> },
+  account: { path: "/account", icon: <UserCircle /> },
+};
+const HOME_ICONS: Record<string, ReactNode> = { my_jobs: <ClipboardList />, my_reports: <ClipboardList /> };
 
 function NavItem({ to, icon, children }: { to: string; icon: ReactNode; children: ReactNode }) {
   return (
@@ -92,23 +94,12 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
       : !connection.serverReachable ? "Server unreachable"
         : connection.mode === "intermittent" ? "Intermittent (simulated)" : "Connected";
 
-  const permissions = user.permissions || [];
-  const peopleOnly = user.role === "hr_officer";
-  const executiveOnly = user.role === "managing_director" || user.role === "management";
-  const canSeeMaintenance = !peopleOnly && !executiveOnly;
-  const canManageUsers = user.role === "system_administrator";
-  const canSeePeople = canManageUsers || peopleOnly;
-  const canReviewProcedures = ["technician_ct", "chief_engineer", "supervisor"].includes(user.role);
-  const technicianView = TECHNICIAN_ROLES.includes(user.role);
-  const fieldWorker = FIELD_ROLES.includes(user.role);
-  const operator = user.role === "operations";
-  const canReport = permissions.includes("faults.report");
-  const canSeeAnalytics = ANALYTICS_ROLES.includes(user.role);
-  const homeLabel = user.role === "technician_ct" ? "Section oversight"
-    : fieldWorker ? "My jobs"
-      : operator ? "My reports"
-        : executiveOnly ? "Executive summary"
-          : peopleOnly ? "Workforce overview" : "Dashboard";
+  // Everything below follows the account's access profile; the API enforces the same rules.
+  const access = user.access;
+  const areas = new Set(access.menu.map((item) => item.key));
+  const canReport = can(user, "faults.report");
+  const worksJobs = can(user, "jobs.work");
+  const seesFaults = areas.has("faults");
 
   return (
     <div className="min-h-screen md:grid md:grid-cols-[220px_1fr] print:block">
@@ -121,22 +112,20 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
           <button className="md:hidden" onClick={() => setMenuOpen(false)} aria-label="Close menu"><X className="size-5" /></button>
         </div>
         <nav className="grid gap-1 p-2.5" aria-label="Main">
-          {operator && canReport && <NavItem to="/report" icon={<Plus />}>Report a fault</NavItem>}
-          <NavItem to="/dashboard" icon={technicianView && user.role !== "technician_ct" ? <ClipboardList /> : <Gauge />}>{homeLabel}</NavItem>
-          {canSeeAnalytics && <NavItem to="/analytics" icon={<LineChart />}>Analytics</NavItem>}
-          {canSeeMaintenance && permissions.includes("faults.read") && <NavItem to="/faults" icon={<AlertTriangle />}>{technicianView || operator ? "Find previous work" : "Faults"}</NavItem>}
-          {canSeeMaintenance && permissions.includes("equipment.read") && <NavItem to="/equipment" icon={<Search />}>Equipment</NavItem>}
-          {canSeeMaintenance && permissions.includes("knowledge.read") && <NavItem to="/knowledge" icon={<BookOpen />}>{fieldWorker ? "Procedures" : "Knowledge"}</NavItem>}
-          {canSeeMaintenance && canReviewProcedures && <NavItem to="/approvals" icon={<ShieldCheck />}>Procedure review</NavItem>}
-          {canSeePeople && <NavItem to="/people" icon={<ShieldCheck />}>{canManageUsers ? "User management" : "People directory"}</NavItem>}
-          {canSeeMaintenance && <NavItem to="/sync" icon={<CloudOff />}>Sync{conflicts ? ` (${conflicts})` : ""}</NavItem>}
-          <NavItem to="/account" icon={<UserCircle />}>My account</NavItem>
+          {access.menu.filter((item) => AREAS[item.key]).map((item) => (
+            <NavItem key={item.key} to={AREAS[item.key].path} icon={item.key === "home" ? HOME_ICONS[access.home] ?? AREAS.home.icon : AREAS[item.key].icon}>
+              {item.label}{item.key === "sync" && conflicts ? ` (${conflicts})` : ""}
+            </NavItem>
+          ))}
         </nav>
         <div className="mt-auto grid grid-cols-[10px_1fr_32px] items-center gap-2 border-t border-white/10 p-3 text-xs">
           <span className={cn("size-2 rounded-full", online ? "bg-emerald-400" : "bg-amber-400")} aria-hidden />
           <NavLink to="/account" className="grid min-w-0 rounded-md text-sidebar-foreground no-underline hover:bg-white/10" title="My account">
             <strong className="truncate">{user.display_name}</strong>
-            <span className="truncate text-sidebar-foreground/70">{user.role_label}{user.section ? ` · ${user.section}` : ""}</span>
+            <span className="truncate text-sidebar-foreground/70">
+              {access.level && <span className="mr-1 rounded bg-white/15 px-1 font-bold text-sidebar-foreground">{access.level}</span>}
+              {user.role_label}{user.section ? ` · ${user.section}` : ""}
+            </span>
             {user.email && <span className="truncate text-sidebar-foreground/70">{user.email}</span>}
           </NavLink>
           <button className="grid size-8 place-items-center rounded-md hover:bg-white/10" onClick={onLogout} aria-label="Log out"><LogOut className="size-4" /></button>
@@ -163,17 +152,17 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
           <Routes>
             <Route path="/dashboard" element={<Dashboard user={user} />} />
             <Route path="/account" element={<MyAccount user={user} onSignOut={onLogout} />} />
-            {canSeeAnalytics && <Route path="/analytics" element={<Analytics user={user} />} />}
-            {canSeeMaintenance && permissions.includes("equipment.read") && <Route path="/equipment" element={<Equipment user={user} />} />}
-            {canSeeMaintenance && permissions.includes("faults.read") && <Route path="/faults" element={<Faults user={user} />} />}
-            {canSeeMaintenance && permissions.includes("knowledge.read") && <Route path="/knowledge" element={<Knowledge user={user} />} />}
-            {canSeeMaintenance && canReviewProcedures && <Route path="/approvals" element={<ProcedureReview user={user} />} />}
-            {canSeePeople && <Route path="/people" element={<People user={user} />} />}
-            {canSeeMaintenance && <Route path="/sync" element={<SyncCentre user={user} />} />}
-            {canReport && <Route path="/report" element={<ReportPage user={user} />} />}
-            {fieldWorker && <Route path="/jobs/:faultId/write-up" element={<WriteUpVisit user={user} />} />}
-            {canSeeMaintenance && permissions.includes("faults.read") && <Route path="/jobs/:faultId/card" element={<JobCard user={user} />} />}
-            {fieldWorker && <Route path="/jobs/:faultId/procedure" element={<ProcedureDraft user={user} />} />}
+            {areas.has("analytics") && <Route path="/analytics" element={<Analytics user={user} />} />}
+            {areas.has("equipment") && <Route path="/equipment" element={<Equipment user={user} />} />}
+            {seesFaults && <Route path="/faults" element={<Faults user={user} />} />}
+            {areas.has("knowledge") && <Route path="/knowledge" element={<Knowledge user={user} />} />}
+            {areas.has("approvals") && <Route path="/approvals" element={<ProcedureReview user={user} />} />}
+            {areas.has("people") && <Route path="/people" element={<People user={user} />} />}
+            {areas.has("sync") && <Route path="/sync" element={<SyncCentre user={user} />} />}
+            {canReport && seesFaults && <Route path="/report" element={<ReportPage user={user} />} />}
+            {worksJobs && <Route path="/jobs/:faultId/write-up" element={<WriteUpVisit user={user} />} />}
+            {seesFaults && <Route path="/jobs/:faultId/card" element={<JobCard user={user} />} />}
+            {worksJobs && <Route path="/jobs/:faultId/procedure" element={<ProcedureDraft user={user} />} />}
             <Route path="*" element={<Dashboard user={user} />} />
           </Routes>
         </Suspense>

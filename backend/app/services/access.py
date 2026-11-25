@@ -149,7 +149,15 @@ def user_payload(user: User) -> dict:
         "competencies": json.loads(user.competencies or "[]"),
         "permissions": role_definition(user)["permissions"],
         "visibility_scope": role_definition(user)["scope"],
+        # Home, menu and abilities for this account's level (services/workspace.py).
+        "access": _access_profile(user),
     }
+
+
+def _access_profile(user: User) -> dict:
+    from app.services.workspace import access_profile  # workspace builds on this module
+
+    return access_profile(user)
 
 
 TECHNICAL_ROLES = (

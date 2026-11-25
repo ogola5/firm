@@ -54,7 +54,7 @@ test("a technician enrols with a KPC email, is approved, and lands on their own 
 
   // The administrator approves, correcting the section.
   await signIn(page, "admin");
-  await page.getByRole("link", { name: "User management" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "User management" }).click();
   const request = page.getByRole("article", { name: `Request from ${email}` });
   await expect(request.getByText("Senior Technician (ST) — Electrical")).toBeVisible();
   await request.getByLabel("Section").selectOption("Mechanical");
@@ -76,6 +76,71 @@ test("a technician enrols with a KPC email, is approved, and lands on their own 
   await expect(details.filter({ hasText: "Mechanical" })).toBeVisible();
   await expect(details.filter({ hasText: "KPC-20417" })).toBeVisible();
   await expect(page.getByText("Record visits, findings and what was tried")).toBeVisible();
+});
+
+// Each level lands on its own home with its own menu, from the account's access profile.
+const LEVEL_VIEWS: Array<{ user: string; level: string; heading: string; menu: string[]; notMenu: string[] }> = [
+  { user: "operations", level: "OPS", heading: "My reports", menu: ["Report a fault", "Find previous work"], notMenu: ["Analytics", "User management"] },
+  { user: "st-electrical", level: "ST", heading: "My jobs", menu: ["Find previous work", "Procedures"], notMenu: ["Analytics", "Procedure review"] },
+  { user: "ct-electrical", level: "CT", heading: "Section oversight", menu: ["Analytics", "Procedure review"], notMenu: ["User management"] },
+  { user: "chief-engineer-electrical", level: "CE", heading: "Section engineering", menu: ["Analytics", "Procedure review"], notMenu: ["User management"] },
+  { user: "maintenance-manager", level: "MM", heading: "Maintenance overview", menu: ["Analytics", "Faults"], notMenu: ["User management", "Report a fault"] },
+  { user: "gm-om", level: "GM", heading: "Operations & Maintenance", menu: ["Analytics", "Faults"], notMenu: ["User management"] },
+  { user: "hr", level: "HR", heading: "Workforce overview", menu: ["People directory"], notMenu: ["Faults", "Equipment", "Analytics"] },
+  { user: "ceo", level: "MD", heading: "Executive summary", menu: ["Analytics"], notMenu: ["Faults", "Equipment", "People directory"] },
+  { user: "admin", level: "ADMIN", heading: "Administration", menu: ["User management"], notMenu: ["Procedure review"] },
+];
+
+test("each level gets the home page and menu its account allows", async ({ page }) => {
+  for (const view of LEVEL_VIEWS) {
+    await signIn(page, view.user);
+    await expect(page.getByRole("heading", { level: 2, name: view.heading }), view.user).toBeVisible();
+    const nav = page.getByRole("navigation", { name: "Main" });
+    for (const item of view.menu) await expect(nav.getByRole("link", { name: item, exact: true }), `${view.user}: ${item}`).toBeVisible();
+    for (const item of view.notMenu) await expect(nav.getByRole("link", { name: item, exact: true }), `${view.user}: no ${item}`).toHaveCount(0);
+    await expect(page.locator("aside").getByText(view.level, { exact: true })).toBeVisible();
+  }
+});
+
+test("when the administrator changes someone's level, they are signed out and come back to the new view", async ({ page, browser }) => {
+  const email = `peter.mwangi.${Date.now().toString(36)}@kpc.co.ke`;
+  await signIn(page, "admin");
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "User management" }).click();
+  const create = page.locator("details").filter({ hasText: "Create an account directly" });
+  await create.getByText("Create an account directly").click();
+  await create.getByLabel("Full name").fill("Peter Mwangi");
+  await create.getByLabel("KPC email").fill(email);
+  await create.getByLabel("Role").selectOption("technician_st");
+  await create.getByLabel("Section").selectOption("Electrical");
+  await create.getByLabel("Temporary password").fill(PASSWORD);
+  await create.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByText(`Created ${email}`)).toBeVisible();
+
+  // Peter signs in on his own computer: Senior Technician view.
+  const peterContext = await browser.newContext();
+  const peter = await peterContext.newPage();
+  await peter.goto("/");
+  await peter.getByLabel("KPC email").fill(email);
+  await peter.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await peter.getByRole("button", { name: "Sign in" }).click();
+  await expect(peter.getByRole("heading", { level: 2, name: "My jobs" })).toBeVisible();
+
+  // Promoted to Chief Technician.
+  const row = page.getByRole("row").filter({ hasText: email });
+  await row.getByRole("button", { name: "Change access" }).click();
+  await row.getByLabel("New level").selectOption("technician_ct");
+  await row.getByLabel("New section").selectOption("Electrical");
+  await row.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText(`${email} is now Chief Technician (CT) — Electrical`)).toBeVisible();
+
+  // His next action is refused, he is signed out with the reason, and signs in to the CT view.
+  await peter.getByRole("link", { name: "Find previous work" }).click();
+  await expect(peter.getByText(/You were signed out\. Your access was changed by the System Administrator/)).toBeVisible();
+  await peter.getByLabel("KPC email").fill(email);
+  await peter.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await peter.getByRole("button", { name: "Sign in" }).click();
+  await expect(peter.getByRole("heading", { level: 2, name: "Section oversight" })).toBeVisible();
+  await peterContext.close();
 });
 
 test("forgot password: a code to the KPC email sets a new password", async ({ page }) => {

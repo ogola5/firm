@@ -14,14 +14,15 @@ from app.services.analytics import insights, measures
 from app.services.analytics.facts import UNIDENTIFIED, load_facts
 from app.services.analytics.periods import Granularity, resolve_period
 from app.services.analytics.similarity import similar_faults
+from app.services.workspace import ANALYTICS_HEADLINE_ONLY, ANALYTICS_ORG_WIDE, ANALYTICS_SECTION_LEADS, SECTION_TECHNICAL
 
 router = APIRouter()
 
-ORG_WIDE = ("maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
-SECTION_LEADS = ("technician_ct", "chief_engineer")
-EXECUTIVE = ("managing_director",)
-SECTION_ROLES = ("systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer",
-                 "engineer", "senior_engineer", "chief_engineer")
+# One definition shared with the access profiles the browser receives (services/workspace.py).
+ORG_WIDE = ANALYTICS_ORG_WIDE
+SECTION_LEADS = ANALYTICS_SECTION_LEADS
+EXECUTIVE = ANALYTICS_HEADLINE_ONLY
+SECTION_ROLES = SECTION_TECHNICAL
 
 
 def analytics_section(user: User, requested: str, *, detail: bool) -> str | None:

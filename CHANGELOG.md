@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-25 — Each level's view comes from the account
+
+- **One access profile per level, built on the server** (OPS, SA, ST, PT, CT, AE, E, SE, CE, MM, GM, SUP, HR, MD, ADMIN). It sets the home page, menu, scope and abilities, and is sent with the account. The browser's own role lists are removed: the menu, routes, home page, analytics, similar faults, people and sync screens all follow the profile.
+- **New homes:**
+  - The Chief Engineer gets *Section engineering*: the section's last-4-week figures, equipment needing attention, then their jobs.
+  - The System Administrator gets *Administration*: account requests and account counts.
+  - The Supervisor gets *Supervision*, which points to procedures waiting for publication.
+  - The level code is shown beside the person's name.
+- **The session token carries the account:** email, role, level, section, an access version and a password version.
+  - If an administrator changes someone's level or section (**Change access**, new) or disables them, the old session is refused at once. The person is signed out with the reason and signs in to their new view.
+  - Forged or edited tokens are refused.
+
 ## 2026-11-25 — Company-email accounts
 
 Everyone signs in with their KPC email (`@kpc.co.ke`); what they see follows from the role and section approved for that address. See [ACCOUNTS.md](ACCOUNTS.md).

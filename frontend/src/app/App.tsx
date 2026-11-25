@@ -4,10 +4,10 @@ import { normalizeUser, type User } from "../auth";
 import { DemoMailbox } from "../features/account/DemoMailbox";
 import { Enrol } from "../features/account/Enrol";
 import { ResetPassword } from "../features/account/ResetPassword";
-import { API_BASE as API } from "../offline/api";
+import { API_BASE as API, SESSION_ENDED } from "../offline/api";
 import { networkFetch } from "../offline/network";
 import { queryClient } from "../lib/query";
-import { Login } from "./Login";
+import { Login, SIGNED_OUT_REASON } from "./Login";
 import { registerServiceWorker } from "./pwa";
 import { Shell } from "./Shell";
 
@@ -30,9 +30,8 @@ export function App() {
       .then(async (response) => {
         if (localStorage.getItem("kpc-token") !== token) return null;
         if (response.status === 401) {
-          localStorage.removeItem("kpc-token");
-          localStorage.removeItem("kpc-user");
-          setUser(null);
+          const reason = await response.json().then((body: { detail?: unknown }) => String(body.detail ?? ""), () => "");
+          endSession(reason);
           return null;
         }
         if (!response.ok) throw new Error(`Session refresh failed: ${response.status}`);
@@ -57,6 +56,16 @@ export function App() {
     queryClient.clear();
     setUser(null);
   }
+  /** The server refused this session: sign out and tell the person why on the sign-in page. */
+  function endSession(reason: string) {
+    if (reason) sessionStorage.setItem(SIGNED_OUT_REASON, reason);
+    logout();
+  }
+  useEffect(() => {
+    const onEnded = (event: Event) => endSession(String((event as CustomEvent<string>).detail ?? ""));
+    window.addEventListener(SESSION_ENDED, onEnded);
+    return () => window.removeEventListener(SESSION_ENDED, onEnded);
+  }, []);
   return (
     <Routes>
       {/* Demonstration only: where the prototype's emails go (no real mail is sent). */}

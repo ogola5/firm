@@ -1,3 +1,16 @@
+/** What this account's level sees: decided by the server (backend/app/services/workspace.py). */
+export type AccessProfile = {
+  level: string;
+  level_label: string;
+  home: string;
+  home_title: string;
+  home_purpose: string;
+  scope: string;
+  menu: Array<{ key: string; label: string }>;
+  can: string[];
+  version: string;
+};
+
 export type User = {
   id: string;
   username: string;
@@ -12,7 +25,39 @@ export type User = {
   competencies: string[];
   permissions: string[];
   visibility_scope: string;
+  access: AccessProfile;
 };
+
+/** Whether the screens should offer this. The matching API enforces it either way. */
+export function can(user: User, ability: string): boolean {
+  return user.access.can.includes(ability);
+}
+
+/** A session cached before access profiles existed: minimal until /auth/me refreshes it. */
+function fallbackAccess(role: string, label: string, permissions: string[]): AccessProfile {
+  return {
+    level: "", level_label: label, home: "none", home_title: "Home", home_purpose: "Reconnect to load your view.",
+    scope: "", menu: [{ key: "home", label: "Home" }, { key: "account", label: "My account" }], can: permissions, version: role,
+  };
+}
+
+function parseAccess(value: unknown): AccessProfile | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.home !== "string" || !Array.isArray(raw.menu) || !Array.isArray(raw.can)) return null;
+  return {
+    level: String(raw.level ?? ""),
+    level_label: String(raw.level_label ?? ""),
+    home: raw.home,
+    home_title: String(raw.home_title ?? "Home"),
+    home_purpose: String(raw.home_purpose ?? ""),
+    scope: String(raw.scope ?? ""),
+    menu: raw.menu.filter((item): item is { key: string; label: string } =>
+      Boolean(item) && typeof (item as { key?: unknown }).key === "string" && typeof (item as { label?: unknown }).label === "string"),
+    can: raw.can.filter((item): item is string => typeof item === "string"),
+    version: String(raw.version ?? ""),
+  };
+}
 
 const roleAliases: Record<string, string> = {
   Operations: "operations",
@@ -80,5 +125,6 @@ export function normalizeUser(value: unknown): User | null {
       : [],
     permissions,
     visibility_scope: typeof raw.visibility_scope === "string" ? raw.visibility_scope : section || "Cached session",
+    access: parseAccess(raw.access) ?? fallbackAccess(role, typeof raw.role_label === "string" ? raw.role_label : labels[role] ?? storedRole, permissions),
   };
 }

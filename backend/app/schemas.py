@@ -168,6 +168,11 @@ class UserCreate(BaseModel):
     password: str
 
 
+class UserAccessUpdate(BaseModel):
+    role: str
+    section: str = ""
+
+
 class UserStatusUpdate(BaseModel):
     active: bool
 

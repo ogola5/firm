@@ -36,7 +36,9 @@ const shots: Array<{ user: string; pages: Array<[string, string]> }> = [
   { user: "automation", pages: [["work", "/dashboard"], ["equipment", "/equipment"], ["knowledge", "/knowledge"], ["sync", "/sync"]] },
   { user: "ct-electrical", pages: [["oversight", "/dashboard"], ["review", "/approvals"]] },
   { user: "maintenance-manager", pages: [["dashboard", "/dashboard"], ["analytics", "/analytics"]] },
-  { user: "ceo", pages: [["analytics", "/analytics"]] },
+  { user: "ceo", pages: [["home", "/dashboard"], ["analytics", "/analytics"]] },
+  { user: "chief-engineer-electrical", pages: [["home", "/dashboard"]] },
+  { user: "admin", pages: [["home", "/dashboard"], ["people", "/people"]] },
 ];
 
 for (const { user, pages } of shots) {

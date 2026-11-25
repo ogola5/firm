@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { type User } from "../../auth";
+import { can, type User } from "../../auth";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -267,8 +267,54 @@ function CreateAccount({ roles, onCreated }: { roles: DataRow[]; onCreated: (mes
   );
 }
 
+/** Change someone's level and section (e.g. promotion). Their current session ends; they sign in to the new view. */
+function ChangeAccess({ person, roles, onDone }: { person: DataRow; roles: DataRow[]; onDone: (message: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [role, setRole] = useState(String(person.role));
+  const [section, setSection] = useState(String(person.section || ""));
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const sectionRequired = Boolean(roles.find((item) => item.code === role)?.section_required);
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<DataRow>(`/api/v1/users/${String(person.id)}/access`, {
+        method: "PATCH", body: JSON.stringify({ role, section: sectionRequired ? section : "" }),
+      });
+      setOpen(false);
+      onDone(`${String(person.email)} is now ${String(result.role_label)}${result.section ? ` — ${String(result.section)}` : ""}. They have been signed out and emailed.`);
+    } catch (reason) {
+      setError(errorMessage(reason, "Access not changed."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) return <Button variant="outline" size="sm" onClick={() => setOpen(true)}>Change access</Button>;
+  return (
+    <div className="grid gap-2" role="group" aria-label={`Change access for ${String(person.email)}`}>
+      <NativeSelect aria-label="New level" value={role} onChange={(event) => setRole(event.target.value)}>
+        {roles.map((item) => <option key={String(item.code)} value={String(item.code)}>{String(item.label)}</option>)}
+      </NativeSelect>
+      {sectionRequired && (
+        <NativeSelect aria-label="New section" value={section} onChange={(event) => setSection(event.target.value)}>
+          <option value="">Choose section…</option>
+          {SECTIONS.map((item) => <option key={item}>{item}</option>)}
+        </NativeSelect>
+      )}
+      <div className="flex gap-2">
+        <Button size="sm" disabled={busy || (sectionRequired && !section)} onClick={() => void save()}>Save</Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+      </div>
+      {error && <span className="text-xs font-semibold text-destructive">{error}</span>}
+    </div>
+  );
+}
+
 export function People({ user, compact = false }: { user: User; compact?: boolean }) {
-  const isAdmin = user.role === "system_administrator";
+  const isAdmin = can(user, "people.manage");
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
 
@@ -284,7 +330,7 @@ export function People({ user, compact = false }: { user: User; compact?: boolea
 
   const content = (
     <>
-      {user.role === "hr_officer" && <AppraisalEvidence />}
+      {can(user, "people.evidence") && <AppraisalEvidence />}
       {isAdmin && (
         <AccountRequests roles={roles.data ?? []} onDone={setMessage} />
       )}
@@ -321,9 +367,17 @@ export function People({ user, compact = false }: { user: User; compact?: boolea
                   {isAdmin && <TableCell className="text-muted-foreground">{person.last_login_at ? spokenTime(String(person.last_login_at)) : "Never"}</TableCell>}
                   {isAdmin && (
                     <TableCell>
-                      <Button variant="outline" size="sm" disabled={toggleActive.isPending} onClick={() => toggleActive.mutate(person)}>
-                        {person.active ? "Deactivate" : "Reactivate"}
-                      </Button>
+                      <div className="flex flex-wrap items-start gap-2">
+                        {person.id !== user.id && (
+                          <ChangeAccess person={person} roles={roles.data ?? []} onDone={(text) => {
+                            setMessage(text);
+                            void queryClient.invalidateQueries({ queryKey: ["people"] });
+                          }} />
+                        )}
+                        <Button variant="outline" size="sm" disabled={toggleActive.isPending} onClick={() => toggleActive.mutate(person)}>
+                          {person.active ? "Deactivate" : "Reactivate"}
+                        </Button>
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>

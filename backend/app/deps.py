@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.db import db_dep
 from app.models import User
 from app.services.accounts import ACTIVE, password_version
+from app.services.workspace import access_version
 
 
 def current_user(authorization: str = Header(default=""), db: Session = Depends(db_dep)) -> User:
@@ -24,4 +25,7 @@ def current_user(authorization: str = Header(default=""), db: Session = Depends(
     # A password change ends every session started with the old password.
     if payload.get("pv", 0) != password_version(user):
         raise HTTPException(status_code=401, detail="Your password was changed. Sign in again.")
+    # The role or section on the account changed: sign in again to get the right view.
+    if payload.get("av") != access_version(user):
+        raise HTTPException(status_code=401, detail="Your access was changed by the System Administrator. Sign in again.")
     return user

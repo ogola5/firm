@@ -53,7 +53,7 @@ function PrintCardLink({ faultId }: { faultId: string }) {
 }
 
 /** A technician's desk: what to write up, what is assigned, what is waiting on others. */
-export function MyJobs({ user }: { user: User }) {
+export function MyJobs({ user, before }: { user: User; before?: ReactNode }) {
   const queryClient = useQueryClient();
   const jobsQuery = useMyJobs(user);
   const jobs = jobsQuery.data?.data ?? EMPTY_JOBS;
@@ -87,11 +87,12 @@ export function MyJobs({ user }: { user: User }) {
   return (
     <Page>
       <PageHeader
-        eyebrow={`${user.section || "Maintenance"} · ${user.role_label}`}
-        title="My jobs"
-        description="Write up visits while your notes are fresh. Print a job card before you go out."
+        eyebrow={`${user.access.level ? `${user.access.level} · ` : ""}${user.role_label} · ${user.section || "Maintenance"}`}
+        title={user.access.home === "my_jobs" ? "My jobs" : user.access.home_title}
+        description={`${user.access.home_purpose} Write up visits while your notes are fresh; print a job card before you go out.`}
       />
       <div className="mx-auto grid max-w-5xl gap-8">
+        {before}
         {jobsQuery.data?.fromCache && <Alert variant="warning">Offline: this is the list saved on this computer. Write-ups are kept and sent when you reconnect.</Alert>}
         {jobsQuery.isError && <Alert variant="destructive">Your jobs could not be loaded. Reconnect and try again.</Alert>}
         {message && <Alert variant="success">{message}</Alert>}

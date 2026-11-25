@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDownRight, ArrowUpRight, Info, Minus } from "lucide-react";
 import { useState } from "react";
-import { type User } from "../../auth";
-import { formatValue, TrendLine } from "../../components/charts/TrendLine";
+import { can, type User } from "../../auth";
+import { TrendLine } from "../../components/charts/TrendLine";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -11,11 +10,9 @@ import { NativeSelect } from "../../components/ui/form-controls";
 import { Page, PageHeader } from "../../components/ui/page";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { errorMessage } from "../../lib/query";
-import { cn } from "../../lib/utils";
 import { api } from "../../offline/api";
+import { formatValue, SummaryTile, type SummaryMeasure } from "./SummaryTile";
 
-const ORG_WIDE = ["maintenance_manager", "general_manager_om", "supervisor", "system_administrator"];
-const SECTION_LEADS = ["technician_ct", "chief_engineer"];
 const SECTIONS = ["Systems Automation", "Electrical", "Instrumentation", "Mechanical"];
 
 type Range = "4w" | "12w" | "12m";
@@ -27,7 +24,6 @@ const RANGES: Array<Choice<Range> & { days: number; granularity: "week" | "month
 const TREND_KEYS = ["faults_reported", "first_response_min", "restore_h", "first_time_fix_pct", "repeat_pct", "came_back_pct"];
 
 type MeasureInfo = { key: string; label: string; unit: string; better: "lower" | "higher" | null; definition: string };
-type SummaryMeasure = MeasureInfo & { value: number | null; n: number; previous: number | null; previous_n: number; change: number | null; verdict: string };
 type Summary = { measures: SummaryMeasure[]; scope: string; min_n_to_compare: number };
 type Trends = { buckets: Array<{ label: string; partial: boolean; days: number; full_days: number }>; measures: MeasureInfo[]; series: Record<string, Array<{ value: number | null; n: number }>> };
 type Attention = { equipment: Array<Record<string, unknown> & { reasons: string[] }>; ranking: string };
@@ -36,35 +32,6 @@ type QualityCheck = { key: string; label: string; count: number | null; total: n
 
 function isoDay(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function changeWords(measure: SummaryMeasure, rangeWords: string, minN: number): { text: string; tone: "better" | "worse" | "neutral" } {
-  if (measure.verdict === "no_data") return { text: "No data to compare", tone: "neutral" };
-  if (measure.verdict === "too_few") return { text: `Too few faults to compare (fewer than ${minN})`, tone: "neutral" };
-  const size = Math.abs(measure.change ?? 0);
-  const amount = measure.unit === "%" ? `${size} percentage points` : formatValue(Number(size.toFixed(2)), measure.unit);
-  if (measure.verdict === "same") return { text: `Same as the ${rangeWords}`, tone: "neutral" };
-  const direction = (measure.change ?? 0) < 0 ? "lower" : "higher";
-  if (measure.verdict === "context") return { text: `${amount} ${direction} than the ${rangeWords}`, tone: "neutral" };
-  return { text: `${amount} ${direction} than the ${rangeWords}: ${measure.verdict}`, tone: measure.verdict as "better" | "worse" };
-}
-
-function SummaryTile({ measure, rangeWords, minN }: { measure: SummaryMeasure; rangeWords: string; minN: number }) {
-  const change = changeWords(measure, rangeWords, minN);
-  const Icon = change.tone === "neutral" ? Minus : (measure.change ?? 0) < 0 ? ArrowDownRight : ArrowUpRight;
-  return (
-    <div className="grid content-start gap-1 rounded-lg border border-border bg-card p-4">
-      <span className="flex items-center gap-1 text-xs text-muted-foreground" title={measure.definition}>
-        {measure.label} <Info className="size-3" aria-hidden />
-      </span>
-      <strong className="text-2xl leading-tight">{measure.value == null ? "—" : formatValue(measure.value, measure.unit)}</strong>
-      <span className="text-xs text-muted-foreground">{measure.n} fault(s) behind this figure</span>
-      <span className={cn("flex items-start gap-1 text-xs font-semibold",
-        change.tone === "better" && "text-success", change.tone === "worse" && "text-destructive", change.tone === "neutral" && "text-muted-foreground")}>
-        <Icon className="mt-px size-3.5 shrink-0" aria-hidden />{change.text}
-      </span>
-    </div>
-  );
 }
 
 function cell(value: { value: number | null; n: number } | undefined, unit: string) {
@@ -76,8 +43,8 @@ function cell(value: { value: number | null; n: number } | undefined, unit: stri
 export function Analytics({ user }: { user: User }) {
   const [range, setRange] = useState<Range>("12w");
   const [section, setSection] = useState("");
-  const orgWide = ORG_WIDE.includes(user.role);
-  const detail = orgWide || SECTION_LEADS.includes(user.role);
+  const orgWide = can(user, "analytics.org");
+  const detail = orgWide || can(user, "analytics.section");
   const chosen = RANGES.find((item) => item.value === range)!;
   const end = new Date();
   const start = new Date(end);

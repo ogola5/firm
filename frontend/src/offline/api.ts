@@ -10,6 +10,9 @@ export class ApiError extends Error {
   }
 }
 
+/** Fired when the server refuses the current session; the app signs out and shows the reason. */
+export const SESSION_ENDED = "kpc:session-ended";
+
 export function getToken(): string | null {
   return typeof localStorage === "undefined" ? null : localStorage.getItem("kpc-token");
 }
@@ -47,7 +50,14 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
       ...options.headers,
     },
   });
-  if (!response.ok) throw new ApiError(response.status, await errorDetail(response));
+  if (!response.ok) {
+    const error = new ApiError(response.status, await errorDetail(response));
+    // The server refused this session (access or password changed, account disabled): end it here too.
+    if (response.status === 401 && token && token === getToken()) {
+      window.dispatchEvent(new CustomEvent(SESSION_ENDED, { detail: error.message }));
+    }
+    throw error;
+  }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }

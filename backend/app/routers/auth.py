@@ -16,7 +16,8 @@ from app.deps import current_user
 from app.models import User, utcnow
 from app.schemas import LoginRequest
 from app.services import accounts
-from app.services.access import role_definition, user_payload
+from app.services.access import role_definition, role_key, user_payload
+from app.services.workspace import LEVELS, access_version
 
 router = APIRouter()
 
@@ -24,8 +25,15 @@ INVALID = "Wrong email or password."
 
 
 def issue_token(user: User) -> str:
+    """Signed claims about this account. The server re-checks `av` and `pv` on every request:
+    a change of role, section or status (av) or of password (pv) ends the session."""
     claims = {
         "sub": user.id,
+        "email": user.email,
+        "role": role_key(user),
+        "level": LEVELS.get(role_key(user), ""),
+        "section": user.section,
+        "av": access_version(user),
         "pv": accounts.password_version(user),
         "exp": datetime.now(timezone.utc) + timedelta(hours=settings.jwt_lifetime_hours),
     }

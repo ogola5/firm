@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { User } from "../auth";
+import { can, type User } from "../auth";
 import { Alert } from "../components/ui/alert";
 import { Badge, statusVariant } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -143,7 +143,7 @@ export function SyncCentre({ user }: { user: User }) {
       {resolve.isError && <Alert variant="destructive" className="mb-3">{errorMessage(resolve.error, "The conflict could not be resolved.")}</Alert>}
       {conflictsQuery.isError && <Alert variant="destructive" className="mb-3">{errorMessage(conflictsQuery.error)}</Alert>}
 
-      {user.role === "system_administrator" && <NetworkSimulator />}
+      {can(user, "network.simulator") && <NetworkSimulator />}
 
       <Card className="mb-4">
         <CardHeader><CardTitle>Needs reconciliation</CardTitle></CardHeader>

@@ -13,7 +13,7 @@ from app.db import db_dep
 from app.deps import current_user
 from app.models import User, UserAudit, utcnow
 from app.services import accounts
-from app.schemas import UserCreate, UserStatusUpdate
+from app.schemas import UserAccessUpdate, UserCreate, UserStatusUpdate
 from app.services.access import ROLE_DEFINITIONS, SECTIONS, require_roles, role_definition, role_key, user_payload
 from app.services.audit import audit_user_change
 from app.services.people import contribution_rows
@@ -168,6 +168,34 @@ def update_user_status(user_id: str, req: UserStatusUpdate, user: User = Depends
     audit_user_change(db, user.id, "USER_STATUS_CHANGED", target, {"active": bool(target.active)})
     db.commit()
     return {"id": target.id, "active": bool(target.active)}
+
+
+@router.patch("/api/v1/users/{user_id}/access")
+def update_user_access(user_id: str, req: UserAccessUpdate, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """Change a person's level and section (e.g. promotion ST -> PT). Their current session ends at once,
+    so they sign in again and get the view for the new level."""
+    require_roles(user, "system_administrator")
+    target = db.get(User, user_id)
+    if not target or target.account_status not in (accounts.ACTIVE, accounts.DISABLED):
+        raise HTTPException(status_code=404, detail="Account not found")
+    if target.id == user.id:
+        raise HTTPException(status_code=409, detail="Another administrator must change your own access")
+    if req.role not in ROLE_DEFINITIONS:
+        raise HTTPException(status_code=422, detail="Unknown role")
+    section_required = ROLE_DEFINITIONS[req.role].get("section_required", False)
+    if section_required and req.section not in SECTIONS:
+        raise HTTPException(status_code=422, detail="A valid maintenance section is required for this role")
+    section = req.section if section_required or req.section in SECTIONS else ""
+    before = {"role": role_key(target), "section": target.section}
+    if before == {"role": req.role, "section": section}:
+        return user_payload(target)
+    target.role, target.section = req.role, section
+    accounts.send_mail(db, target.email, "Your KPC Maintenance access has changed",
+                       f"Hello {target.display_name},\n\nYour access is now {ROLE_DEFINITIONS[req.role]['label']}"
+                       f"{' — ' + section if section else ''}. Sign in again to see your updated view.")
+    audit_user_change(db, user.id, "USER_ACCESS_CHANGED", target, {"before": before, "after": {"role": req.role, "section": section}})
+    db.commit()
+    return user_payload(target)
 
 
 @router.get("/api/v1/users/audit")

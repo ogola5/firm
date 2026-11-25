@@ -15,7 +15,10 @@ import { NetworkSimulator } from "../offline/NetworkSimulator";
 import { offlineLogin, rememberOfflineSession } from "../offline/session";
 import { getSyncEngine } from "../offline/sync";
 
-export type DemoAccount = { email: string; username: string; role_label: string; section: string };
+/** Why the last session ended (e.g. "Your access was changed…"), shown once on the sign-in page. */
+export const SIGNED_OUT_REASON = "kpc-signed-out-reason";
+
+export type DemoAccount ={ email: string; username: string; role_label: string; section: string };
 
 const loginSchema = z.object({
   email: companyEmail,
@@ -27,6 +30,11 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
   const [accounts, setAccounts] = useState<DemoAccount[]>([]);
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(false);
+  const [notice] = useState(() => {
+    const reason = sessionStorage.getItem(SIGNED_OUT_REASON) ?? "";
+    sessionStorage.removeItem(SIGNED_OUT_REASON);
+    return reason;
+  });
   const navigate = useNavigate();
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -81,6 +89,7 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
   return (
     <AuthCard title="Sign in" subtitle="Use your KPC email address.">
       <form className="mt-5 grid gap-4" onSubmit={handleSubmit(signIn)} noValidate>
+        {notice && <Alert variant="warning" role="status">You were signed out. {notice}</Alert>}
         <Field label="KPC email" error={errors.email?.message}>
           <Input type="email" autoComplete="username" inputMode="email" placeholder="firstname.lastname@kpc.co.ke"
             aria-invalid={Boolean(errors.email)} {...register("email")} />

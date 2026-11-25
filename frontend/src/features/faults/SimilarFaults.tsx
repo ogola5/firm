@@ -1,14 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { type User } from "../../auth";
+import { can, type User } from "../../auth";
 import { spokenTime } from "../../lib/format";
 import { api } from "../../offline/api";
 
-// Mirrors the roles allowed by GET /api/v1/intelligence/similar-faults.
-const ALLOWED = [
-  "systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer",
-  "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator",
-];
 
 type Similar = {
   fault_id: string; reference: string; equipment_tag: string; equipment_name: string; reported_at: string; symptom: string;
@@ -16,7 +11,7 @@ type Similar = {
 };
 
 export function canSeeSimilar(user: User): boolean {
-  return ALLOWED.includes(user.role);
+  return can(user, "similar.view");
 }
 
 /**
