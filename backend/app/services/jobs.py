@@ -40,6 +40,8 @@ def _job(db: Session, fault: Fault, assignment: FaultAssignment | None, **extra)
         "symptom": fault.symptom,
         "operational_impact": fault.operational_impact,
         "severity": fault.severity,
+        "safety_hazard": bool(fault.safety_hazard),
+        "description": fault.description,
         "status": fault.status,
         "reported_at": _iso(fault.created_at),
         "observed_at": _iso(fault.observed_at),
@@ -100,12 +102,16 @@ def my_jobs(db: Session, user: User) -> dict:
             procedure_ready.append(_job(db, fault, None))
 
     def by_due(item: dict) -> tuple:
-        return (item["response_due_at"] or "9999", item["assigned_at"] or "")
+        # Safety hazards first, then the earliest response time.
+        return (not item["safety_hazard"], item["response_due_at"] or "9999", item["assigned_at"] or "")
+
+    def safety_first(items: list[dict]) -> list[dict]:
+        return sorted(items, key=lambda item: not item["safety_hazard"])
 
     return {
-        "to_write_up": to_write_up,
+        "to_write_up": safety_first(to_write_up),
         "assigned": sorted(assigned, key=by_due),
-        "available": available,
+        "available": safety_first(available),
         "waiting": waiting,
         "procedure_ready": procedure_ready,
     }

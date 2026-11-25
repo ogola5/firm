@@ -25,8 +25,19 @@ async function reportFromControlRoom(page: import("@playwright/test").Page, tag:
   await page.getByRole("button", { name: "Yes, this one" }).click();
   await page.getByRole("group", { name: "Where did you see it" }).getByRole("button", { name: "On SCADA" }).click();
   await page.getByRole("group", { name: "What is wrong" }).getByRole("button", { name: "Stopped / tripped" }).click();
+  // The follow-up questions for a trip: what the alarm said and whether a reset worked.
+  await page.getByLabel("Alarm or trip shown").fill(alarm);
+  await page.getByRole("group", { name: "Reset" }).getByRole("button", { name: "Tried, didn't work" }).click();
   await page.getByRole("group", { name: "Effect on operation" }).getByRole("button", { name: /^Stopped/ }).click();
-  await page.getByLabel(/Anything else/).fill(alarm);
+  await page.getByRole("group", { name: "Equipment state now" }).getByRole("button", { name: "Stopped" }).click();
+  await page.getByRole("group", { name: "Anyone or anything at risk" }).getByRole("button", { name: /^No$/ }).click();
+  await page.getByRole("group", { name: "Already done" }).getByRole("button", { name: /Reset from SCADA/ }).click();
+  await page.getByLabel(/Reach me on/).fill("ext 2231");
+  // The written report is composed from the answers.
+  const preview = page.getByRole("region", { name: "Your report will read" });
+  await expect(preview).toContainText(`Alarm/trip shown: ${alarm}; reset tried, didn't work.`);
+  await expect(preview).toContainText("Already done: reset from SCADA.");
+  await expect(preview).toContainText("Reach the reporter on ext 2231.");
 }
 
 test("Scenario 1 + 3: first-time fault to published knowledge, keeping the failed attempt", async ({ page, request }) => {

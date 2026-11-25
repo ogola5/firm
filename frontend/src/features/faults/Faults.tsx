@@ -165,8 +165,9 @@ export function Faults({ user }: { user: User }) {
                 key={String(fault.id)}
                 type="button"
                 onClick={() => select(String(fault.id))}
-                className="grid min-h-16 gap-1 rounded-xl border border-border bg-card p-3 text-left active:bg-muted"
+                className={cn("grid min-h-16 gap-1 rounded-xl border bg-card p-3 text-left active:bg-muted", fault.safety_hazard ? "border-2 border-destructive" : "border-border")}
               >
+                {Boolean(fault.safety_hazard) && <span className="w-fit rounded bg-destructive px-2 py-0.5 text-xs font-extrabold text-destructive-foreground">SAFETY</span>}
                 <span className="flex items-start justify-between gap-2">
                   <strong className="min-w-0 truncate">{String(fault.equipment_tag || "Asset not identified")}</strong>
                   <Badge variant={statusVariant(String(fault.status))} className="shrink-0">{String(fault.status).replace(/_/g, " ")}</Badge>
@@ -201,7 +202,10 @@ export function Faults({ user }: { user: User }) {
                       onClick={() => select(id)}
                       onKeyDown={(event) => { if (event.key === "Enter") select(id); }}
                     >
-                      <TableCell className="font-bold">{String(fault.reference)}</TableCell>
+                      <TableCell className="font-bold">
+                        {String(fault.reference)}
+                        {Boolean(fault.safety_hazard) && <span className="ml-2 rounded bg-destructive px-1.5 py-0.5 text-2xs font-extrabold text-destructive-foreground">SAFETY</span>}
+                      </TableCell>
                       <TableCell>
                         {String(fault.equipment_tag || "Asset not identified")}
                         {fault.equipment_confirmed === false && <small className="block font-semibold text-warning">Needs asset confirmation</small>}

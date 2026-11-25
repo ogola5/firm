@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import Depends
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import and_, case, select
 from sqlalchemy.orm import Session
 import json
 from fastapi import APIRouter
@@ -52,7 +52,9 @@ def fault_list(
     db: Session = Depends(db_dep),
 ):
     require_roles(user, "operations", "systems_automation", "technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
-    query = select(Fault).join(Equipment, Fault.equipment_id == Equipment.id).order_by(Fault.created_at.desc())
+    # Open safety hazards first, then newest first.
+    open_hazard_first = case((and_(Fault.safety_hazard == 1, Fault.status.notin_(("RESTORED", "CLOSED"))), 0), else_=1)
+    query = select(Fault).join(Equipment, Fault.equipment_id == Equipment.id).order_by(open_hazard_first, Fault.created_at.desc())
     if status_filter:
         query = query.where(Fault.status == status_filter)
     if role_key(user) in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
@@ -130,6 +132,7 @@ def fault_list(
             "reported_location": f.reported_location,
             "suggested_equipment_tag": suggested.tag if suggested else "",
             "reporter_name": f.reporter.display_name if f.reporter else "",
+            "safety_hazard": bool(f.safety_hazard),
             "assigned_user_id": f.assigned_user_id,
             "assigned_user_name": f.assigned_user.display_name if f.assigned_user else "",
             "active_assignment_id": assignment.id if assignment else None,
@@ -164,6 +167,9 @@ def fault_detail(fault_id: str, user: User = Depends(current_user), db: Session 
         "reported_on_behalf_of": f.raised_by_text, "status": f.status,
         "assigned_section": f.assigned_section, "assigned_user_id": f.assigned_user_id,
         "operating_conditions": f.operating_conditions,
+        "safety_hazard": bool(f.safety_hazard),
+        "report_details": json.loads(f.report_details or "{}"),
+        "callback": f.callback,
         "closure_remarks": f.closure_remarks,
         "active_assignment_id": current_assignment(f).id if current_assignment(f) else None,
         "created_at": f.created_at.isoformat(),
@@ -373,6 +379,9 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             "assigned_user_id": fault.assigned_user_id,
             "active_assignment_id": current_assignment(fault).id if current_assignment(fault) else None,
             "reporter_name": fault.reporter.display_name if fault.reporter else "",
+            "safety_hazard": bool(fault.safety_hazard),
+            "report_details": json.loads(fault.report_details or "{}"),
+            "callback": fault.callback,
             "reported_on_behalf_of": fault.raised_by_text,
             "closure_remarks": fault.closure_remarks,
             "suggested_section": equipment.section if fault.equipment_confirmed and equipment else "Systems Automation",

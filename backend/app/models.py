@@ -298,6 +298,11 @@ class Fault(Base):
     # When and how the reporter saw the problem (may be earlier than created_at).
     observed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     seen_via: Mapped[str] = mapped_column(String, default="")
+    # Someone or something at risk: Critical, flagged in every queue and on the job card.
+    safety_hazard: Mapped[int] = mapped_column(Integer, default=0)
+    # The reporter's answers to the follow-up questions (JSON).
+    report_details: Mapped[str] = mapped_column(Text, default="{}")
+    callback: Mapped[str] = mapped_column(String, default="")
     equipment = relationship("Equipment")
     reporter = relationship("User", foreign_keys=[reporter_id])
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])

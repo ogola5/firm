@@ -13,6 +13,9 @@ export type Job = {
   symptom: string;
   operational_impact: string;
   severity: string;
+  /** Reporter said someone or something is at risk: shown first and marked SAFETY. */
+  safety_hazard?: boolean;
+  description?: string;
   status: string;
   reported_at: string | null;
   observed_at: string | null;

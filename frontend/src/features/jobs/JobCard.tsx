@@ -68,12 +68,23 @@ export function JobCard({ user }: { user: User }) {
           <div>{String(fault.equipment_location ?? fault.reported_location ?? "")}{active ? ` · ${String(active.section)} section` : ""}</div>
         </div>
 
+        {Boolean(fault.safety_hazard) && (
+          <div className="border-[3px] border-black px-3.5 py-2 text-lg font-extrabold">
+            SAFETY: the reporter says someone or something is at risk. Follow the permit and isolation procedure before you start.
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-md border-[1.5px] border-black px-3.5 py-3">
           <div><strong>Problem:</strong> {String(fault.symptom)}</div>
           <div><strong>Effect:</strong> {shortEffect(fault.operational_impact) || "—"} (priority {String(fault.severity ?? "—")})</div>
           <div><strong>Seen:</strong> {seen}, {spokenTime(fault.observed_at || fault.created_at)}</div>
           <div><strong>Respond by:</strong> {active?.response_due_at ? spokenTime(active.response_due_at) : "—"}</div>
-          {Boolean(fault.description) && <div className="col-span-2"><strong>Details:</strong> {String(fault.description)}</div>}
+          {Boolean(fault.description) && (
+            <div className="col-span-2 grid gap-0.5">
+              <strong>What Operations reported:</strong>
+              {String(fault.description).split("\n").filter((line) => !line.startsWith("⚠")).map((line, index) => <span key={index}>{line}</span>)}
+            </div>
+          )}
+          {Boolean(fault.callback) && <div className="col-span-2"><strong>Reach the reporter on:</strong> {String(fault.callback)}</div>}
           {Boolean(active?.instructions) && <div className="col-span-2"><strong>Chief Technician's note:</strong> {String(active?.instructions)}</div>}
           {Boolean(active?.findings) && <div className="col-span-2"><strong>Found by the previous section:</strong> {String(active?.findings)}</div>}
         </div>

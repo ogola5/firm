@@ -13,7 +13,7 @@ export function ReportPage({ user }: { user: User }) {
           className="mb-0"
           eyebrow="Control room"
           title="Report a fault"
-          description="Four answers. Systems Automation gets it as soon as you submit."
+          description="Mostly taps: the report writes itself from your answers. Systems Automation gets it as soon as you submit."
         />
         <ReportBreakdownForm user={user} onReported={() => void queryClient.invalidateQueries({ queryKey: ["faults"] })} />
         <p className="m-0 text-xs text-muted-foreground">Illustrative equipment and history. Not connected to KPC systems.</p>

@@ -67,5 +67,32 @@ test("form fields use 16px text so phones do not zoom in", async ({ page }) => {
   await page.goto("/report");
   const size = await page.getByLabel("1. Which equipment?").evaluate((field) => getComputedStyle(field).fontSize);
   expect(parseFloat(size)).toBeGreaterThanOrEqual(16);
-  await expect(page.getByText("Take a photo")).toBeVisible();
+  // Photos are rare (phones are not taken into most areas): attaching is optional and folded away.
+  await expect(page.getByText("Attach a SCADA screenshot or file (optional)")).toBeVisible();
+  await expect(page.getByText("Take a photo")).toHaveCount(0);
+});
+
+test("a product leak on a phone: follow-up taps, hazard prompt, SAFETY at the top for Systems Automation", async ({ page }) => {
+  await signIn(page, "operations");
+  await page.getByRole("navigation", { name: "Quick" }).getByRole("link", { name: "Report", exact: true }).click();
+  await page.getByLabel("1. Which equipment?").fill("tank 601 inlet valve");
+  await page.getByRole("button", { name: "Yes, this one" }).click();
+  await page.getByRole("group", { name: "What is wrong" }).getByRole("button", { name: "Leaking" }).click();
+  await page.getByRole("group", { name: "What is leaking?" }).getByRole("button", { name: "Product" }).click();
+  await page.getByRole("group", { name: "How much?" }).getByRole("button", { name: "Spraying or pooling" }).click();
+  await expect(page.getByText(/Your answers sound like a hazard/)).toBeVisible();
+  await page.getByRole("group", { name: "Effect on operation" }).getByRole("button", { name: /Running reduced/ }).click();
+  await page.getByRole("group", { name: "Anyone or anything at risk" }).getByRole("button", { name: /^Yes/ }).click();
+  await page.getByRole("group", { name: "Already done" }).getByRole("button", { name: /Told the shift supervisor/ }).click();
+  const preview = page.getByRole("region", { name: "Your report will read" });
+  await expect(preview).toContainText("SAFETY OR ENVIRONMENT HAZARD");
+  await expect(preview).toContainText("Leaking product; spraying or pooling.");
+  await page.getByRole("button", { name: "Submit report" }).click();
+  await expect(page.getByText(/Priority Critical \(safety\)/)).toBeVisible();
+  await expectNoSidewaysScroll(page, "report confirmation");
+
+  await signIn(page, "automation");
+  const firstJob = page.getByRole("region", { name: /New for Systems Automation/ }).getByRole("article").first();
+  await expect(firstJob.getByText("SAFETY", { exact: true })).toBeVisible();
+  await expect(firstJob).toContainText("Leaking");
 });

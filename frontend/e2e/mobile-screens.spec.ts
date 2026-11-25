@@ -17,6 +17,24 @@ const shots: Array<{ user: string; pages: Array<[string, string]> }> = [
   { user: "admin", pages: [["people", "/people"]] },
 ];
 
+test("@mobile report filled in", async ({ page }) => {
+  await signIn(page, "operations");
+  await page.goto("/report");
+  await page.getByLabel("1. Which equipment?").fill("tank 601 inlet valve");
+  await page.getByRole("button", { name: "Yes, this one" }).click();
+  await page.getByRole("group", { name: "What is wrong" }).getByRole("button", { name: "Won't open / close" }).click();
+  await page.getByRole("group", { name: "Fails from where?" }).getByRole("button", { name: "Both" }).click();
+  await page.getByRole("group", { name: "Position now" }).getByRole("button", { name: "Stuck part-way" }).click();
+  await page.getByLabel(/About how far open/).fill("40");
+  await page.getByRole("group", { name: "Effect on operation" }).getByRole("button", { name: /^Stopped/ }).click();
+  await page.getByRole("group", { name: "Equipment state now" }).getByRole("button", { name: "Changed over to standby" }).click();
+  await page.getByRole("group", { name: "Anyone or anything at risk" }).getByRole("button", { name: /^No$/ }).click();
+  await page.getByRole("group", { name: "Already done" }).getByRole("button", { name: /Reset from SCADA/ }).click();
+  await page.getByRole("group", { name: "Already done" }).getByRole("button", { name: /Told the shift supervisor/ }).click();
+  await page.getByLabel(/Reach me on/).fill("ext 2231");
+  await page.screenshot({ path: `${dir}/operations-report-filled.png`, fullPage: true });
+});
+
 test("@mobile login", async ({ page }) => {
   await page.goto("/");
   await page.waitForLoadState("networkidle");

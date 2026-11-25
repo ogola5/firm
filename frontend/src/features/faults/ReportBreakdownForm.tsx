@@ -17,6 +17,9 @@ import { cn } from "../../lib/utils";
 import { api, isOfflineError } from "../../offline/api";
 import { searchCachedEquipment } from "../../offline/cache";
 import { queueAttachment, queueFaultReport } from "../../offline/outbox";
+import {
+  ACTIONS, composeReport, looksHazardous, missingFollowUps, PROBLEMS, STATES, visibleFollowUps, type Answers,
+} from "./reportQuestions";
 
 const TECHNICAL_ROLES = ["technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"];
 
@@ -24,9 +27,87 @@ type SeenVia = "SCADA" | "SITE_WALK";
 type When = "now" | "15m" | "1h" | "custom";
 type Effect = "stopped" | "reduced" | "none";
 
-const PROBLEMS: Array<Choice<string>> = [
-  "Won't open / close", "Stopped / tripped", "Leaking", "Wrong or no reading", "Noise / vibration", "Alarm only", "Other",
-].map((label) => ({ value: label, label }));
+const PROBLEM_CHOICES: Array<Choice<string>> = PROBLEMS.map(({ value, label }) => ({ value, label }));
+const HAZARD: Array<Choice<"no" | "yes">> = [
+  { value: "no", label: "No" },
+  { value: "yes", label: "Yes: safety or environment hazard", hint: "Product leak, smoke, spill, someone hurt" },
+];
+const STATE_CHOICES: Array<Choice<string>> = STATES.map((label) => ({ value: label, label }));
+
+function whenWords(when: When, time: string): string {
+  if (when === "15m") return "about 15 minutes ago";
+  if (when === "1h") return "about an hour ago";
+  if (when === "custom" && time) return `at ${time}`;
+  return "just now";
+}
+
+/** Several answers allowed (aria-pressed buttons), e.g. what has already been done. */
+function ToggleChips({ label, options, value, onChange }: { label: string; options: string[]; value: string[]; onChange: (next: string[]) => void }) {
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap gap-2">
+      {options.map((option) => {
+        const pressed = value.includes(option);
+        return (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={pressed}
+            onClick={() => {
+              // "Nothing yet" excludes the others, and choosing another clears it.
+              if (option === "Nothing yet") return onChange(pressed ? [] : ["Nothing yet"]);
+              const without = value.filter((item) => item !== "Nothing yet" && item !== option);
+              onChange(pressed ? without : [...without, option]);
+            }}
+            className={cn(
+              "min-h-11 rounded-lg border px-3 py-2 text-left text-[15px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              pressed ? "border-primary bg-primary text-primary-foreground" : "border-input bg-white hover:bg-secondary",
+            )}
+          >
+            {pressed ? "✓ " : ""}{option}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The follow-up questions for the chosen problem: taps where possible, a short box where a value is needed. */
+function FollowUps({ problem, answers, onChange }: { problem: string; answers: Answers; onChange: (key: string, value: string | string[]) => void }) {
+  const questions = visibleFollowUps(problem, answers);
+  if (!questions.length) return null;
+  return (
+    <div className="grid gap-3 rounded-lg border border-border bg-muted/50 p-3">
+      {questions.map((question) => {
+        const id = `report-follow-${question.key}`;
+        if (question.kind === "text") {
+          return (
+            <div key={question.key} className="grid gap-1.5">
+              <label htmlFor={id} className="text-sm font-bold">{question.label}{question.required ? "" : <span className="font-medium text-muted-foreground"> (optional)</span>}</label>
+              <Input id={id} value={String(answers[question.key] ?? "")} placeholder={question.placeholder}
+                onChange={(event) => onChange(question.key, event.target.value)} />
+            </div>
+          );
+        }
+        if (question.kind === "multi") {
+          return (
+            <div key={question.key} className="grid gap-1.5">
+              <span className="text-sm font-bold">{question.label}</span>
+              <ToggleChips label={question.label} options={question.options ?? []} value={(answers[question.key] as string[]) ?? []}
+                onChange={(next) => onChange(question.key, next)} />
+            </div>
+          );
+        }
+        return (
+          <div key={question.key} className="grid gap-1.5">
+            <span className="text-sm font-bold">{question.label}</span>
+            <ChoiceButtons label={question.label} options={(question.options ?? []).map((option) => ({ value: option, label: option }))}
+              value={String(answers[question.key] ?? "")} onChange={(value) => onChange(question.key, answers[question.key] === value ? "" : value)} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 const EFFECTS: Array<Choice<Effect> & { severity: string }> = [
   { value: "stopped", label: "Stopped", hint: "Operation stopped or at risk", severity: "High" },
@@ -73,6 +154,11 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
   const [whenTime, setWhenTime] = useState("");
   const [problem, setProblem] = useState("");
   const [effect, setEffect] = useState<Effect | "">("");
+  const [answers, setAnswers] = useState<Answers>({});
+  const [stateNow, setStateNow] = useState("");
+  const [hazard, setHazard] = useState<"no" | "yes" | "">("");
+  const [actions, setActions] = useState<string[]>([]);
+  const [callback, setCallback] = useState("");
   const [details, setDetails] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -111,8 +197,28 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
   const missing = useMemo(() => [
     !hasEquipment && "the equipment",
     !problem && "what is wrong",
+    ...(problem ? missingFollowUps(problem, answers) : []),
     !effect && "the effect",
-  ].filter(Boolean) as string[], [hasEquipment, problem, effect]);
+    !hazard && "whether anyone or anything is at risk",
+  ].filter(Boolean) as string[], [hasEquipment, problem, answers, effect, hazard]);
+
+  const effectChoice = EFFECTS.find((item) => item.value === effect);
+  const equipmentWords = chosen
+    ? `${String(chosen.tag)} · ${String(chosen.name)}${confirmed ? "" : " (to be confirmed)"}`
+    : query.trim() ? `“${query.trim()}” (equipment to be identified)` : "";
+  const reportLines = composeReport({
+    equipment: equipmentWords,
+    problem,
+    answers,
+    seen: `Seen ${seenVia === "SCADA" ? "on SCADA" : "on a site walk"} ${whenWords(when, whenTime)}.`,
+    effect: effectChoice ? `${effectChoice.label.toLowerCase()} (${(effectChoice.hint ?? "").toLowerCase()})` : "",
+    state: stateNow,
+    hazard,
+    actions,
+    notes: details,
+    callback,
+  });
+  const hazardSuggested = hazard !== "yes" && looksHazardous(problem, answers);
 
   function changeQuery(value: string) {
     setQuery(value);
@@ -139,6 +245,7 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
   function reset() {
     changeQuery("");
     setSeenVia("SCADA"); setWhen("now"); setWhenTime(""); setProblem(""); setEffect(""); setDetails("");
+    setAnswers({}); setStateNow(""); setHazard(""); setActions([]); setCallback("");
     setFiles([]); setPreviews([]); setError(""); setDone(null);
   }
 
@@ -147,8 +254,9 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
     if (missing.length || submitting) return;
     setSubmitting(true);
     setError("");
-    const effectChoice = EFFECTS.find((item) => item.value === effect)!;
+    const effectPicked = EFFECTS.find((item) => item.value === effect)!;
     const isConfirmed = Boolean(chosen && confirmed);
+    const asked = visibleFollowUps(problem, answers).map((item) => item.key);
     const payload = {
       ...(chosen ? { equipment_id: chosen.id } : {}),
       equipment_confirmed: isConfirmed,
@@ -156,14 +264,26 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
       reported_location: chosen ? String(chosen.location ?? "") : "",
       category: String(chosen?.category || "Unconfirmed"),
       symptom: problem,
-      severity: effectChoice.severity,
-      operational_impact: `${effectChoice.label}: ${effectChoice.hint}`,
-      description: details.trim(),
+      severity: effectPicked.severity,
+      operational_impact: `${effectPicked.label}: ${effectPicked.hint}`,
+      // The written report the technician reads, composed from the answers.
+      description: reportLines.join("\n"),
+      operating_conditions: [stateNow && `State now: ${stateNow}`, actions.length && `Already done: ${actions.join(", ")}`].filter(Boolean).join(". "),
       seen_via: seenVia,
       observed_at: observedAt(when, whenTime),
+      safety_hazard: hazard === "yes",
+      callback: callback.trim(),
+      report_details: {
+        problem,
+        answers: Object.fromEntries(Object.entries(answers).filter(([key]) => asked.includes(key))),
+        state_now: stateNow,
+        actions_taken: actions,
+        hazard: hazard === "yes",
+        notes: details.trim(),
+      },
     };
-    const equipmentText = chosen ? `${String(chosen.tag)} · ${String(chosen.name)}` : `“${query.trim()}”`;
-    const summary = `${equipmentText}${isConfirmed ? "" : " (to be confirmed)"}: ${problem.toLowerCase()}, ${effectChoice.label.toLowerCase()}. Priority ${effectChoice.severity}.`;
+    const priority = hazard === "yes" ? "Critical (safety)" : effectPicked.severity;
+    const summary = `${reportLines.filter((line) => !line.startsWith("⚠")).slice(0, 2).join(" ")} Priority ${priority}.`;
     try {
       const created = await api<{ id: string; reference: string }>("/api/v1/faults", { method: "POST", body: JSON.stringify(payload) });
       const failed: string[] = [];
@@ -204,6 +324,9 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
           </div>
           {done.offline && <p className="m-0">{done.message}</p>}
           <p className="m-0 text-base">{done.summary}</p>
+          {hazard === "yes" && (
+            <Alert variant="destructive">Marked SAFETY: it is at the top of Systems Automation's list. Follow the site emergency procedure and inform the shift supervisor now if you have not.</Alert>
+          )}
           <p className="m-0 text-muted-foreground">
             <strong className="text-foreground">Who has it now:</strong> Systems Automation. They hand it to the right section if needed. Follow it under <strong className="text-foreground">My reports</strong>.
           </p>
@@ -294,31 +417,56 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
 
           <div className="grid gap-2">
             <SectionLabel>3. What is wrong?</SectionLabel>
-            <ChoiceButtons label="What is wrong" options={PROBLEMS} value={problem} onChange={setProblem} />
+            <ChoiceButtons label="What is wrong" options={PROBLEM_CHOICES} value={problem}
+              onChange={(value) => { if (value !== problem) setAnswers({}); setProblem(value); }} />
+            {problem && <FollowUps problem={problem} answers={answers} onChange={(key, value) => setAnswers((current) => ({ ...current, [key]: value }))} />}
           </div>
 
           <div className="grid gap-2">
             <SectionLabel>4. What is the effect on operation?</SectionLabel>
             <ChoiceButtons label="Effect on operation" options={EFFECTS} value={effect} onChange={setEffect} columns={3} />
-            {effect && <span className="text-sm text-muted-foreground">Priority set to <strong className="text-foreground">{EFFECTS.find((item) => item.value === effect)!.severity}</strong> from your answer.</span>}
+            {effect && hazard !== "yes" && <span className="text-sm text-muted-foreground">Priority set to <strong className="text-foreground">{EFFECTS.find((item) => item.value === effect)!.severity}</strong> from your answer.</span>}
+            <span className="pt-1 text-sm font-bold">The equipment is now <span className="font-medium text-muted-foreground">(optional)</span></span>
+            <ChoiceButtons label="Equipment state now" options={STATE_CHOICES} value={stateNow} onChange={(value) => setStateNow(stateNow === value ? "" : value)} />
+          </div>
+
+          <div className="grid gap-2">
+            <SectionLabel>5. Is anyone or anything at risk?</SectionLabel>
+            <ChoiceButtons label="Anyone or anything at risk" options={HAZARD} value={hazard} onChange={setHazard} />
+            {hazardSuggested && (
+              <Alert variant="warning">Your answers sound like a hazard (product leak or smoke). If it is, choose <strong>Yes</strong>.</Alert>
+            )}
+            {hazard === "yes" && (
+              <Alert variant="destructive">
+                Marked <strong>SAFETY</strong>: priority Critical, top of every list. Follow the site emergency procedure and inform the shift supervisor now; this report does not replace that.
+              </Alert>
+            )}
+          </div>
+
+          <div className="grid gap-2">
+            <SectionLabel>6. What have you already done? <span className="font-medium text-muted-foreground">(tick all that apply)</span></SectionLabel>
+            <ToggleChips label="Already done" options={ACTIONS} value={actions} onChange={setActions} />
           </div>
 
           <div className="grid gap-2" onPaste={onPaste}>
-            <SectionLabel htmlFor="report-details">Anything else? <span className="font-medium text-muted-foreground">(optional)</span></SectionLabel>
-            <Textarea id="report-details" value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Paste the SCADA alarm text, or what you saw on the site walk" />
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-dashed border-input bg-muted/60 px-4 py-3 text-[15px]">
-              <ImagePlus className="size-5 text-muted-foreground" aria-hidden />
-              {/* Desktop: paste a SCADA screenshot. Phones: take a photo or pick from the gallery. */}
-              <span className="hidden md:inline">Press <kbd className="rounded border border-input bg-white px-1.5 text-sm">Ctrl</kbd> + <kbd className="rounded border border-input bg-white px-1.5 text-sm">V</kbd> here to paste a SCADA screenshot, or</span>
-              <label className="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-input bg-white px-3 font-bold text-ring md:hidden">
-                Take a photo
-                <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(event) => addFiles(Array.from(event.target.files || []))} />
-              </label>
-              <label className="inline-flex min-h-11 cursor-pointer items-center font-bold text-ring underline md:min-h-0">
-                <span className="md:hidden">or choose a file</span><span className="hidden md:inline">choose a file</span>
-                <input type="file" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.csv,.txt,.json,.log" className="sr-only" onChange={(event) => addFiles(Array.from(event.target.files || []))} />
-              </label>
+            <SectionLabel htmlFor="report-details">7. Anything else? <span className="font-medium text-muted-foreground">(optional)</span></SectionLabel>
+            <Textarea id="report-details" value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Paste the SCADA alarm text, readings, or anything a technician should know" />
+            <div className="grid gap-1.5 sm:max-w-sm">
+              <label htmlFor="report-callback" className="text-sm font-bold">Reach me on <span className="font-medium text-muted-foreground">(optional)</span></label>
+              <Input id="report-callback" value={callback} onChange={(event) => setCallback(event.target.value)} placeholder="Extension, radio channel or mobile" />
             </div>
+            <details className="rounded-lg border border-dashed border-input bg-muted/40 px-4 py-2 text-[15px]" open={files.length > 0}>
+              <summary className="flex min-h-10 cursor-pointer items-center gap-2 font-semibold text-muted-foreground">
+                <ImagePlus className="size-4" aria-hidden /> Attach a SCADA screenshot or file (optional)
+              </summary>
+              <div className="flex flex-wrap items-center gap-3 py-2">
+                <span className="hidden md:inline">Press <kbd className="rounded border border-input bg-white px-1.5 text-sm">Ctrl</kbd> + <kbd className="rounded border border-input bg-white px-1.5 text-sm">V</kbd> in the box above to paste a screenshot, or</span>
+                <label className="inline-flex min-h-11 cursor-pointer items-center font-bold text-ring underline md:min-h-0">
+                  choose a file
+                  <input type="file" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.csv,.txt,.json,.log" className="sr-only" onChange={(event) => addFiles(Array.from(event.target.files || []))} />
+                </label>
+              </div>
+            </details>
             {files.length > 0 && (
               <div className="flex flex-wrap items-center gap-3">
                 {previews.map((url) => <img key={url} src={url} alt="Attached screenshot" className="h-20 rounded border border-border" />)}
@@ -331,6 +479,15 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
               </div>
             )}
           </div>
+
+          {(problem || hasEquipment) && (
+            <section aria-label="Your report will read" className={cn("grid gap-1 rounded-lg border-2 p-4 text-[15px]", hazard === "yes" ? "border-destructive bg-destructive/5" : "border-ring/40 bg-accent/30")}>
+              <span className="text-xs font-extrabold uppercase tracking-[0.1em] text-muted-foreground">Your report will read</span>
+              {reportLines.map((line, index) => (
+                <p key={index} className={cn("m-0", line.startsWith("⚠") && "font-extrabold text-destructive")}>{line}</p>
+              ))}
+            </section>
+          )}
 
           {error && <Alert variant="destructive">{error}</Alert>}
           <div className="flex flex-wrap items-center gap-4 border-t border-border pt-5">

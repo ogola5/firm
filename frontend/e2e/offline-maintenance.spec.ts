@@ -24,6 +24,7 @@ test("Operations reports a breakdown offline; it survives a restart and offline 
   await page.getByLabel("1. Which equipment?").fill(description);
   await page.getByRole("group", { name: "What is wrong" }).getByRole("button", { name: "Leaking" }).click();
   await page.getByRole("group", { name: "Effect on operation" }).getByRole("button", { name: /Running reduced/ }).click();
+  await page.getByRole("group", { name: "Anyone or anything at risk" }).getByRole("button", { name: /^No$/ }).click();
   await page.getByRole("button", { name: "Submit report" }).click();
   await expect(page.getByRole("heading", { name: "Saved on this computer" })).toBeVisible();
   await expect(page.getByLabel("Changes waiting")).toHaveText("1");

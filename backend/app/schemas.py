@@ -83,6 +83,11 @@ class FaultCreate(BaseModel):
     # How and when the reporter saw it ("SCADA" or "SITE_WALK"); defaults to now.
     seen_via: Literal["", "SCADA", "SITE_WALK"] = ""
     observed_at: datetime | None = None
+    # Someone or something at risk (product leak, smoke, spill): Critical priority.
+    safety_hazard: bool = False
+    # Answers to the follow-up questions (problem details, state now, actions taken), kept as given.
+    report_details: dict = Field(default_factory=dict)
+    callback: str = Field(default="", max_length=80)
 
 
 class VisitAttempt(BaseModel):

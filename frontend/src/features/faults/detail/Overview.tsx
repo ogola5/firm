@@ -153,8 +153,18 @@ export function Overview({ message, error }: { message: string; error: string })
             <div className="min-w-0">
               <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Work order context</p>
               <h3 className="mt-1">{String(fault.reference)} · {String(fault.equipment_tag)}</h3>
-              <p className="m-0">{String(fault.symptom)} · {String(fault.description || "No additional report details")}</p>
-              {Boolean(fault.operating_conditions) && <p className="mb-0 mt-1 text-sm"><strong>Operating conditions:</strong> {String(fault.operating_conditions)}</p>}
+              {Boolean(fault.safety_hazard) && (
+                <p className="my-2 rounded-md border-2 border-destructive bg-destructive/10 px-3 py-2 font-extrabold text-destructive">
+                  SAFETY: the reporter says someone or something is at risk.
+                </p>
+              )}
+              <p className="m-0 font-semibold">{String(fault.symptom)}</p>
+              {/* The written report (composed from the reporter's answers): one point per line. */}
+              <div className="mt-1 grid gap-0.5 text-[15px]">
+                {String(fault.description || "No additional report details").split("\n").filter((line) => !line.startsWith("⚠")).map((line, index) => <p key={index} className="m-0">{line}</p>)}
+              </div>
+              {Boolean(fault.callback) && <p className="mb-0 mt-1 text-sm"><strong>Reach the reporter on:</strong> {String(fault.callback)}</p>}
+              {Boolean(fault.operating_conditions) && !String(fault.description || "").includes("Already done") && <p className="mb-0 mt-1 text-sm"><strong>Operating conditions:</strong> {String(fault.operating_conditions)}</p>}
               {Boolean(fault.operational_impact) && <p className="mb-0 mt-1 text-sm"><strong>Operational effect:</strong> {String(fault.operational_impact)}</p>}
             </div>
             <Badge variant={statusVariant(can.status)}>{can.status.replace(/_/g, " ")}</Badge>

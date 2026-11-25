@@ -11,14 +11,16 @@ import { EmptyState, Page, PageHeader } from "../../components/ui/page";
 import { shortEffect, spokenTime } from "../../lib/format";
 import { OFFLINE_SAVED } from "../../lib/messages";
 import { errorMessage } from "../../lib/query";
+import { cn } from "../../lib/utils";
 import { api, isOfflineError } from "../../offline/api";
 import { queueFaultAction } from "../../offline/outbox";
 import { EMPTY_JOBS, skippedProcedures, useMyJobs, type Job } from "./data";
 
 function JobRow({ job, meta, children }: { job: Job; meta: ReactNode; children: ReactNode }) {
   return (
-    <article className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4">
+    <article className={cn("flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card px-4 py-4 md:px-5", job.safety_hazard ? "border-2 border-destructive" : "border-border")}>
       <div className="grid min-w-0 gap-1">
+        {job.safety_hazard && <span className="w-fit rounded bg-destructive px-2 py-0.5 text-xs font-extrabold tracking-wide text-destructive-foreground">SAFETY</span>}
         <strong className="text-lg">{job.equipment_tag} · {job.equipment_name}</strong>
         <span className="text-[15px] text-foreground/80">
           {job.symptom} · effect: {shortEffect(job.operational_impact).toLowerCase() || `${job.severity.toLowerCase()} priority`} · {job.reference}

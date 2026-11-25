@@ -6,6 +6,7 @@ violations; the sync applier maps 409 to CONFLICT and other 4xx to REJECTED.
 """
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timedelta
 
@@ -142,7 +143,11 @@ def report_fault(db: Session, user: User, req: FaultCreate, fault_id: str | None
         reporter_id=user.id,
         category=req.category,
         symptom=req.symptom,
-        severity=req.severity,
+        # A safety or environment hazard is always Critical, whatever the effect on operation.
+        severity="Critical" if req.safety_hazard else req.severity,
+        safety_hazard=int(req.safety_hazard),
+        report_details=json.dumps(req.report_details, default=str)[:8000],
+        callback=req.callback.strip(),
         description=req.description,
         operational_impact=req.operational_impact,
         equipment_confirmed=0 if unconfirmed else 1,
@@ -167,6 +172,8 @@ def report_fault(db: Session, user: User, req: FaultCreate, fault_id: str | None
     )
     db.add(initial_assignment)
     add_event(db, fault.id, "FAULT_REPORTED", user.id, req.model_dump())
+    if req.safety_hazard:
+        add_event(db, fault.id, "SAFETY_HAZARD_REPORTED", user.id, {"note": "Reporter says someone or something is at risk."})
     add_event(db, fault.id, "FAULT_ASSIGNED", user.id, {
         "assignment_id": initial_assignment.id,
         "assigned_section": assigned_section,
