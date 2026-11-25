@@ -262,3 +262,62 @@ def refresh_generic_demo(db) -> int:
         entry.diagnostic_procedure, entry.corrective_action = case.check, case.fix
     db.commit()
     return changed
+
+
+# What the reporter would have answered for each case (frontend reportQuestions.ts keys), so that
+# "reported stuck part-way -> usually fixed by cleaning the stem" is a real pattern in the demo data.
+CASE_ANSWERS: dict[tuple[str, int], dict] = {
+    ("MOV", 0): {"from": "From SCADA", "position": "Fully closed"},
+    ("MOV", 1): {"from": "Both", "position": "Stuck part-way"},
+    ("MOV", 2): {"behaviour": "Far off"},
+    ("CV", 0): {"signs": ["Noise", "Vibration"]},
+    ("CV", 1): {"what": "Product", "amount": "Drips", "contained": "Contained (bund / tray)"},
+    ("STR", 1): {"what": "Product", "amount": "Drips", "contained": "Contained (bund / tray)"},
+    ("PUMP", 0): {"from": "Local panel"},
+    ("PUMP", 1): {"signs": ["Noise", "Vibration"]},
+    ("PUMP", 2): {"what": "Product", "amount": "Steady flow", "contained": "Contained (bund / tray)"},
+    ("PUMP", 3): {"reset": "Worked, then tripped again"},
+    ("VFD", 0): {"reset": "Worked, then tripped again"},
+    ("VFD", 1): {"from": "SCADA"},
+    ("LT", 0): {"behaviour": "Jumping about"},
+    ("LT", 1): {"behaviour": "Frozen"},
+    ("PT", 0): {"behaviour": "Zero or blank"},
+    ("PT", 1): {"behaviour": "Far off"},
+    ("TT", 0): {"behaviour": "Jumping about"},
+    ("FT", 0): {"behaviour": "Far off"},
+    ("FT", 1): {"missing": "One device"},
+    ("FC", 0): {"behaviour": "Far off"},
+    ("PLC", 0): {"missing": "Some values"},
+    ("PLC", 1): {"reset": "Tried, didn't work"},
+    ("RTU", 0): {"missing": "The whole station"},
+    ("RTU", 1): {"missing": "Some values"},
+    ("RAD", 0): {"missing": "The whole station"},
+    ("HMI", 0): {"behaviour": "Frozen"},
+    ("TX", 0): {"signs": ["Noise", "Hot to touch"]},
+    ("AC", 0): {"reset": "Worked, then tripped again"},
+    ("AC", 1): {"what": "Air / gas", "amount": "Steady flow", "contained": "Contained (bund / tray)"},
+}
+
+
+def fill_demo_answers(db) -> int:
+    """Give demo faults the follow-up answers a reporter would have given. Only faults with none yet."""
+    from app.services.report_answers import answers_of
+
+    changed = 0
+    for fault in db.scalars(select(Fault).where(Fault.id.like("FAULT-%"))):
+        if answers_of(fault):
+            continue
+        equipment = db.get(Equipment, fault.equipment_id)
+        if not equipment:
+            continue
+        code = type_of(equipment.tag)
+        cases = CASES.get(code, FALLBACK)
+        index = _number(fault.id) % len(cases)
+        if cases[index].symptom != fault.symptom:  # only faults written from these cases
+            continue
+        answers = CASE_ANSWERS.get((code if code in CASES else "MOV", index))
+        if answers:
+            fault.report_details = {"problem": fault.symptom, "answers": answers, "hazard": False}
+            changed += 1
+    db.commit()
+    return changed

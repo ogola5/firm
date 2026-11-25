@@ -10,6 +10,8 @@ from sqlalchemy import ForeignKey
 from sqlalchemy import Integer
 from sqlalchemy import String
 from sqlalchemy import Text
+from sqlalchemy import JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
@@ -315,7 +317,8 @@ class Fault(Base):
     # Someone or something at risk: Critical, flagged in every queue and on the job card.
     safety_hazard: Mapped[int] = mapped_column(Integer, default=0)
     # The reporter's answers to the follow-up questions (JSON).
-    report_details: Mapped[str] = mapped_column(Text, default="{}")
+    # JSONB on PostgreSQL (indexed, queryable); JSON text on SQLite. {"problem", "answers": {...}, "hazard"}.
+    report_details: Mapped[dict] = mapped_column(JSON().with_variant(JSONB(), "postgresql"), default=dict)
     callback: Mapped[str] = mapped_column(String, default="")
     # 0 with the Chief Technician, 1 with the regional Senior Engineer, 2 with the section Chief Engineer.
     escalation_level: Mapped[int] = mapped_column(Integer, default=0)

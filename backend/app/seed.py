@@ -495,8 +495,9 @@ def seed_database():
     ensure_extra_equipment(db)
     from app.seed_library import seed_library
     seed_library(db)  # worked cases and procedures for the types that fail most; knowledge owners
-    from app.demo_content import refresh_generic_demo
-    refresh_generic_demo(db)  # type-appropriate wording instead of the same four generic causes everywhere
+    from app.demo_content import fill_demo_answers, refresh_generic_demo
+    refresh_generic_demo(db)
+    fill_demo_answers(db)  # the follow-up answers reporters would have given (queryable JSONB)  # type-appropriate wording instead of the same four generic causes everywhere
     db.close()
 
 

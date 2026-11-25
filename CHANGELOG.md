@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-11-29 — Proper search, and report answers as queryable data (PostgreSQL, no second database)
+
+- **Library search** across cases, approved procedures, expert knowledge and older instructions (`GET /api/v1/library/search?q=`):
+  - **Matching:** full-text with stemming ("tripped" finds "trip"), and KPC shorthand ("vfd" also means drive, "hot" also means overtemperature, "comms" also means communication).
+  - **Typos:** tolerated through `pg_trgm` ("overtemprature").
+  - **Ranking:** by how many of the searched words match. One shared word is not a match.
+  - **Results:** matched words are highlighted.
+- **History search** (`/faults?search=`) is ranked the same way and also searches what was found and what was done. References and tags still match exactly.
+- **Report answers as JSONB:** the reporter's follow-up answers are now JSONB with a GIN index.
+  - `GET /api/v1/faults?answer=position:Stuck part-way` filters by answer.
+  - The library shows "What reporters said" per problem, with what usually fixed it, e.g. "Position: Stuck part-way → usually fixed by cleaning and lubricating the stem".
+  - Demo faults now carry the answers a reporter would have given.
+- **Migration `0010`:**
+  - The `pg_trgm` step is optional: if a host refuses it, search uses full-text only.
+  - The JSONB conversion keeps existing data.
+- **SQLite fallback:** SQLite (tests) uses the same sources and vocabulary with simpler matching.
+- **Tests:** the backend suite passes on both SQLite and PostgreSQL.
+
 ## 2026-11-28 — Cleaner demo history; merged causes
 
 - **Type-specific demo history:**

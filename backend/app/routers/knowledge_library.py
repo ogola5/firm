@@ -32,6 +32,14 @@ def library_types(user: User = Depends(current_user), db: Session = Depends(db_d
     return {"types": library.type_list(db), "your_section": user.section or ""}
 
 
+@router.get("/api/v1/library/search")
+def library_search(q: str = "", user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """Search what we have learnt: cases, procedures, expert notes, older instructions. Ranked, with snippets."""
+    require_roles(user, *READERS)
+    q = q.strip()[:120]
+    return {"query": q, "results": library.search_results(db, q) if len(q) >= 2 else []}
+
+
 @router.get("/api/v1/library/types/{code}")
 def library_type(code: str, user: User = Depends(current_user), db: Session = Depends(db_dep)):
     require_roles(user, *READERS)

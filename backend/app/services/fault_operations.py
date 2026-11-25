@@ -19,6 +19,7 @@ from app.models import (
 )
 from app.schemas import DiagnosisCreate, FaultCreate, InterventionCreate, VisitCreate
 from app.services import escalation
+from app.services.report_answers import clean_details
 from app.services.catalogue import ACTION_TYPES, CAUSE_CATEGORIES, check_choice
 from app.services.drawings import find_drawing_id
 from app.services.access import (
@@ -147,7 +148,7 @@ def report_fault(db: Session, user: User, req: FaultCreate, fault_id: str | None
         # A safety or environment hazard is always Critical, whatever the effect on operation.
         severity="Critical" if req.safety_hazard else req.severity,
         safety_hazard=int(req.safety_hazard),
-        report_details=json.dumps(req.report_details, default=str)[:8000],
+        report_details=clean_details(req.report_details),
         callback=req.callback.strip(),
         description=req.description,
         operational_impact=req.operational_impact,

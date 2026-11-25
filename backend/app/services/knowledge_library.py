@@ -27,6 +27,8 @@ from app.models import (
 from app.services import accounts
 from app.services.access import role_key
 from app.services.catalogue import ACTION_TYPES, CAUSE_CATEGORIES, type_name, type_of
+from app.services.report_answers import answer_insights
+from app.services import text_search
 
 # The problems Operations choose from when reporting (frontend reportQuestions.ts), plus older wordings.
 SYMPTOM_RULES: list[tuple[str, str]] = [
@@ -218,7 +220,9 @@ def type_page(db: Session, user: User, code: str, now: datetime | None = None) -
             "symptom": label, "faults": 0, "last_seen": None,
             "_causes": defaultdict(lambda: {"confirmed": 0, "seen": 0, "checks": Counter(), "category": "", "wordings": Counter()}),
             "_worked": Counter(), "_worked_type": {}, "_failed": Counter(), "_failed_notes": {}, "cases": [], "_fault_ids": set(),
+            "_faults": [],
         })
+        group["_faults"].append(fault)
         group["faults"] += 1
         group["_fault_ids"].add(fault.id)
         group["last_seen"] = group["last_seen"] or _iso(fault.created_at)
@@ -253,6 +257,9 @@ def type_page(db: Session, user: User, code: str, now: datetime | None = None) -
                 "fixed_by": next((attempt.corrective_action for attempt in attempts if attempt.outcome == "SUCCESS"), ""),
             })
 
+    fixes = {fault_id: next((item.corrective_action for item in attempts if item.outcome == "SUCCESS"), "")
+             for fault_id, attempts in interventions_by_fault.items()}
+    fixes = {key: value for key, value in fixes.items() if value}
     procedures = [item for item in current_procedures(db) if procedure_type(db, item) == code]
     cards_by_group: dict[str, list[dict]] = defaultdict(list)
     for item in procedures:
@@ -261,7 +268,7 @@ def type_page(db: Session, user: User, code: str, now: datetime | None = None) -
     symptoms = []
     for label in sorted(set(groups) | set(cards_by_group), key=lambda key: -(groups.get(key, {}).get("faults", 0))):
         group = groups.get(label, {"faults": 0, "last_seen": None, "_causes": {}, "_worked": Counter(), "_worked_type": {},
-                                   "_failed": Counter(), "_failed_notes": {}, "cases": []})
+                                   "_failed": Counter(), "_failed_notes": {}, "cases": [], "_faults": []})
         causes = sorted(group["_causes"].items(), key=lambda pair: (-pair[1]["confirmed"], -pair[1]["seen"], pair[0]))
         symptoms.append({
             "symptom": label, "faults": group["faults"], "last_seen": group["last_seen"],
@@ -277,6 +284,8 @@ def type_page(db: Session, user: User, code: str, now: datetime | None = None) -
                        for action, times in group["_worked"].most_common(5)],
             "did_not_work": [{"action": action, "times": times, "note": group["_failed_notes"].get(action, "")}
                              for action, times in group["_failed"].most_common(5)],
+            # What reporters answered (JSONB answers), and what usually fixed it when they said so.
+            "from_reports": answer_insights(group["_faults"], fixes),
             "procedures": sorted(cards_by_group.get(label, []), key=lambda card: (card["evidence"]["fading"], -card["evidence"]["worked"])),
             "cases": group["cases"],
         })
@@ -487,3 +496,48 @@ def my_impact(db: Session, user: User, now: datetime | None = None) -> dict:
         "owned_types": [{"code": code, "name": type_name(code)} for code in owned],
         "needs_attention": attention[:5],
     }
+
+
+# --- search across the library --------------------------------------------------------------------
+
+KIND_LABELS = {"case": "What happened", "procedure": "Approved procedure", "expert": "Expert knowledge",
+               "instruction": "Older work instruction"}
+
+
+def search_results(db: Session, query: str, limit: int = 25) -> list[dict]:
+    """Ranked results from cases, procedures, expert notes and older instructions, each with where to go."""
+    rows = []
+    for hit in text_search.search(db, query, limit=limit):
+        base = {"kind": hit.kind, "kind_label": KIND_LABELS[hit.kind], "id": hit.id, "snippet": hit.snippet,
+                "matched_words": hit.score[0]}
+        if hit.kind == "case":
+            fault = db.get(Fault, hit.id)
+            if not fault:
+                continue
+            equipment = fault.equipment if fault.equipment_confirmed else None
+            rows.append({**base, "title": f"{fault.reference} · {equipment.tag if equipment else fault.reported_equipment_text or 'equipment not identified'}: {fault.symptom}",
+                         "type_code": type_of(equipment.tag) if equipment else "", "date": _iso(fault.created_at), "status": fault.status,
+                         "link": f"/faults?mode=history&fault={fault.id}"})
+        elif hit.kind == "procedure":
+            update = db.get(ProcedureUpdate, hit.id)
+            if not update:
+                continue
+            code = procedure_type(db, update)
+            rows.append({**base, "title": f"{update.reference} v{update.version}: {update.title}", "type_code": code,
+                         "evidence": procedure_evidence(db, update), "link": f"/library/{code}" if code else "/knowledge"})
+        elif hit.kind == "expert":
+            session = db.get(ExpertSession, hit.id)
+            if not session:
+                continue
+            expert = db.get(User, session.expert_id)
+            rows.append({**base, "title": f"{session.title} ({expert.display_name if expert else 'expert'}, {session.created_at:%Y})",
+                         "type_code": session.equipment_type, "link": f"/library/{session.equipment_type}"})
+        else:
+            entry = db.get(KnowledgeEntry, hit.id)
+            if not entry:
+                continue
+            equipment = db.get(Equipment, entry.equipment_id) if entry.equipment_id else None
+            code = type_of(equipment.tag) if equipment else ""
+            rows.append({**base, "title": f"{entry.reference}: {entry.title}", "type_code": code,
+                         "link": f"/library/{code}" if code else "/knowledge"})
+    return rows

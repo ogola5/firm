@@ -79,3 +79,31 @@ Knowledge is shared across all sections and regions: a fix learnt at the Coast h
 | `GET /api/v1/faults/{id}/procedure-matches` | anyone who can see the fault | Up to 3 approved procedures this write-up might add to, with reasons. |
 | `POST /api/v1/faults/{id}/procedure-updates` with `builds_on_id` | procedure authors | Submits as the next version of that procedure. |
 | `GET /api/v1/me/knowledge-impact` | signed-in | Colleagues helped, types owned, procedures needing checking. |
+
+## Search and report answers
+
+One database: PostgreSQL. No MongoDB. The "unstructured" parts (free text and the reporter's answers) always hang off structured records. PostgreSQL handles both without a second store to keep consistent, secure and approve.
+
+**Search** (`services/text_search.py`):
+- **Sources:** cases (the report, what was found, what was done), approved procedures, expert notes and older instructions.
+- **Matching:**
+  - full-text with stemming
+  - a small KPC vocabulary for shorthand (vfd/drive, hot/overtemperature, mov/valve, comms/communication, lt/level…)
+  - `pg_trgm` similarity for typos
+- **Ranking:** a record must contain at least half the searched words (or their synonyms), or be very similar to the whole search. It is then ranked by matched words, text rank and similarity.
+- **Highlighting:** matched words are marked in the snippet.
+- **Offline:** search on the phone stays simple (name and reference matching).
+- **Scaling up:** at the prototype's size, documents are built per query. At production volume, the next step is a stored `tsvector` column per source with a GIN index (same queries, no change to the screens).
+
+**Report answers** (`services/report_answers.py`):
+- **Storage:** the follow-up answers from the report form are stored as JSONB with a GIN index (`jsonb_path_ops`).
+- **Filtering:** `answers @> {...}` filters use the index.
+- **Library:** each problem shows "What reporters said" with what usually fixed it when they said so.
+
+**Later, with approval:** `pgvector` for meaning-based search, using a local model so no text leaves KPC.
+
+| Endpoint | What |
+|---|---|
+| `GET /api/v1/library/search?q=` | Ranked results: kind, title, snippet (matched words in `[[…]]`), equipment type, link, evidence for procedures. At least 2 characters. |
+| `GET /api/v1/faults?search=` | History, ranked; a reference or tag matches exactly. |
+| `GET /api/v1/faults?answer=key:value` | Faults whose reporter gave that answer, e.g. `position:Stuck part-way`. |

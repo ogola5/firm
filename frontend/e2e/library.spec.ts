@@ -20,7 +20,15 @@ test("a technician on a phone finds what worked and what didn't for a pump that 
   await page.getByRole("navigation", { name: "Quick" }).getByRole("link", { name: "Library" }).click();
   await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
   await page.screenshot({ path: `${dir}/1-library-phone.png`, fullPage: true });
-  await page.getByLabel("Find a type of equipment").fill("pump");
+  // Search what we have learnt, in shorthand: "drive hot trip" finds the drive that tripped on overtemperature.
+  await page.getByLabel("Search the library").fill("drive hot trip");
+  const results = page.getByLabel("Search results");
+  await expect(results.getByText(/result\(s\) for/)).toBeVisible();
+  await expect(results.locator("mark").first()).toBeVisible();
+  await expect(results.getByText(/overtemperature/i).first()).toBeVisible();
+  await page.screenshot({ path: `${dir}/1b-search-phone.png`, fullPage: true });
+
+  await page.getByLabel("Search the library").fill("pump");
   await page.getByRole("link", { name: "Pumps library" }).click();
 
   const problem = page.getByRole("region", { name: "Problem: Won't start" }).or(page.getByLabel("Problem: Won't start"));
@@ -42,6 +50,10 @@ test("authors see their knowledge helped; owners see what needs checking; the CE
 
   await page.goto("/library/MOV");
   await expect(page.getByText(/check before relying on it/).first()).toBeVisible();
+  // What reporters answered on the form, and what usually fixed it when they said so.
+  const said = page.getByLabel("What reporters said").first();
+  await expect(said.getByText("Stuck part-way")).toBeVisible();
+  await expect(said.getByText(/usually fixed by/).first()).toBeVisible();
   await page.screenshot({ path: `${dir}/4-valves-fading.png`, fullPage: true });
 
   await signIn(page, "chief-engineer-electrical");

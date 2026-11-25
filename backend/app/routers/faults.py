@@ -15,6 +15,9 @@ from pydantic import BaseModel, Field
 from app.services.access import ACTIVE_ASSIGNMENT_STATUSES, current_assignment, region_filter, require_fault_scope, require_roles, role_key
 from app.services.procedures import procedure_update_payload
 from app.services import escalation, fault_operations
+from app.services.report_answers import answer_filter, report_details_of
+from app.services import text_search
+import re
 from app.models import ExpertSession
 from app.services.analytics import watchlist
 from app.services.analytics.facts import load_facts
@@ -115,6 +118,7 @@ def fault_list(
     queue: str = "",
     history_scope: str = "",
     search: str = "",
+    answer: str = "",
     user: User = Depends(current_user),
     db: Session = Depends(db_dep),
 ):
@@ -173,9 +177,13 @@ def fault_list(
             | Fault.id.in_(select(FaultAssignment.fault_id).where(FaultAssignment.assigned_user_id == user.id))
             | Fault.id.in_(select(FaultEvent.fault_id).where(FaultEvent.actor_id == user.id))
         )
+    if answer and ":" in answer:
+        # "position:Stuck part-way": faults whose reporter gave that answer (JSONB containment on PostgreSQL).
+        key, value = answer.split(":", 1)
+        query = query.where(answer_filter(db.get_bind().dialect.name, key.strip(), value.strip()))
     if search.strip():
         needle = f"%{search.strip()}%"
-        query = query.where(
+        literal = (
             Fault.reference.ilike(needle)
             | Fault.symptom.ilike(needle)
             | Fault.description.ilike(needle)
@@ -185,6 +193,18 @@ def fault_list(
             | Equipment.name.ilike(needle)
             | Equipment.location.ilike(needle)
         )
+        looks_like_code = bool(re.search(r"\d", search)) and "-" in search
+        if looks_like_code and db.scalar(query.where(Fault.reference.ilike(needle) | Equipment.tag.ilike(needle)).limit(1)):
+            # A reference or tag: exactly those.
+            query = query.where(Fault.reference.ilike(needle) | Equipment.tag.ilike(needle))
+        else:
+            # Words: ranked full-text search over the report, what was found and what was done (services/text_search.py).
+            ranked = text_search.ranked_fault_ids(db, search)
+            position = {fault_id: index for index, fault_id in enumerate(ranked)}
+            query = query.where(literal | Fault.id.in_(ranked or [""]))
+            if position:
+                # Open safety hazards stay first; then best match, then newest.
+                query = query.order_by(None).order_by(open_hazard_first, case(position, value=Fault.id, else_=len(position)), Fault.created_at.desc())
     faults = db.scalars(query.limit(200)).all()
     result = []
     for f in faults:
@@ -239,7 +259,7 @@ def fault_detail(fault_id: str, user: User = Depends(current_user), db: Session 
         "assigned_section": f.assigned_section, "assigned_user_id": f.assigned_user_id,
         "operating_conditions": f.operating_conditions,
         "safety_hazard": bool(f.safety_hazard),
-        "report_details": json.loads(f.report_details or "{}"),
+        "report_details": report_details_of(f),
         "callback": f.callback,
         "closure_remarks": f.closure_remarks,
         "active_assignment_id": current_assignment(f).id if current_assignment(f) else None,
@@ -453,7 +473,7 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             "active_assignment_id": current_assignment(fault).id if current_assignment(fault) else None,
             "reporter_name": fault.reporter.display_name if fault.reporter else "",
             "safety_hazard": bool(fault.safety_hazard),
-            "report_details": json.loads(fault.report_details or "{}"),
+            "report_details": report_details_of(fault),
             "callback": fault.callback,
             "reported_on_behalf_of": fault.raised_by_text,
             "closure_remarks": fault.closure_remarks,

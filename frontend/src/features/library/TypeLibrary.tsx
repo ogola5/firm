@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Input, NativeSelect, Textarea } from "../../components/ui/form-controls";
 import { EmptyState, Page, PageHeader } from "../../components/ui/page";
 import { spokenTime } from "../../lib/format";
+import { useDebounced } from "../../lib/hooks";
 import { errorMessage } from "../../lib/query";
 import { api } from "../../offline/api";
 
@@ -35,6 +36,7 @@ type Symptom = {
   worked: Array<{ action: string; times: number; kind: string }>;
   did_not_work: Array<{ action: string; times: number; note: string }>;
   procedures: ProcedureCard[];
+  from_reports: Array<{ key: string; question: string; answer: string; times: number; usually_fixed_by: string; fixed_times: number }>;
   cases: Array<{ id: string; reference: string; equipment_tag: string; station: string; region: string; reported_at: string | null;
     status: string; description: string; cause: string; failed_attempts: number; fixed_by: string }>;
 };
@@ -52,9 +54,54 @@ type TypePage = {
 
 const day = (value: string | null) => (value ? spokenTime(value).replace(/ \d\d:\d\d$/, "") : "—");
 
+type SearchResult = {
+  kind: "case" | "procedure" | "expert" | "instruction"; kind_label: string; id: string; title: string; snippet: string;
+  matched_words: number; type_code: string; link: string; date?: string | null; status?: string; evidence?: Evidence;
+};
+
+/** The server marks matched words [[like this]]; show them in bold. */
+function Highlighted({ text }: { text: string }) {
+  const parts = text.split(/(\[\[.*?\]\])/g);
+  return <>{parts.map((part, index) => (part.startsWith("[[") ? <mark key={index} className="rounded bg-warning/25 px-0.5 font-semibold text-foreground">{part.slice(2, -2)}</mark> : part))}</>;
+}
+
+/** Search what we have learnt: cases, procedures, expert notes, older instructions. Ranked by how many words match. */
+function LibrarySearchResults({ query }: { query: string }) {
+  const results = useQuery({
+    queryKey: ["library", "search", query], enabled: query.length >= 3,
+    queryFn: () => api<{ results: SearchResult[] }>(`/api/v1/library/search?q=${encodeURIComponent(query)}`),
+  });
+  if (query.length < 3) return null;
+  const rows = results.data?.results ?? [];
+  return (
+    <Card className="mb-4" aria-label="Search results">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">{results.isLoading ? "Searching…" : `${rows.length} result(s) for “${query}”`}</CardTitle>
+        <CardDescription>Cases, procedures, expert knowledge and older instructions. Shorthand works: “vfd”, “drive”, “hot”, “comms”.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-2 pt-0">
+        {results.isError && <Alert variant="destructive">{errorMessage(results.error, "Search is not available offline.")}</Alert>}
+        {results.data && !rows.length && <p className="m-0 text-sm text-muted-foreground">Nothing found. Try fewer or different words.</p>}
+        {rows.map((row) => (
+          <Link key={`${row.kind}-${row.id}`} to={row.link} className="grid gap-1 rounded-lg border border-border p-3 text-foreground no-underline hover:border-primary">
+            <span className="flex flex-wrap items-center gap-2">
+              <Badge variant={row.kind === "procedure" ? "success" : "outline"} className="normal-case">{row.kind_label}</Badge>
+              {row.type_code && <span className="text-xs font-bold text-muted-foreground">{row.type_code}</span>}
+              {row.evidence && <span className="text-xs text-muted-foreground">worked {row.evidence.worked}×{row.evidence.fading ? " · check before relying on it" : ""}</span>}
+            </span>
+            <strong className="text-sm">{row.title}</strong>
+            {row.snippet && <span className="text-sm text-muted-foreground"><Highlighted text={row.snippet} /></span>}
+          </Link>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function LibraryIndex({ user }: { user: User }) {
   const [search, setSearch] = useState("");
   const [section, setSection] = useState(user.section || "");
+  const debounced = useDebounced(search.trim());
   const types = useQuery({ queryKey: ["library", "types"], queryFn: () => api<{ types: TypeRow[] }>("/api/v1/library/types") });
   const rows = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -73,15 +120,16 @@ export function LibraryIndex({ user }: { user: User }) {
       <div className="mb-4 flex flex-wrap gap-3">
         <div className="relative min-w-[14rem] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <Input aria-label="Find a type of equipment" className="pl-9" placeholder="Find a type: valve, pump, level…" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <Input aria-label="Search the library" className="pl-9" placeholder="Search: a type, a problem, a fix… e.g. “drive hot trip”" value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
         <NativeSelect aria-label="Section" className="w-auto" value={section} onChange={(event) => setSection(event.target.value)}>
           <option value="">All sections</option>
           {sections.map((item) => <option key={item}>{item}</option>)}
         </NativeSelect>
       </div>
+      <LibrarySearchResults query={debounced} />
       {types.isError && <Alert variant="destructive">{errorMessage(types.error, "The library is not available.")}</Alert>}
-      {types.data && !rows.length && <EmptyState>No equipment type matches.</EmptyState>}
+      {types.data && !rows.length && debounced.length < 3 && <EmptyState>No equipment type matches.</EmptyState>}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {rows.map((row) => (
           <Link key={row.code} to={`/library/${row.code}`} aria-label={`${row.name} library`}
@@ -205,6 +253,19 @@ function SymptomSection({ item, canWithdraw, onChanged }: { item: Symptom; canWi
             ) : <p className="m-0 text-sm text-muted-foreground">No failed attempts recorded.</p>}
           </section>
         </div>
+        {item.from_reports.length > 0 && (
+          <section aria-label="What reporters said">
+            <h3 className="m-0 mb-1 text-sm font-extrabold uppercase text-muted-foreground">What reporters said</h3>
+            <ul className="m-0 grid gap-1 pl-5 text-sm">
+              {item.from_reports.map((row) => (
+                <li key={`${row.key}-${row.answer}`}>
+                  {row.question}: <strong>{row.answer}</strong> <span className="text-muted-foreground">({row.times}×)</span>
+                  {row.usually_fixed_by && <span>: usually fixed by {row.usually_fixed_by.charAt(0).toLowerCase()}{row.usually_fixed_by.slice(1)} <span className="text-muted-foreground">({row.fixed_times}×)</span></span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {item.procedures.length > 0 && (
           <section className="grid gap-2">
             <h3 className="m-0 text-sm font-extrabold uppercase text-muted-foreground">Approved procedures</h3>
