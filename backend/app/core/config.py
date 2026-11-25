@@ -6,8 +6,10 @@ Every value can be overridden with an environment variable of the same name
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
@@ -19,7 +21,28 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://kpc:kpc-demo@localhost:5433/kpc"
     jwt_secret: str = "synthetic-demo-only-change-in-production"
     jwt_lifetime_hours: int = 12
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    # Comma-separated in the environment: "https://a.example,https://b.example" (a JSON list also works).
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    @field_validator("database_url")
+    @classmethod
+    def use_psycopg_driver(cls, value: str) -> str:
+        """Hosts such as Render give postgres:// or postgresql:// URLs; SQLAlchemy needs the psycopg driver named."""
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix):]
+        return value
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def split_origins(cls, value):
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith("["):
+                import json
+                return json.loads(text)
+            return [item.strip().rstrip("/") for item in text.split(",") if item.strip()]
+        return value
 
     attachment_storage_dir: Path = BACKEND_ROOT / "storage" / "attachments"
     max_attachment_bytes: int = 10 * 1024 * 1024
