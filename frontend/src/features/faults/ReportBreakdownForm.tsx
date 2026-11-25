@@ -303,7 +303,8 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
       if (!isOfflineError(reason)) {
         setError(`Could not submit the report. ${errorMessage(reason, "")}`);
       } else {
-        const { faultId } = await queueFaultReport(user, payload, { equipment_tag: chosen?.tag });
+        // Like the server: a suggested but unconfirmed asset is shown by the reporter's own words.
+        const { faultId } = await queueFaultReport(user, payload, { equipment_tag: isConfirmed ? chosen?.tag : undefined });
         for (const file of files) await queueAttachment(user.id, faultId, file);
         const message = `${OFFLINE_SAVED} The reference number is given when it reaches the server.`;
         setDone({ faultId, message, offline: true, summary });

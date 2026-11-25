@@ -28,6 +28,11 @@ def test_a_unit_letter_is_not_dropped():
     assert first("line 4 pump b") == "11-P-402"
 
 
+def test_one_shared_word_is_not_a_match():
+    assert rank_equipment(REGISTRY, "offline drain line near the jetty") == []
+    assert first("line 4") == "11-P-401"  # a matching number is enough
+
+
 def test_asking_for_the_panel_or_drive_still_finds_them():
     assert first("line 4 pump a lop panel") == "11-LOP-401"
     assert first("pump a vfd") == "11-VFD-401"

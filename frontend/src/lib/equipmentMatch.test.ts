@@ -34,6 +34,11 @@ describe("equipment matching", () => {
     expect(first("pump a vfd")).toBe("11-VFD-401");
   });
 
+  it("does not offer a match on one shared word", () => {
+    expect(rankEquipment(registry, "offline drain line near the jetty")).toEqual([]);
+    expect(first("line 4")).toBe("11-P-401"); // a matching number is enough
+  });
+
   it("returns nothing for unrelated or empty text", () => {
     expect(rankEquipment(registry, "the")).toEqual([]);
     expect(rankEquipment(registry, "compressor 9")).toEqual([]);

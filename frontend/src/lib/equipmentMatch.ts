@@ -44,12 +44,23 @@ export function matchScore(item: Matchable, query: string): number {
   const queryTerms = terms(query);
   if (!queryTerms.length) return 0;
   const haystack = new Set(words([item.tag, item.name, item.aliases, item.location, item.station].map((v) => String(v ?? "")).join(" ")));
+  // 0 unless it really matches: at least half of the words asked for, or a matching number
+  // (one shared word such as "line" or "pump" is not enough to offer it as the best match).
   let score = 0;
+  let matched = 0;
+  let numberMatched = false;
   for (const term of queryTerms) {
     const candidates = [term, ...(SYNONYMS[term] ?? [])];
-    if (candidates.some((candidate) => haystack.has(candidate))) score += /^\d+$/.test(term) ? 5 : 2;
-    else if (term.length > 2 && [...haystack].some((word) => word.startsWith(term))) score += 1;
+    if (candidates.some((candidate) => haystack.has(candidate))) {
+      score += /^\d+$/.test(term) ? 5 : 2;
+      matched += 1;
+      numberMatched ||= /^\d+$/.test(term);
+    } else if (term.length > 2 && [...haystack].some((word) => word.startsWith(term))) {
+      score += 1;
+      matched += 1;
+    }
   }
+  if (!numberMatched && matched * 2 < queryTerms.length) return 0;
   return score;
 }
 

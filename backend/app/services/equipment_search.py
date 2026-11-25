@@ -55,19 +55,27 @@ def extra_name_words(item: Equipment, query: str) -> int:
 
 
 def match_score(item: Equipment, query: str) -> int:
+    """0 unless the record really matches: at least half of the words asked for, or a matching number.
+    One shared word ("line", "pump") is not enough to call something a match."""
     if _compact(item.tag) == _compact(query):
         return 1000
     terms = _terms(query)
     if not terms:
         return 0
     words = set(_words(" ".join((item.tag, item.name, item.aliases or "", item.location, item.station))))
-    score = 0
+    score = matched = 0
+    number_matched = False
     for term in terms:
         candidates = {term} | SYNONYMS.get(term, set())
         if candidates & words:
             score += 5 if term.isdigit() else 2
+            matched += 1
+            number_matched = number_matched or term.isdigit()
         elif len(term) > 2 and any(word.startswith(term) for word in words):
             score += 1
+            matched += 1
+    if not number_matched and matched * 2 < len(terms):
+        return 0
     return score
 
 
