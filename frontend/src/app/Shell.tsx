@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, BookOpen, ClipboardList, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Users, Wrench, X,
+  AlertTriangle, BookOpen, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Users, Wrench, X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
@@ -24,6 +24,7 @@ const WriteUpVisit = lazy(() => import("../features/jobs/WriteUpVisit").then((m)
 const JobCard = lazy(() => import("../features/jobs/JobCard").then((m) => ({ default: m.JobCard })));
 const ProcedureDraft = lazy(() => import("../features/jobs/ProcedureDraft").then((m) => ({ default: m.ProcedureDraft })));
 const MyAccount = lazy(() => import("../features/account/MyAccount").then((m) => ({ default: m.MyAccount })));
+const Reports = lazy(() => import("../features/reports/Reports").then((m) => ({ default: m.Reports })));
 const Analytics = lazy(() => import("../features/analytics/Analytics").then((m) => ({ default: m.Analytics })));
 
 // Menu entries come from the account's access profile (server-defined per level); only icons and paths live here.
@@ -31,6 +32,7 @@ const AREAS: Record<string, { path: string; icon: ReactNode }> = {
   report: { path: "/report", icon: <Plus /> },
   home: { path: "/dashboard", icon: <Gauge /> },
   analytics: { path: "/analytics", icon: <LineChart /> },
+  reports: { path: "/reports", icon: <FileText /> },
   faults: { path: "/faults", icon: <AlertTriangle /> },
   equipment: { path: "/equipment", icon: <Search /> },
   knowledge: { path: "/knowledge", icon: <BookOpen /> },
@@ -153,6 +155,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             <Route path="/dashboard" element={<Dashboard user={user} />} />
             <Route path="/account" element={<MyAccount user={user} onSignOut={onLogout} />} />
             {areas.has("analytics") && <Route path="/analytics" element={<Analytics user={user} />} />}
+            {areas.has("reports") && <Route path="/reports" element={<Reports user={user} />} />}
             {areas.has("equipment") && <Route path="/equipment" element={<Equipment user={user} />} />}
             {seesFaults && <Route path="/faults" element={<Faults user={user} />} />}
             {areas.has("knowledge") && <Route path="/knowledge" element={<Knowledge user={user} />} />}

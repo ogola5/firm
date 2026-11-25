@@ -81,6 +81,19 @@ Knowledge and intelligence:
 - `GET /api/v1/integrations/sap/status` (read-only integration is deferred; write-back is disabled)
 - `GET /api/v1/analytics/overview`
 
+### Periodic reports ([REPORTS.md](REPORTS.md))
+
+- `GET /api/v1/reports/periods?kind=week|month|year`: the current period and recent complete ones, plus the default (the last complete one)
+- `GET /api/v1/reports/{kind}?period=&section=`: the report. Period keys:
+  - week: Monday's date, `2026-11-16`
+  - month: `2026-10`
+  - financial year (July–June): `2025/26`
+
+  Section leads always get their own section. The CEO gets `version: "headline"` (headline and trend only). OPS, SA, ST, PT, AE, E, SE and HR get 403.
+- `POST /api/v1/reports/{kind}/email?period=&section=`: email the report to yourself
+- `GET` / `PUT /api/v1/account/report-subscriptions` `{kind, enabled}`: which reports you receive by email (defaults by level)
+- `POST /api/v1/reports/send-due` (System Administrator): send any due scheduled report that has not been sent yet. This normally runs automatically every 10 minutes, or via `python -m app.cli send-reports`.
+
 ### Analytics and intelligence
 
 Every measure is defined in [METRICS.md](METRICS.md). Dates are local calendar days (Kenya time, `YYYY-MM-DD`); a period is at most three years. Every value is returned with `n`, the number of faults behind it.

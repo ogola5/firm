@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     login_lock_minutes: int = 15
     password_min_length: int = 10
 
+    # Periodic reports: financial year starts in this month (KPC: July to June).
+    financial_year_start_month: int = 7
+    # Scheduled emails go out at this local hour (weekly on Mondays, monthly on the 1st, yearly on FY start).
+    report_send_hour: int = 7
+    # Check for due reports in the background while the API runs (the CLI `send-reports` does the same).
+    report_scheduler: bool = True
+    # Where links in emails point.
+    app_url: str = "http://localhost:5173"
+
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")

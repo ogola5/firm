@@ -15,6 +15,9 @@ os.environ["DATABASE_URL"] = os.environ.get(
     f"sqlite:///{Path(test_database_dir.name, 'test.db').as_posix()}",
 )
 
+# Tests send reports explicitly; never from the background.
+os.environ["REPORT_SCHEDULER"] = "false"
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import cli  # noqa: E402  (must import after DATABASE_URL is set)

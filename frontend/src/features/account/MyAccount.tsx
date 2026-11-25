@@ -4,7 +4,7 @@ import { Check, LogOut } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { type User } from "../../auth";
+import { can, type User } from "../../auth";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -81,6 +81,47 @@ function ChangePassword({ user }: { user: User }) {
   );
 }
 
+type Subscription = { kind: string; label: string; enabled: boolean; default: boolean };
+
+/** Which periodic reports arrive by email. Defaults follow the level; each person can change them. */
+function ReportEmails({ user }: { user: User }) {
+  const queryClient = useQueryClient();
+  const subscriptions = useQuery({
+    queryKey: ["account", user.id, "report-subscriptions"],
+    queryFn: () => api<{ subscriptions: Subscription[]; schedule: string }>("/api/v1/account/report-subscriptions"),
+  });
+  const [error, setError] = useState("");
+
+  async function toggle(kind: string, enabled: boolean) {
+    setError("");
+    try {
+      await api("/api/v1/account/report-subscriptions", { method: "PUT", body: JSON.stringify({ kind, enabled }) });
+      await queryClient.invalidateQueries({ queryKey: ["account", user.id, "report-subscriptions"] });
+    } catch (reason) {
+      setError(errorMessage(reason, "Not saved."));
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Reports by email</CardTitle>
+        <CardDescription>{subscriptions.data?.schedule ?? "Sent to your KPC email."}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-2">
+        {subscriptions.data?.subscriptions.map((item) => (
+          <label key={item.kind} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4" checked={item.enabled} onChange={(event) => void toggle(item.kind, event.target.checked)} />
+            <span className="font-semibold">{item.label}</span>
+            <span className="text-xs text-muted-foreground">{item.default ? "(usual for your level)" : ""}</span>
+          </label>
+        ))}
+        {error && <Alert variant="destructive">{error}</Alert>}
+      </CardContent>
+    </Card>
+  );
+}
+
 /** Who you are in the system, what you can do and see, and your password. */
 export function MyAccount({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const account = useQuery({ queryKey: ["account", user.id], queryFn: () => api<Account>("/api/v1/account") });
@@ -125,6 +166,8 @@ export function MyAccount({ user, onSignOut }: { user: User; onSignOut: () => vo
           </CardHeader>
           <CardContent><ChangePassword user={user} /></CardContent>
         </Card>
+
+        {can(user, "reports.view") && <ReportEmails user={user} />}
 
         <Card>
           <CardHeader><CardTitle>Sign out</CardTitle><CardDescription>On a shared desk computer, always sign out when you finish.</CardDescription></CardHeader>

@@ -67,6 +67,26 @@ class EmailCode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ReportSubscription(Base):
+    """A person's choice to receive (or not) a periodic report by email. No row = their level's default."""
+    __tablename__ = "report_subscriptions"
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), primary_key=True)
+    kind: Mapped[str] = mapped_column(String, primary_key=True)
+    enabled: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReportDelivery(Base):
+    """One scheduled report sent to one person; unique so a report is never emailed twice."""
+    __tablename__ = "report_deliveries"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    kind: Mapped[str] = mapped_column(String)
+    period_key: Mapped[str] = mapped_column(String)
+    recipient_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
+    scope: Mapped[str] = mapped_column(String)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class MailOutbox(Base):
     """Every email the system would send. The prototype never sends real mail."""
     __tablename__ = "mail_outbox"

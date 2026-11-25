@@ -126,7 +126,8 @@ def compare(measure: Measure, current: Result, previous: Result) -> dict:
     value, n = current
     before, n_before = previous
     result = {"value": value, "n": n, "previous": before, "previous_n": n_before, "change": None, "verdict": "no_data"}
-    if value is None or before is None:
+    # No records at all in the earlier period (e.g. before the system was used): nothing to compare with.
+    if value is None or before is None or n_before == 0:
         return result
     change = round(value - before, 2)
     result["change"] = change
@@ -142,8 +143,9 @@ def compare(measure: Measure, current: Result, previous: Result) -> dict:
     return result
 
 
-def summary(facts: list[FaultFacts], period: Period, keys: list[str] = HEADLINE) -> dict:
-    previous = period.previous()
+def summary(facts: list[FaultFacts], period: Period, keys: list[str] = HEADLINE, previous: Period | None = None) -> dict:
+    """Measures for the period against `previous` (default: the same number of days just before)."""
+    previous = previous or period.previous()
     now_window = Window(facts, period.start, period.end)
     before_window = Window(facts, previous.start, previous.end)
     return {

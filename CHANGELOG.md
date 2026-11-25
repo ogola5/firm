@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-25 — Weekly, monthly and financial-year reports
+
+- **Reports** (menu, for CT, CE, MM, GM, Supervisor, System Administrator and CEO).
+  - Weekly (Monday to Sunday), monthly, and financial year **July to June**, each compared with the period before. A financial year to date is compared with the same dates a year earlier.
+  - Section leads get their own section; managers get all sections or one section; the CEO gets a headline-and-trends version.
+- **Print:** an A4 document with only the report on paper and the online link in the footer.
+- **Email:** *Email it to me* sends a report at once. Scheduled emails go out on Monday, the 1st and 1 July at 07:00 Kenya time, to each level's default readers, each person once (delivery log). People choose their reports under My account.
+- **Scheduling:** `python -m app.cli send-reports` for a scheduled task. Migration `0005`. Details in [REPORTS.md](REPORTS.md).
+
 ## 2026-11-25 — Each level's view comes from the account
 
 - **One access profile per level, built on the server** (OPS, SA, ST, PT, CT, AE, E, SE, CE, MM, GM, SUP, HR, MD, ADMIN). It sets the home page, menu, scope and abilities, and is sent with the account. The browser's own role lists are removed: the menu, routes, home page, analytics, similar faults, people and sync screens all follow the profile.

@@ -6,7 +6,9 @@ the database.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,13 +33,44 @@ from app.routers import (
     knowledge,
     people,
     procedures,
+    reports,
     sync,
     team,
 )
 
 logger = logging.getLogger("kpc")
+REPORT_CHECK_SECONDS = 600
 
-app = FastAPI(title="KPC Maintenance Prototype", version="0.2.0")
+
+def _send_due_reports() -> int:
+    from app.db import SessionLocal
+    from app.services.reports import send_due
+
+    with SessionLocal() as db:
+        return send_due(db)
+
+
+async def _report_scheduler() -> None:
+    """Every 10 minutes: email any weekly/monthly/financial-year report that is due (each person once)."""
+    while True:
+        try:
+            sent = await asyncio.to_thread(_send_due_reports)
+            if sent:
+                logger.info("Scheduled reports sent: %s", sent)
+        except Exception:  # keep the API running; try again next time
+            logger.exception("Scheduled report run failed")
+        await asyncio.sleep(REPORT_CHECK_SECONDS)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    task = asyncio.create_task(_report_scheduler()) if settings.report_scheduler else None
+    yield
+    if task:
+        task.cancel()
+
+
+app = FastAPI(title="KPC Maintenance Prototype", version="0.2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -62,7 +95,7 @@ def health() -> dict:
 
 
 for module in (
-    auth, accounts, people, team, equipment, faults, investigation, jobs, procedures,
+    auth, accounts, people, team, reports, equipment, faults, investigation, jobs, procedures,
     assignments, attachments, knowledge, intelligence, analytics, insights, integrations, sync,
 ):
     app.include_router(module.router)

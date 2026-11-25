@@ -42,17 +42,15 @@ function granularityWord(points: TrendPoint[]): string {
   return (points.find((point) => point.full_days)?.full_days ?? 7) > 7 ? "month" : "week";
 }
 
-export function TrendLine({ title, unit, points }: { title: string; unit: string; points: TrendPoint[] }) {
+/**
+ * `width` fixes the size (printed reports: the same drawing on screen and on A4);
+ * without it the chart fills its container.
+ */
+export function TrendLine({ title, unit, points, width }: { title: string; unit: string; points: TrendPoint[]; width?: number }) {
   const lastIndex = points.reduce((last, point, index) => (point.value != null ? index : last), -1);
   const total = points.reduce((sum, point) => sum + point.n, 0);
-  return (
-    <figure className="m-0">
-      <div
-        role="img"
-        aria-label={`${title}: ${points.map((point) => `${point.label} ${point.value == null ? "no data" : formatValue(point.value, unit)}`).join(", ")}`}
-      >
-        <ResponsiveContainer width="100%" height={190}>
-          <LineChart data={points} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+  const chart = (
+          <LineChart data={points} margin={{ top: 8, right: 16, bottom: 0, left: 0 }} {...(width ? { width, height: 190 } : {})}>
             <CartesianGrid vertical={false} stroke={GRID} strokeWidth={1} />
             <XAxis dataKey="label" tick={{ fill: AXIS_TEXT, fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
             <YAxis tick={{ fill: AXIS_TEXT, fontSize: 11 }} axisLine={false} tickLine={false} width={40} allowDecimals={unit !== "faults"} />
@@ -73,12 +71,19 @@ export function TrendLine({ title, unit, points }: { title: string; unit: string
               activeDot={{ r: 5, fill: LINE, stroke: "#fff", strokeWidth: 2 }}
             />
           </LineChart>
-        </ResponsiveContainer>
+  );
+  return (
+    <figure className="m-0 break-inside-avoid">
+      <div
+        role="img"
+        aria-label={`${title}: ${points.map((point) => `${point.label} ${point.value == null ? "no data" : formatValue(point.value, unit)}`).join(", ")}`}
+      >
+        {width ? chart : <ResponsiveContainer width="100%" height={190}>{chart}</ResponsiveContainer>}
       </div>
       {points.some((point) => point.partial) && (
         <p className="m-0 mt-1 text-xs text-muted-foreground">Hollow points cover only part of a {granularityWord(points)}; counts there are not comparable.</p>
       )}
-      <details className="mt-1 text-xs text-muted-foreground">
+      <details className="mt-1 text-xs text-muted-foreground print:hidden">
         <summary className="cursor-pointer">Show as table ({total} fault(s) in total)</summary>
         <table className="mt-2 w-full text-sm">
           <caption className="sr-only">{title}</caption>

@@ -77,6 +77,8 @@ def capabilities(key: str, permissions: list[str]) -> list[str]:
         can.add("analytics.section")
     if key in ANALYTICS_HEADLINE_ONLY:
         can.add("analytics.headline")
+    if key in ANALYTICS_ORG_WIDE or key in ANALYTICS_SECTION_LEADS or key in ANALYTICS_HEADLINE_ONLY:
+        can.add("reports.view")
     if key in SECTION_TECHNICAL or key in ANALYTICS_ORG_WIDE:
         can.add("similar.view")
     if key == "hr_officer":
@@ -103,6 +105,8 @@ def menu(key: str, can: set[str]) -> list[dict]:
     items.append(("home", HOMES.get(key, ("", "Home", ""))[1]))
     if can & {"analytics.org", "analytics.section", "analytics.headline"}:
         items.append(("analytics", "Analytics"))
+    if "reports.view" in can:
+        items.append(("reports", "Reports"))
     if maintenance and "faults.read" in can:
         items.append(("faults", "Find previous work" if field or operator or key == "technician_ct" else "Faults"))
     if maintenance and "equipment.read" in can:

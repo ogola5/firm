@@ -54,6 +54,18 @@ for (const { user, pages } of shots) {
   });
 }
 
+test("@screens printed reports", async ({ page }) => {
+  await signIn(page, "maintenance-manager");
+  for (const kind of ["week", "year"]) {
+    await page.goto(`/reports?kind=${kind}`);
+    await page.getByRole("article", { name: "Report" }).getByRole("heading", { name: "Trend" }).waitFor();
+    await page.waitForTimeout(500);
+    await page.emulateMedia({ media: "print" });
+    await page.pdf({ path: `${dir}/report-${kind}.pdf`, format: "A4", printBackground: true });
+    await page.emulateMedia({ media: "screen" });
+  }
+});
+
 test("@screens login", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");

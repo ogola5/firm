@@ -105,6 +105,8 @@ def test_comparison_says_better_or_worse_by_direction_and_refuses_tiny_samples()
     assert compare(measures.MEASURES["first_time_fix_pct"], (80.0, 10), (60.0, 10))["verdict"] == "better"
     assert compare(measures.MEASURES["faults_reported"], (12.0, 12), (8.0, 8))["verdict"] == "context"
     assert compare(restore, (None, 0), (6.0, 12))["verdict"] == "no_data"
+    # No records in the earlier period: "51 more than nothing" would mislead.
+    assert compare(measures.MEASURES["faults_reported"], (51.0, 51), (0.0, 0))["verdict"] == "no_data"
 
 
 # --- intelligence --------------------------------------------------------------------------

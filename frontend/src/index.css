@@ -43,7 +43,11 @@
   ol[class*="list-none"] { list-style: none; }
   /* Job cards print on one A4 sheet. */
   @page { size: A4; margin: 12mm; }
-  @media print { body { background: #fff; } }
+  @media print {
+    body { background: #fff; }
+    .recharts-tooltip-wrapper { display: none !important; }
+    tr { break-inside: avoid; }
+  }
   /* :where() keeps specificity at zero so component utilities always win. */
   :where(:focus-visible) { @apply outline-none ring-2 ring-ring ring-offset-1; }
 }
