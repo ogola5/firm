@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-25 — Desk workflow (control room and technician desks)
+
+Designed for how the work is actually done: operators report from the control-room desk after seeing a fault on SCADA or a site walk, and technicians carry no device on site, writing up from a notebook afterwards.
+
+- **Report a fault** in four answers: equipment by tag or plain description (best match, confirmed with one click, or left for Systems Automation to identify), where and when it was seen, what is wrong, and the effect (which sets priority). Ctrl+V pastes a SCADA screenshot.
+- **My jobs** for investigating roles: to write up, assigned (take the job), new for Systems Automation, ready for a procedure, and waiting on others.
+- **Printed job card** (A4) with the problem, last time's working and failed fixes, and note lines in the same order as the write-up screen.
+- **Write up a visit** on one screen: arrival and back-in-service times from the notes, what was found, each step marked worked / didn't work / partly, parts, and sign-off. Replaces separate diagnosis, intervention and status steps for technicians.
+- **Real times:** visit times are validated against the report time and the clock, recorded on the timeline with `recorded_at` kept separately, and the restoration time used by analytics is the technician's back-in-service time, not the sign-off click. Writing up a job that was not taken counts as taking it on arrival.
+- **Procedure drafts** built from the write-up (including what didn't work), checked instead of retyped.
+- Realistic illustrative equipment names and aliases; equipment search matches descriptions as well as tags (server and offline).
+- Visit write-ups work offline (sync event `VISIT_RECORDED`). Migration `0003` adds equipment aliases, observation time and how a fault was seen, and the back-in-service time.
+
 ## 2026-11-24 — Frontend stack and structure (Stage 3)
 
 - Split the 1,800-line `main.tsx` into app, feature, component, offline and lib modules; `FaultDetail` became a data hook and nine panels.

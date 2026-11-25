@@ -7,16 +7,16 @@ violations; the sync applier maps 409 to CONFLICT and other 4xx to REJECTED.
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Diagnosis, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, User, utcnow,
+    Diagnosis, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, User, utc_datetime, utcnow,
 )
-from app.schemas import DiagnosisCreate, FaultCreate, InterventionCreate
+from app.schemas import DiagnosisCreate, FaultCreate, InterventionCreate, VisitCreate
 from app.services.access import (
     INVESTIGATION_ROLES, current_assignment, require_current_assignment,
     require_equipment_scope, require_fault_scope, require_roles, role_key,
@@ -52,6 +52,19 @@ def client_record_id(db: Session, model: type, value: str | None) -> str:
     if db.get(model, normalised):
         raise HTTPException(status_code=409, detail="A record with this client identifier already exists")
     return normalised
+
+
+CLOCK_SKEW = timedelta(minutes=5)
+
+
+def check_past_time(value: datetime, *, earliest: datetime, label: str) -> datetime:
+    """A time a person entered from memory or notes: not in the future, not before `earliest`."""
+    moment = utc_datetime(value)
+    if moment > utcnow() + CLOCK_SKEW:
+        raise HTTPException(status_code=422, detail=f"{label} is in the future")
+    if moment < utc_datetime(earliest):
+        raise HTTPException(status_code=422, detail=f"{label} is earlier than is possible for this job")
+    return moment
 
 
 def get_fault_in_scope(db: Session, user: User, fault_id: str) -> Fault:
@@ -98,6 +111,10 @@ def report_fault(db: Session, user: User, req: FaultCreate, fault_id: str | None
         if not selected_equipment:
             raise HTTPException(status_code=500, detail="Unconfirmed-asset routing is not configured")
     assigned_section = "Systems Automation"
+    observed_at = (
+        check_past_time(req.observed_at, earliest=utcnow() - timedelta(days=7), label="The time you saw it")
+        if req.observed_at else None
+    )
 
     reported_equipment_text = req.reported_equipment_text.strip()
     if not reported_equipment_text and candidate and unconfirmed:
@@ -134,6 +151,8 @@ def report_fault(db: Session, user: User, req: FaultCreate, fault_id: str | None
         suggested_equipment_id=candidate.id if candidate and unconfirmed else None,
         assigned_section=assigned_section,
         status="ASSIGNED",
+        observed_at=observed_at,
+        seen_via=req.seen_via,
     )
     db.add(fault)
     db.flush()
@@ -355,3 +374,127 @@ def add_operator_update(db: Session, user: User, fault_id: str, note: str) -> di
         raise HTTPException(status_code=422, detail="Enter an update for the responding team")
     add_event(db, fault.id, "OPERATOR_UPDATE", user.id, {"note": note})
     return {"fault_id": fault.id, "status": fault.status}
+
+
+VISIT_OUTCOMES = {"worked": "SUCCESS", "failed": "FAILED", "partly": "IN_PROGRESS"}
+
+
+def record_visit(db: Session, user: User, fault_id: str, req: VisitCreate) -> dict:
+    """Record one site visit written up afterwards: arrival, cause, every attempt and
+    its result, and when the equipment was back in service.
+
+    Times are the ones the technician entered from their notes. Timeline entries
+    carry those times, and `recorded_at` keeps when it was typed, so response and
+    restoration measures reflect the work rather than the paperwork.
+    """
+    fault, assignment = _active_investigation_assignment(db, user, fault_id)
+    if assignment.assigned_user_id and assignment.assigned_user_id != user.id:
+        raise HTTPException(status_code=409, detail="This job is allocated to someone else")
+    if not assignment.assigned_user_id and assignment.status == "OPEN":
+        raise HTTPException(status_code=409, detail="Take the job before writing up a visit")
+    found = req.found.strip()
+    attempts = [item for item in req.attempts if item.action.strip()]
+    if not found:
+        raise HTTPException(status_code=422, detail="Say what you found")
+    if not attempts:
+        raise HTTPException(status_code=422, detail="Say what you did")
+
+    reported_at = utc_datetime(fault.created_at)
+    earliest = utc_datetime(fault.observed_at) if fault.observed_at else reported_at
+    on_site_at = check_past_time(req.on_site_at, earliest=earliest - CLOCK_SKEW, label="Arrival on site")
+    back_at = None
+    if req.back_in_service_at:
+        back_at = check_past_time(req.back_in_service_at, earliest=on_site_at, label="Back in service")
+    fixed = any(item.result == "worked" for item in attempts)
+    if req.request_signoff and not (fixed and back_at):
+        raise HTTPException(status_code=422, detail="Sign-off needs a step that worked and the back-in-service time")
+
+    recorded_at = utcnow()
+    if assignment.status == "OPEN":
+        # Allocated to this person who went straight out without clicking "I'm taking this job".
+        # Arriving on site is the latest they can have taken it; record it as implied.
+        assignment.status = "ACKNOWLEDGED"
+        assignment.acknowledged_at = on_site_at
+        fault.assigned_user_id = user.id
+        add_event(db, fault.id, "FAULT_ACKNOWLEDGE", user.id, {
+            "assignment_id": assignment.id, "implied_by_visit": True, "recorded_at": recorded_at.isoformat(),
+        }, created_at=on_site_at)
+    already_on_site = db.scalar(
+        select(FaultEvent.id).where(FaultEvent.fault_id == fault.id, FaultEvent.event_type == "FAULT_ON_SITE").limit(1)
+    )
+    if not already_on_site:
+        add_event(db, fault.id, "FAULT_ON_SITE", user.id, {
+            "assignment_id": assignment.id, "recorded_at": recorded_at.isoformat(),
+        }, created_at=on_site_at)
+
+    diagnosis = Diagnosis(
+        id=str(uuid.uuid4()),
+        fault_id=fault.id,
+        assignment_id=assignment.id,
+        author_id=user.id,
+        possible_cause=found,
+        diagnostic_method="Site visit",
+        observations=req.notes.strip(),
+        test_results="",
+        verification_status="CONFIRMED" if fixed else "UNVERIFIED",
+        workaround=int(req.workaround),
+        created_at=on_site_at,
+    )
+    db.add(diagnosis)
+    db.flush()
+    add_event(db, fault.id, "DIAGNOSIS_RECORDED", user.id, {
+        "diagnosis_id": diagnosis.id, "possible_cause": found, "recorded_at": recorded_at.isoformat(),
+    }, created_at=on_site_at)
+
+    intervention_ids = []
+    for index, attempt in enumerate(attempts):
+        # Keep the attempts in the order they were made.
+        done_at = on_site_at + timedelta(seconds=index + 1)
+        intervention = Intervention(
+            id=str(uuid.uuid4()),
+            fault_id=fault.id,
+            assignment_id=assignment.id,
+            diagnosis_id=diagnosis.id,
+            actor_id=user.id,
+            corrective_action=attempt.action.strip(),
+            tools_materials=req.parts.strip() if attempt.result == "worked" else "",
+            outcome=VISIT_OUTCOMES[attempt.result],
+            notes="",
+            created_at=done_at,
+        )
+        db.add(intervention)
+        intervention_ids.append(intervention.id)
+        add_event(db, fault.id, f"INTERVENTION_{intervention.outcome}", user.id, {
+            "intervention_id": intervention.id, "corrective_action": intervention.corrective_action,
+            "recorded_at": recorded_at.isoformat(),
+        }, created_at=done_at)
+
+    fault.status = "DIAGNOSED"
+    assignment.status = "IN_PROGRESS"
+    if fixed and back_at:
+        assignment.back_in_service_at = back_at
+    add_event(db, fault.id, "VISIT_RECORDED", user.id, {
+        "assignment_id": assignment.id,
+        "on_site_at": on_site_at.isoformat(),
+        "back_in_service_at": back_at.isoformat() if back_at else None,
+        "found": found,
+        "attempts": [{"action": item.action.strip(), "result": item.result} for item in attempts],
+        "parts": req.parts.strip(),
+        "workaround": req.workaround,
+        "recorded_at": recorded_at.isoformat(),
+    }, created_at=recorded_at)
+    db.flush()
+
+    result = {
+        "fault_id": fault.id,
+        "reference": fault.reference,
+        "diagnosis_id": diagnosis.id,
+        "intervention_ids": intervention_ids,
+        "fixed": fixed,
+        "status": fault.status,
+        "on_site_at": on_site_at.isoformat(),
+        "back_in_service_at": back_at.isoformat() if back_at else None,
+    }
+    if req.request_signoff:
+        result.update(fault_action(db, user, fault.id, "restore"))
+    return result

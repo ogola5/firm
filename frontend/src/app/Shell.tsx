@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, BookOpen, ClipboardList, CloudOff, Gauge, LogOut, Menu, Radio, RefreshCw, Search, ShieldCheck, Wrench, X,
+  AlertTriangle, BookOpen, ClipboardList, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, Wrench, X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
@@ -19,6 +19,12 @@ const Knowledge = lazy(() => import("../features/knowledge/Knowledge").then((m) 
 const People = lazy(() => import("../features/people/People").then((m) => ({ default: m.People })));
 const ProcedureReview = lazy(() => import("../features/procedures/ProcedureReview").then((m) => ({ default: m.ProcedureReview })));
 const SyncCentre = lazy(() => import("../offline/SyncCentre").then((m) => ({ default: m.SyncCentre })));
+const ReportPage = lazy(() => import("../features/faults/ReportPage").then((m) => ({ default: m.ReportPage })));
+const WriteUpVisit = lazy(() => import("../features/jobs/WriteUpVisit").then((m) => ({ default: m.WriteUpVisit })));
+const JobCard = lazy(() => import("../features/jobs/JobCard").then((m) => ({ default: m.JobCard })));
+const ProcedureDraft = lazy(() => import("../features/jobs/ProcedureDraft").then((m) => ({ default: m.ProcedureDraft })));
+
+const FIELD_ROLES = ["systems_automation", "technician_st", "technician_pt", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"];
 
 const TECHNICIAN_ROLES = [
   "systems_automation", "technician_st", "technician_pt", "technician_ct",
@@ -86,15 +92,19 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
   const canSeePeople = canManageUsers || peopleOnly;
   const canReviewProcedures = ["technician_ct", "chief_engineer", "supervisor"].includes(user.role);
   const technicianView = TECHNICIAN_ROLES.includes(user.role);
+  const fieldWorker = FIELD_ROLES.includes(user.role);
+  const operator = user.role === "operations";
+  const canReport = permissions.includes("faults.report");
   const homeLabel = user.role === "technician_ct" ? "Section oversight"
-    : technicianView ? "My work"
-      : executiveOnly ? "Executive summary"
-        : peopleOnly ? "Workforce overview" : "Dashboard";
+    : fieldWorker ? "My jobs"
+      : operator ? "My reports"
+        : executiveOnly ? "Executive summary"
+          : peopleOnly ? "Workforce overview" : "Dashboard";
 
   return (
-    <div className="min-h-screen md:grid md:grid-cols-[220px_1fr]">
+    <div className="min-h-screen md:grid md:grid-cols-[220px_1fr] print:block">
       <aside className={cn(
-        "flex flex-col bg-sidebar text-sidebar-foreground md:sticky md:top-0 md:h-screen",
+        "flex flex-col bg-sidebar text-sidebar-foreground md:sticky md:top-0 md:h-screen print:hidden",
         menuOpen ? "fixed inset-0 z-40" : "hidden md:flex",
       )}>
         <div className="flex h-16 items-center justify-between gap-2.5 border-b border-white/10 px-4">
@@ -102,10 +112,11 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
           <button className="md:hidden" onClick={() => setMenuOpen(false)} aria-label="Close menu"><X className="size-5" /></button>
         </div>
         <nav className="grid gap-1 p-2.5" aria-label="Main">
+          {operator && canReport && <NavItem to="/report" icon={<Plus />}>Report a fault</NavItem>}
           <NavItem to="/dashboard" icon={technicianView && user.role !== "technician_ct" ? <ClipboardList /> : <Gauge />}>{homeLabel}</NavItem>
+          {canSeeMaintenance && permissions.includes("faults.read") && <NavItem to="/faults" icon={<AlertTriangle />}>{technicianView || operator ? "Find previous work" : "Faults"}</NavItem>}
           {canSeeMaintenance && permissions.includes("equipment.read") && <NavItem to="/equipment" icon={<Search />}>Equipment</NavItem>}
-          {canSeeMaintenance && permissions.includes("faults.read") && <NavItem to="/faults" icon={<AlertTriangle />}>{technicianView ? "Browse breakdowns" : "Faults"}</NavItem>}
-          {canSeeMaintenance && permissions.includes("knowledge.read") && <NavItem to="/knowledge" icon={<BookOpen />}>Knowledge</NavItem>}
+          {canSeeMaintenance && permissions.includes("knowledge.read") && <NavItem to="/knowledge" icon={<BookOpen />}>{fieldWorker ? "Procedures" : "Knowledge"}</NavItem>}
           {canSeeMaintenance && canReviewProcedures && <NavItem to="/approvals" icon={<ShieldCheck />}>Procedure review</NavItem>}
           {canSeePeople && <NavItem to="/people" icon={<ShieldCheck />}>{canManageUsers ? "User management" : "People directory"}</NavItem>}
           {canSeeMaintenance && <NavItem to="/sync" icon={<CloudOff />}>Sync{conflicts ? ` (${conflicts})` : ""}</NavItem>}
@@ -121,7 +132,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
       </aside>
 
       <main className="min-w-0">
-        <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-4 py-2 md:px-7">
+        <header className="sticky top-0 z-30 flex min-h-16 print:hidden flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-4 py-2 md:px-7">
           <div className="flex items-center gap-3">
             <button className="md:hidden" onClick={() => setMenuOpen(true)} aria-label="Open menu"><Menu className="size-5" /></button>
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground" role="status">
@@ -145,6 +156,10 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             {canSeeMaintenance && canReviewProcedures && <Route path="/approvals" element={<ProcedureReview user={user} />} />}
             {canSeePeople && <Route path="/people" element={<People user={user} />} />}
             {canSeeMaintenance && <Route path="/sync" element={<SyncCentre user={user} />} />}
+            {canReport && <Route path="/report" element={<ReportPage user={user} />} />}
+            {fieldWorker && <Route path="/jobs/:faultId/write-up" element={<WriteUpVisit user={user} />} />}
+            {canSeeMaintenance && permissions.includes("faults.read") && <Route path="/jobs/:faultId/card" element={<JobCard user={user} />} />}
+            {fieldWorker && <Route path="/jobs/:faultId/procedure" element={<ProcedureDraft user={user} />} />}
             <Route path="*" element={<Dashboard user={user} />} />
           </Routes>
         </Suspense>

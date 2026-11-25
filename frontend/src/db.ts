@@ -8,7 +8,8 @@ export type OfflineEventType =
   | "FAULT_ACTION"
   | "DIAGNOSIS_RECORDED"
   | "INTERVENTION_RECORDED"
-  | "OPERATOR_UPDATE";
+  | "OPERATOR_UPDATE"
+  | "VISIT_RECORDED";
 
 export interface PendingEvent {
   event_id: string;

@@ -25,6 +25,7 @@ from app.routers import (
     integrations,
     intelligence,
     investigation,
+    jobs,
     knowledge,
     people,
     procedures,
@@ -59,7 +60,7 @@ def health() -> dict:
 
 
 for module in (
-    auth, people, team, equipment, faults, investigation, procedures,
+    auth, people, team, equipment, faults, investigation, jobs, procedures,
     assignments, attachments, knowledge, intelligence, analytics, integrations, sync,
 ):
     app.include_router(module.router)

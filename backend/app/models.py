@@ -62,6 +62,8 @@ class Equipment(Base):
     manufacturer: Mapped[str] = mapped_column(String, default="Illustrative OEM")
     model: Mapped[str] = mapped_column(String, default="Demo Model")
     description: Mapped[str] = mapped_column(Text, default="")
+    # Words people actually use for this asset ("t601 inlet mov"), searched with tag and name.
+    aliases: Mapped[str] = mapped_column(Text, default="")
 
 
 class Fault(Base):
@@ -88,6 +90,9 @@ class Fault(Base):
     suggested_equipment_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     assigned_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
     closure_remarks: Mapped[str] = mapped_column(Text, default="")
+    # When and how the reporter saw the problem (may be earlier than created_at).
+    observed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    seen_via: Mapped[str] = mapped_column(String, default="")
     equipment = relationship("Equipment")
     reporter = relationship("User", foreign_keys=[reporter_id])
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])
@@ -128,6 +133,8 @@ class FaultAssignment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Technician-entered time the equipment was working again (from their notes).
+    back_in_service_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     fault = relationship("Fault", back_populates="assignments")
     assigned_by = relationship("User", foreign_keys=[assigned_by_id])
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])

@@ -259,11 +259,14 @@ def review_section_assignment(
             assignment.status = "RESTORED"
             assignment.completed_at = now
             fault.status = "RESTORED"
-            fault.restored_at = now
+            # Restoration is when the equipment worked again (technician's notes), not when it was signed off.
+            restored_at = utc_datetime(assignment.back_in_service_at) if assignment.back_in_service_at else now
+            fault.restored_at = restored_at
             add_event(db, fault.id, "FAULT_RESTORE", assignment.assigned_user_id or user.id, {
                 "assignment_id": assignment.id,
                 "technical_reviewed_by": user.id,
-            })
+                "signed_off_at": now.isoformat(),
+            }, created_at=restored_at)
             add_event(db, fault.id, "TECHNICAL_COMPLETION_APPROVED", user.id, {
                 "assignment_id": assignment.id,
                 "comments": comments,

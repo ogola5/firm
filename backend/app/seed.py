@@ -10,6 +10,41 @@ from app.models import Diagnosis, Equipment, Fault, FaultAssignment, FaultEvent,
 from app.services.access import ROLE_DEFINITIONS, SECTIONS
 from app.services.audit import add_event
 
+# (tag, name, aliases, station, location). Index % 4 gives the owning section:
+# 0 Systems Automation, 1 Mechanical, 2 Electrical, 3 Instrumentation.
+ILLUSTRATIVE_EQUIPMENT = [
+    ("11-PLC-101", "Tank farm control PLC", "plc tank farm controller", "PS02", "Control room"),
+    ("PUMP-101", "Booster pump A", "booster pump a p101", "PS01", "Pump house"),
+    ("VFD-101", "Booster pump A drive", "pump a vfd variable speed drive", "PS01", "MCC room"),
+    ("LT-301", "Tank 301 level transmitter", "t301 level gauge lt", "DEPOT01", "Tank farm"),
+    ("RTU-201", "Pump station 2 RTU", "rtu ps02 remote terminal unit telemetry", "PS02", "Telemetry room"),
+    ("11-STR-601", "Tank 601 inlet strainer", "strainer filter t601 inlet", "PS02", "Tank farm"),
+    ("10A-MOV-201", "Tank 201 inlet valve", "t201 inlet mov motorised valve actuator", "PS01", "Tank farm"),
+    ("PT-102", "Booster pump A discharge pressure", "pressure transmitter pump a discharge pt", "PS01", "Pump house"),
+    ("11-FC-101", "Metering flow computer", "flow computer metering skid", "PS02", "Metering skid"),
+    ("PUMP-102", "Booster pump B", "booster pump b p102", "PS01", "Pump house"),
+    ("VFD-102", "Booster pump B drive", "pump b vfd variable speed drive", "PS01", "MCC room"),
+    ("FT-101", "Line 1 flow meter", "flowmeter ft line 1 meter", "PS01", "Metering skid"),
+    ("11-RAD-201", "Pump station 2 telemetry radio", "radio link telemetry ps02", "PS02", "Telemetry room"),
+    ("11-P-601", "Tank 601 transfer pump", "transfer pump t601", "PS02", "Tank farm"),
+    ("11-MOV-601", "Tank 601 inlet valve", "t601 inlet mov motorised valve actuator", "PS02", "Tank farm"),
+    ("11-LT-601", "Tank 601 level transmitter", "t601 level gauge lt", "PS02", "Tank farm"),
+    ("11-PLC-201", "Pump station 2 control PLC", "plc ps02 station controller", "PS02", "Control room"),
+    ("11-STR-501", "Tank 501 inlet strainer", "strainer filter t501 inlet", "PS02", "Tank farm"),
+    ("11-MOV-501", "Tank 501 inlet valve", "t501 inlet mov motorised valve actuator", "PS02", "Tank farm"),
+    ("11-LT-501", "Tank 501 level transmitter", "t501 level gauge lt", "PS02", "Tank farm"),
+    ("11-HMI-01", "Control room SCADA workstation 1", "scada hmi workstation screen", "PS02", "Control room"),
+    ("11-P-501", "Tank 501 transfer pump", "transfer pump t501", "PS02", "Tank farm"),
+    ("TX-201", "Pump station 2 transformer", "transformer tx station supply", "PS02", "Substation"),
+    ("11-TT-601", "Tank 601 temperature transmitter", "t601 temperature tt", "PS02", "Tank farm"),
+    ("PLC-101", "Depot loading PLC", "plc loading gantry depot", "DEPOT01", "Loading gantry"),
+    ("11-CV-301", "Line 3 check valve", "non return valve nrv line 3", "PS01", "Manifold"),
+    ("11-MOV-602", "Tank 601 outlet valve", "t601 outlet mov motorised valve actuator", "PS02", "Tank farm"),
+    ("11-PT-601", "Tank 601 outlet pressure transmitter", "t601 outlet pressure pt", "PS02", "Tank farm"),
+    ("11-RTU-301", "Depot RTU", "rtu depot remote terminal unit telemetry", "DEPOT01", "Telemetry room"),
+    ("11-AC-01", "Instrument air compressor", "air compressor instrument air", "PS02", "Utility room"),
+]
+
 
 def seed_database():
     """Load the illustrative demonstration dataset into an empty database.
@@ -38,20 +73,20 @@ def seed_database():
                 password_hash=bcrypt.hashpw(b"demo123", bcrypt.gensalt()).decode(),
             ))
 
-        stations = ["PS01", "PS02", "DEPOT01"]
-        tags = ["10A-MOV-201", "PUMP-101", "VFD-101", "PLC-101", "RTU-201", "LT-301", "TX-201"]
         categories = ["Automation", "Mechanical", "Electrical", "Instrumentation"]
         sections = ["Systems Automation", "Mechanical", "Electrical", "Instrumentation"]
-        for i in range(30):
-            tag = tags[i] if i < len(tags) else f"DEMO-{i + 1:03d}"
+        # Illustrative registry: tags plus the plain names people use in the control room.
+        # The section pattern (index % 4) is kept so seeded faults stay consistent.
+        for i, (tag, name, aliases, station, location) in enumerate(ILLUSTRATIVE_EQUIPMENT):
             category = categories[i % len(categories)]
             db.add(Equipment(
                 id=f"EQ-{i + 1:03d}",
                 tag=tag,
-                name=f"Synthetic {category} asset {i + 1}",
+                name=name,
+                aliases=aliases,
                 category=category,
-                station=stations[i % len(stations)],
-                location=f"Area {chr(65 + i % 5)}-{i % 10 + 1}",
+                station=station,
+                location=location,
                 section=sections[i % len(sections)],
                 criticality=["Low", "Medium", "High", "Critical"][i % 4],
                 description="Illustrative demonstration asset; not a real KPC operational record.",

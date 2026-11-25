@@ -49,6 +49,7 @@ const EVENT_LABELS: Record<string, string> = {
   DIAGNOSIS_RECORDED: "Diagnosis",
   INTERVENTION_RECORDED: "Intervention",
   OPERATOR_UPDATE: "Operator update",
+  VISIT_RECORDED: "Visit write-up",
 };
 
 const time = (value?: string | null) => (value ? new Date(value).toLocaleString() : "—");
@@ -56,7 +57,7 @@ const time = (value?: string | null) => (value ? new Date(value).toLocaleString(
 function describe(event: { event_type: string; payload: Record<string, unknown> }): string {
   const payload = event.payload ?? {};
   if (event.event_type === "FAULT_ACTION") return `Action: ${String(payload.action ?? "").replace("_", " ")}`;
-  return String(payload.symptom ?? payload.possible_cause ?? payload.corrective_action ?? payload.note ?? "");
+  return String(payload.symptom ?? payload.found ?? payload.possible_cause ?? payload.corrective_action ?? payload.note ?? "");
 }
 
 function useLocalOutbox(userId: string) {

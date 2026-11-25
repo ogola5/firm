@@ -8,31 +8,31 @@ import {
   apiGet, apiPost, apiToken, setSimulatedNetwork, signIn, waitForOfflineVerifier, waitForSyncedOutbox,
 } from "./helpers";
 
-type FaultRow = { id: string; reference: string; symptom: string };
+type FaultRow = { id: string; reference: string; symptom: string; equipment_tag: string };
 type TimelineRow = { event_type: string; payload: string | Record<string, unknown> };
 
 test("Operations reports a breakdown offline; it survives a restart and offline sign-in, then syncs once", async ({ page, request }) => {
-  const symptom = `E2E offline report ${Date.now()}`;
+  // A description that matches no registered equipment, so it goes for identification.
+  const description = `E2E offline drain line ${Date.now()}`;
   await signIn(page, "operations");
   await waitForOfflineVerifier(page, "operations");
 
-  await page.goto("/faults?mode=report");
+  await page.goto("/report");
   await setSimulatedNetwork(page, "offline");
   await expect(page.getByRole("status").first()).toContainText("Offline (simulated)");
 
-  await page.getByLabel("Equipment tag or description").fill("Booster pump, east bay");
-  await page.getByLabel("Known area or location").fill("PS02 pump bay (synthetic)");
-  await page.getByLabel("What is happening?").fill(symptom);
-  await page.getByLabel("Effect on operation").fill("Transfer rate reduced (synthetic)");
-  await page.getByRole("button", { name: "Submit breakdown" }).click();
-  await expect(page.getByText("saved on this device", { exact: false }).first()).toBeVisible();
+  await page.getByLabel("1. Which equipment?").fill(description);
+  await page.getByRole("group", { name: "What is wrong" }).getByRole("button", { name: "Leaking" }).click();
+  await page.getByRole("group", { name: "Effect on operation" }).getByRole("button", { name: /Running reduced/ }).click();
+  await page.getByRole("button", { name: "Submit report" }).click();
+  await expect(page.getByRole("heading", { name: "Saved on this computer" })).toBeVisible();
   await expect(page.getByLabel("Changes waiting")).toHaveText("1");
 
   // Close and reopen the application while still offline.
   await page.close();
   const reopened = await page.context().newPage();
   await reopened.goto("/faults?mode=history");
-  await expect(reopened.getByText(symptom).first()).toBeVisible();
+  await expect(reopened.getByText(description).first()).toBeVisible();
   await expect(reopened.getByText("Pending sync").first()).toBeVisible();
 
   // Sign out and back in with no connection.
@@ -46,9 +46,10 @@ test("Operations reports a breakdown offline; it survives a restart and offline 
   await waitForSyncedOutbox(reopened);
 
   const token = await apiToken(request, "operations");
-  const matches = await apiGet<FaultRow[]>(request, token, `/api/v1/faults?search=${encodeURIComponent(symptom)}`);
-  expect(matches.filter((row) => row.symptom === symptom)).toHaveLength(1);
+  const matches = await apiGet<FaultRow[]>(request, token, `/api/v1/faults?search=${encodeURIComponent(description)}`);
+  expect(matches.filter((row) => row.equipment_tag === description)).toHaveLength(1);
   expect(matches[0].reference).toMatch(/^KPC-DMO-/);
+  expect(matches[0].symptom).toBe("Leaking");
 });
 
 test("The installed app opens and navigates with no network at all", async ({ page, context }) => {

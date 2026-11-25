@@ -253,6 +253,13 @@ export async function queueOperatorUpdate(actor: { id: string; display_name?: st
   return event;
 }
 
+/** A whole site visit written up offline; the server applies it with the same rules. */
+export async function queueVisit(actor: { id: string }, faultId: string, visit: Row & { request_signoff?: boolean }) {
+  const event = await enqueue({ eventType: "VISIT_RECORDED", actorId: actor.id, faultId, payload: visit });
+  await updateLocalFault(faultId, { status: visit.request_signoff ? "AWAITING_CHIEF_REVIEW" : "DIAGNOSED", visit_pending_sync: true });
+  return event;
+}
+
 export async function queueAttachment(actorId: string, faultId: string, file: File) {
   await db.pendingAttachments.put({
     id: uuid(),

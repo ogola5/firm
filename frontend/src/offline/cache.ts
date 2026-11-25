@@ -6,6 +6,7 @@
  * never overwritten by a refresh until the server has acknowledged them.
  */
 import { db } from "../db";
+import { rankEquipment } from "../lib/equipmentMatch";
 import { api } from "./api";
 
 type Row = Record<string, unknown> & { id: string };
@@ -57,20 +58,16 @@ export async function refreshOfflineCache(permissions: string[]): Promise<{ refr
   return { refreshed, failed };
 }
 
-/** Indexed local equipment search: tag prefix via the index, then name/station text match. */
+/**
+ * Local equipment search with the same matching as the server (tags, names and
+ * the words people use). An exact tag is found through the index first.
+ */
 export async function searchCachedEquipment(query: string, section?: string, limit = 25): Promise<Row[]> {
-  const term = query.trim().toLowerCase();
+  const term = query.trim();
   const scoped = (row: Row) => !section || row.section === section;
   if (!term) return (await db.equipment.limit(limit * 4).toArray()).filter(scoped).slice(0, limit);
-  const byTag = await db.equipment.where("tag").startsWithIgnoreCase(term).limit(limit).toArray();
-  const seen = new Set(byTag.map((row) => row.id));
-  const remaining = limit - byTag.length;
-  const byText = remaining > 0
-    ? await db.equipment
-      .filter((row) => !seen.has(row.id) && [row.name, row.station, row.category, row.location]
-        .some((value) => String(value ?? "").toLowerCase().includes(term)))
-      .limit(remaining)
-      .toArray()
-    : [];
-  return [...byTag, ...byText].filter(scoped);
+  const exact = await db.equipment.where("tag").equalsIgnoreCase(term).toArray();
+  if (exact.length) return exact.filter(scoped);
+  const rows = await db.equipment.filter(scoped).toArray();
+  return rankEquipment(rows, term).slice(0, limit);
 }

@@ -322,6 +322,12 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
                 fault.reported_equipment_text or "Asset not identified"
             ),
             "equipment_name": equipment.name if fault.equipment_confirmed and equipment else "Asset not yet identified",
+            "equipment_location": (
+                f"{equipment.location} · {equipment.station}" if fault.equipment_confirmed and equipment else fault.reported_location
+            ),
+            "severity": fault.severity,
+            "seen_via": fault.seen_via,
+            "observed_at": utc_datetime(fault.observed_at).isoformat() if fault.observed_at else None,
             "equipment_confirmed": bool(fault.equipment_confirmed),
             "reported_equipment_text": fault.reported_equipment_text,
             "reported_location": fault.reported_location,

@@ -10,6 +10,7 @@ from app.db import db_dep
 from app.deps import current_user
 from app.models import Equipment, Fault, User
 from app.services.access import require_equipment_scope, require_roles, role_key
+from app.services.equipment_search import rank_equipment
 
 router = APIRouter()
 
@@ -21,24 +22,12 @@ def equipment_list(search: str = "", station: str = "", user: User = Depends(cur
         query = query.where(Equipment.station == station)
     if role_key(user) in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
         query = query.where(Equipment.section == user.section)
-    equipment = db.scalars(query).all()
+    equipment = list(db.scalars(query.order_by(Equipment.tag)).all())
     if search.strip():
-        terms = [term for term in search.lower().replace("-", " ").split() if len(term) > 1]
-
-        def score(item: Equipment) -> int:
-            searchable = " ".join((
-                item.tag, item.name, item.category, item.station, item.location,
-                item.section, item.description, item.manufacturer, item.model,
-            )).lower().replace("-", " ")
-            return sum(term in searchable for term in terms)
-
-        equipment = sorted(
-            (item for item in equipment if score(item)),
-            key=lambda item: (-score(item), item.tag),
-        )
+        equipment = rank_equipment(equipment, search)
     return [
         {
-            "id": e.id, "tag": e.tag, "name": e.name, "category": e.category,
+            "id": e.id, "tag": e.tag, "name": e.name, "aliases": e.aliases, "category": e.category,
             "station": e.station, "location": e.location, "section": e.section,
             "criticality": e.criticality, "operational_status": e.operational_status,
             "description": e.description,

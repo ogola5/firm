@@ -44,6 +44,26 @@ class FaultCreate(BaseModel):
     operational_impact: str = ""
     operating_conditions: str = ""
     event_id: str | None = None
+    # How and when the reporter saw it ("SCADA" or "SITE_WALK"); defaults to now.
+    seen_via: Literal["", "SCADA", "SITE_WALK"] = ""
+    observed_at: datetime | None = None
+
+
+class VisitAttempt(BaseModel):
+    action: str = Field(max_length=2000)
+    result: Literal["worked", "failed", "partly"]
+
+
+class VisitCreate(BaseModel):
+    """One site visit, written up afterwards from the technician's notes."""
+    on_site_at: datetime
+    back_in_service_at: datetime | None = None
+    found: str = Field(max_length=2000)
+    attempts: list[VisitAttempt] = Field(min_length=1, max_length=20)
+    parts: str = Field(default="", max_length=2000)
+    notes: str = Field(default="", max_length=4000)
+    workaround: bool = False
+    request_signoff: bool = False
 
 
 class KnowledgeCreate(BaseModel):

@@ -24,7 +24,20 @@ Technician and engineer accounts are seeded for each section: Systems Automation
 
 See [ROLE_ACCESS_MATRIX.md](ROLE_ACCESS_MATRIX.md) for role scope and visibility rules.
 
-After sign-in, Operations sees only active breakdowns they reported, and technicians see only active work assigned to them. ST and PT share the same execution permissions and section pool. A Chief Technician lands on section oversight, where they see the section workload, allocate work, review escalations and approve or return technical completion. Use **Browse breakdowns** when you need the broader fault list; use **Find previous work** to search the history.
+## Desk workflow (start here)
+
+Operators report from the control-room desk after seeing a problem on SCADA or on a site walk. Technicians carry no device on site: they print a job card, take notes on it, and write the visit up at their desk afterwards.
+
+1. **Report (control room).** Sign in as `operations`. **Report a fault** asks four things: which equipment (type a tag like `11-MOV-501` or a description like `tank 601 inlet valve`; confirm the best match with **Yes, this one**, or leave it for Systems Automation to identify), where and when it was seen, what is wrong and the effect. Paste a SCADA screenshot with Ctrl+V. Priority follows from the effect.
+2. **Route.** As `automation`, acknowledge and hand the findings to Electrical; as `ct-systems-automation`, approve; as `ct-electrical`, allocate it to `st-electrical`.
+3. **Take the job and print the card.** As `st-electrical`, **My jobs** lists it under *Assigned to you*. Click **I'm taking this job**, then **Print job card**: one A4 sheet with the problem, what worked and failed last time, and note lines in the same order as the write-up screen.
+4. **Write up the visit.** Under *To write up*, click **Write up visit**. Enter the arrival and back-in-service times from the notes (they are recorded as the times things happened), what you found (tap a cause found before, or type one), and each thing you did marked **Worked**, **Didn't work** or **Partly**. **Save and ask Chief to sign off**.
+5. **Sign-off and confirmation.** As `ct-electrical`, approve technical completion; the restoration time is the one the technician entered. As `operations`, confirm the service is restored.
+6. **Procedure.** As `st-electrical`, *Turn your fix into a procedure* has a draft built from the write-up, including what didn't work. Correct it and **Send for review**; `ct-electrical` approves and `supervisor` publishes.
+
+## More of the system
+
+After sign-in, Operations sees **My reports** (active faults they reported), and technicians see **My jobs**. ST and PT share the same execution permissions and section pool. A Chief Technician lands on section oversight, where they see the section workload, allocate work, review escalations and approve or return technical completion. Use **Browse breakdowns** when you need the broader fault list; use **Find previous work** to search the history.
 
 ## Guided sequence
 

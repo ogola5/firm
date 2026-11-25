@@ -27,7 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Fault, SyncBatch, SyncEvent, User, utcnow
-from app.schemas import DiagnosisCreate, FaultCreate, InterventionCreate, SyncEventIn
+from app.schemas import DiagnosisCreate, FaultCreate, InterventionCreate, SyncEventIn, VisitCreate
 from app.services import fault_operations
 from app.services.access import require_fault_scope, require_roles, role_key
 from app.services.audit import add_event, offline_origin
@@ -78,7 +78,12 @@ def _apply_operator_update(db: Session, user: User, event: SyncEventIn, check_ba
     return fault_operations.add_operator_update(db, user, _require_fault_id(event), str(event.payload.get("note", "")))
 
 
+def _apply_visit(db: Session, user: User, event: SyncEventIn, check_base: bool) -> dict:
+    return fault_operations.record_visit(db, user, _require_fault_id(event), VisitCreate(**event.payload))
+
+
 APPLIERS: dict[str, Callable[[Session, User, SyncEventIn, bool], dict]] = {
+    "VISIT_RECORDED": _apply_visit,
     "FAULT_REPORTED": _apply_fault_reported,
     "FAULT_ACTION": _apply_fault_action,
     "DIAGNOSIS_RECORDED": _apply_diagnosis,

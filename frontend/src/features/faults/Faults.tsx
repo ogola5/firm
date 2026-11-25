@@ -76,11 +76,9 @@ export function Faults({ user }: { user: User }) {
     setSearchParams({ mode: "history", ...(scope ? { scope } : {}), fault: faultId }, { replace });
   }
 
-  function onReported(outcome: ReportOutcome) {
-    setMessage(outcome.message);
-    setSearch("");
+  // The form shows its own confirmation (with "Report another"); just refresh lists.
+  function onReported(_outcome: ReportOutcome) {
     void queryClient.invalidateQueries({ queryKey: ["faults"] });
-    setSearchParams({ mode: "history", fault: outcome.faultId });
   }
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["faults"] });

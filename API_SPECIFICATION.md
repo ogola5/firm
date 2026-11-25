@@ -23,12 +23,14 @@ People and access:
 Visibility is enforced by the API: section technical roles are filtered to their assigned section, HR cannot access raw fault/equipment records, and the Managing Director/CEO receives summary analytics only. HR contribution evidence contains no individual fault narratives. See [ROLE_ACCESS_MATRIX.md](ROLE_ACCESS_MATRIX.md).
 
 Equipment:
-- `GET /api/v1/equipment?search=...` (tag, name, category, station, location, section and description search; section-scoped for technical roles)
+- `GET /api/v1/equipment?search=...` (matches tags and plain descriptions: "11-MOV-501", "mov 501", "tank 601 inlet valve", "T601 inlet"; best match first; section-scoped for technical roles)
 - `GET /api/v1/equipment/{id}`
 - `GET /api/v1/equipment/{id}/history`
 
 Faults:
-- `POST /api/v1/faults` accepts an optional equipment candidate, `equipment_confirmed`, the reporter's original equipment wording, known location, observed symptom, operating conditions and operational impact. Evidence is uploaded through the attachment endpoint. Every report starts with a Systems Automation assignment; repeat-fault history is shown but never bypasses this first response.
+- `POST /api/v1/faults` accepts `seen_via` (`SCADA` or `SITE_WALK`) and `observed_at` (when it was seen; not in the future, not older than 7 days), plus an optional equipment candidate, `equipment_confirmed`, the reporter's original equipment wording, known location, observed symptom, operating conditions and operational impact. Evidence is uploaded through the attachment endpoint. Every report starts with a Systems Automation assignment; repeat-fault history is shown but never bypasses this first response.
+- `GET /api/v1/me/jobs` (investigating roles: `to_write_up`, `assigned`, `available` (Systems Automation first response), `waiting` and `procedure_ready`)
+- `POST /api/v1/faults/{id}/visits` (write up a site visit afterwards: `on_site_at`, optional `back_in_service_at`, `found`, ordered `attempts` of `{action, result: worked|failed|partly}`, `parts`, `notes`, `workaround`, `request_signoff`). Times are the technician's, checked against the report time and the clock; timeline entries carry them and keep `recorded_at`. Writing up an allocated job that was not taken counts as taking it at arrival. With `request_signoff` (needs a step that worked and the back-in-service time) the job goes to Chief Technician review; on approval the restoration time is the recorded back-in-service time. Also accepted offline as sync event `VISIT_RECORDED`.
 - `GET /api/v1/faults?queue=mine|section_open` (open work assigned to the signed-in user, or the user's section queue)
 - `GET /api/v1/faults?history_scope=reported_by_me|worked_by_me&search=...` (previous-work search; no scope value returns the full permitted history)
 - `GET /api/v1/faults/{id}`

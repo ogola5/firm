@@ -53,12 +53,12 @@ export function PersonalWorkspace({ user }: { user: User }) {
     <Page>
       <PageHeader
         eyebrow={isOperator ? "Operations workspace" : `${user.section || "Maintenance"} · technician workspace`}
-        title="My work"
-        description="Your active work only. Browse breakdowns when you need the wider history."
+        title={isOperator ? "My reports" : "My work"}
+        description={isOperator ? "Faults you reported that are still being worked on." : "Your active work only. Browse breakdowns when you need the wider history."}
         actions={<>
           <Button variant="outline" asChild><Link to="/faults?mode=history"><History /> Find previous work</Link></Button>
           {(user.permissions || []).includes("faults.report") && (
-            <Button asChild><Link to="/faults?mode=report"><Plus /> Report a breakdown</Link></Button>
+            <Button asChild><Link to="/report"><Plus /> Report a fault</Link></Button>
           )}
           {["technician_st", "technician_pt"].includes(user.role) && (
             <Field label="Availability" className="min-w-40">
