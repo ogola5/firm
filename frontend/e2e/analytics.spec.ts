@@ -28,7 +28,8 @@ test("manager sees trends, attention list and data quality for all sections", as
   await expect(page.getByRole("heading", { name: "How complete are the records?" })).toBeVisible();
 
   await page.getByRole("button", { name: "Last 12 months" }).click();
-  await expect(headline.getByText(/previous 12 months|Too few faults to compare/).first()).toBeVisible();
+  // The demo history covers one year, so the 12 months before have no records: "No data to compare".
+  await expect(headline.getByText(/previous 12 months|Too few faults to compare|No data to compare/).first()).toBeVisible();
   await page.getByLabel("Section").selectOption("Mechanical");
   await expect(page.getByText(/Mechanical section/).first()).toBeVisible();
 });
