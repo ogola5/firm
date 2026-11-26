@@ -40,7 +40,7 @@ test("@perf frontend measurements", async ({ browser }) => {
   // 1. Initial load with an empty cache.
   let start = Date.now();
   await page.goto("/");
-  await expect(page.getByLabel("Demonstration account")).toBeVisible();
+  await expect(page.getByLabel("KPC email")).toBeVisible();
   results.initial_load_to_login_ms = Date.now() - start;
   results.initial_navigation = await page.evaluate(() => {
     const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;

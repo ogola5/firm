@@ -2,7 +2,7 @@
 
 All data and identities are illustrative.
 
-Sign in with a KPC email address. Each seeded account below is `demo.<name>@kpc.co.ke`: for example, `operations` is `demo.operations@kpc.co.ke`. You can also pick one from the **Demonstration account** list on the sign-in page. No email is ever sent to these addresses. In this guide, "sign in as `operations`" means that account.
+Sign in with a KPC email address. Each seeded account below is `demo.<name>@kpc.co.ke`: for example, `operations` is `demo.operations@kpc.co.ke`. There is no role list on the sign-in page: the account itself decides the level, section and region, and the home page you land on. To try it as yourself, choose **Create an account**, pick your job and section, and have `admin` approve it. No email is ever sent to these addresses. In this guide, "sign in as `operations`" means that account.
 
 | Role | Name (email `demo.<name>@kpc.co.ke`) | Password |
 |---|---|---|

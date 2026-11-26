@@ -69,4 +69,4 @@ Accounts are tied to a KPC email (`@kpc.co.ke`). Staff enrol themselves and conf
 
 ## Demo account naming
 
-The sign-in page lists synthetic accounts from `/api/v1/auth/demo-accounts`. Their emails are `demo.<name>@kpc.co.ke`. Section accounts follow `<level>-<section>`, for example `demo.st-electrical@kpc.co.ke`, `demo.chief-engineer-mechanical@kpc.co.ke` or `demo.ct-systems-automation@kpc.co.ke`. All seeded demo accounts use `demo123`; enrolled accounts follow the real password rules. Do not reuse these credentials.
+The sign-in page asks only for the email and password; the account decides the level, section and region. Synthetic accounts (listed by `/api/v1/auth/demo-accounts`, used only to show the guided demo link) have emails `demo.<name>@kpc.co.ke`. Section accounts follow `<level>-<section>`, for example `demo.st-electrical@kpc.co.ke`, `demo.chief-engineer-mechanical@kpc.co.ke` or `demo.ct-systems-automation@kpc.co.ke`. All seeded demo accounts use `demo123`; enrolled accounts follow the real password rules. Do not reuse these credentials.

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { normalizeUser, type User } from "../auth";
 import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
-import { Field, Input, NativeSelect } from "../components/ui/form-controls";
+import { Field, Input } from "../components/ui/form-controls";
 import { AuthCard } from "../features/account/AuthCard";
 import { companyEmail } from "../lib/companyEmail";
 import { API_BASE as API, ApiError, api, isOfflineError } from "../offline/api";
@@ -27,7 +27,8 @@ const loginSchema = z.object({
 type LoginValues = z.input<typeof loginSchema>;
 
 export function Login({ onLogin }: { onLogin: (user: User) => void }) {
-  const [accounts, setAccounts] = useState<DemoAccount[]>([]);
+  // Only to know whether the guided demo can run (its chapters use the seeded accounts).
+  const [hasDemoData, setHasDemoData] = useState(false);
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(false);
   const [notice] = useState(() => {
@@ -36,15 +37,14 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
     return reason;
   });
   const navigate = useNavigate();
-  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<LoginValues>({
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "demo.operations@kpc.co.ke", password: "demo123" },
+    defaultValues: { email: "", password: "" },
   });
-  const email = watch("email").trim().toLowerCase();
-  const listed = accounts.some((account) => account.email === email);
 
   useEffect(() => {
-    networkFetch(`${API}/api/v1/auth/demo-accounts`).then((response) => response.json()).then(setAccounts).catch(() => setAccounts([]));
+    networkFetch(`${API}/api/v1/auth/demo-accounts`).then((response) => response.json())
+      .then((accounts: DemoAccount[]) => setHasDemoData(accounts.length > 0)).catch(() => setHasDemoData(false));
   }, []);
 
   async function signIn(values: LoginValues) {
@@ -105,33 +105,14 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
         </div>
       </form>
 
-      <div className="mt-6 border-t border-border pt-4">
-        {accounts.length > 0 && (
-          <Link to="/tour" className="mb-3 flex items-center justify-between rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5 font-bold no-underline">
+      {/* No picking a role here: the account decides who you are (level, section, region) and where you land. */}
+      {hasDemoData && (
+        <div className="mt-6 border-t border-border pt-4">
+          <Link to="/tour" className="flex items-center justify-between rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5 font-bold no-underline">
             Guided demo: one fault, from report to knowledge <span aria-hidden>›</span>
           </Link>
-        )}
-        <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Demonstration accounts</p>
-        <div className="mt-3 grid gap-2">
-          <Field label="Demonstration account">
-            <NativeSelect
-              value={listed ? email : ""}
-              onChange={(event) => {
-                setValue("email", event.target.value, { shouldValidate: true });
-                if (event.target.value) setValue("password", "demo123");
-              }}
-            >
-              <option value="">Choose a demonstration account…</option>
-              {accounts.map((account) => (
-                <option key={account.email} value={account.email}>
-                  {account.role_label}{account.section ? ` — ${account.section}` : ""}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-          <p className="m-0 text-xs text-muted-foreground">Synthetic accounts (demo.…@kpc.co.ke, password demo123). No email is ever sent to them.</p>
         </div>
-      </div>
+      )}
       <div className="mt-4 grid gap-2 border-t border-border pt-4">
         <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Demonstration network</p>
         <NetworkSimulator compact />
