@@ -11,6 +11,9 @@ import { refreshOfflineCache } from "../offline/cache";
 import { useConnection, useSyncState } from "../offline/hooks";
 import { getSyncEngine, requestBackgroundSync, setSyncActor, startAutoSync } from "../offline/sync";
 import { NotificationBell } from "../features/notifications/Notifications";
+import { GlobalSearch } from "./GlobalSearch";
+import { ThemeSwitch } from "../components/ThemeSwitch";
+import { TourBar } from "../features/tour/Tour";
 
 // Route-level code splitting: each area loads only when first opened.
 const Dashboard = lazy(() => import("../features/dashboard/Dashboard").then((m) => ({ default: m.Dashboard })));
@@ -33,6 +36,7 @@ const Reports = lazy(() => import("../features/reports/Reports").then((m) => ({ 
 const Analytics = lazy(() => import("../features/analytics/Analytics").then((m) => ({ default: m.Analytics })));
 const LibraryIndex = lazy(() => import("../features/library/TypeLibrary").then((m) => ({ default: m.LibraryIndex })));
 const TypeLibraryPage = lazy(() => import("../features/library/TypeLibrary").then((m) => ({ default: m.TypeLibraryPage })));
+const EquipmentPage = lazy(() => import("../features/equipment/EquipmentPage").then((m) => ({ default: m.EquipmentPage })));
 const SystemPage = lazy(() => import("../features/library/SystemPage").then((m) => ({ default: m.SystemPage })));
 const Notifications = lazy(() => import("../features/notifications/Notifications").then((m) => ({ default: m.Notifications })));
 const ProcedureVersions = lazy(() => import("../features/procedures/ProcedureVersions").then((m) => ({ default: m.ProcedureVersions })));
@@ -179,7 +183,10 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             </NavItem>
           ))}
         </nav>
-        <div className="mt-auto grid grid-cols-[10px_1fr_32px] items-center gap-2 border-t border-white/10 p-3 text-xs">
+        <div className="mt-auto px-3 pb-2" aria-label="Display mode">
+          <ThemeSwitch compact />
+        </div>
+        <div className="grid grid-cols-[10px_1fr_32px] items-center gap-2 border-t border-white/10 p-3 text-xs">
           <span className={cn("size-2 rounded-full", online ? "bg-emerald-400" : "bg-amber-400")} aria-hidden />
           <NavLink to="/account" className="grid min-w-0 rounded-md text-sidebar-foreground no-underline hover:bg-white/10" title="My account">
             <strong className="truncate">{user.display_name}</strong>
@@ -209,6 +216,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+          <GlobalSearch user={user} areas={areas} />
           <NotificationBell />
           <Button variant="outline" className="min-h-11 shrink-0 px-3 md:px-4" onClick={() => void getSyncEngine().syncNow("manual")} disabled={sync.phase === "syncing"}
             aria-label={sync.phase === "syncing" ? "Syncing" : "Sync now"}>
@@ -218,6 +226,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
           </Button>
           </div>
         </header>
+        <TourBar />
         <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/dashboard" element={<Dashboard user={user} />} />
@@ -231,6 +240,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             {areas.has("drawings") && <Route path="/drawings" element={<Drawings user={user} />} />}
             {areas.has("recognition") && <Route path="/recognition" element={<Recognition user={user} />} />}
             {areas.has("equipment") && <Route path="/equipment" element={<Equipment user={user} />} />}
+            {areas.has("equipment") && <Route path="/equipment/:id" element={<EquipmentPage user={user} />} />}
             {seesFaults && <Route path="/faults" element={<Faults user={user} />} />}
             {areas.has("library") && <Route path="/library" element={<LibraryIndex user={user} />} />}
             {areas.has("library") && <Route path="/library/systems/:id" element={<SystemPage user={user} />} />}

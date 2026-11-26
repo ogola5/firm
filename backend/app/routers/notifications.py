@@ -18,6 +18,13 @@ def my_notifications(limit: int = 50, user: User = Depends(current_user), db: Se
     return notifications.listing(db, user, max(1, min(limit, 200)))
 
 
+@router.get("/api/v1/me/needs-you")
+def needs_you_now(user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """One prioritised list of what is waiting for this person (services/needs_you.py)."""
+    from app.services.needs_you import needs_you
+    return {"items": needs_you(db, user)}
+
+
 @router.post("/api/v1/notifications/{notification_id}/read")
 def mark_read(notification_id: str, user: User = Depends(current_user), db: Session = Depends(db_dep)):
     item = db.get(Notification, notification_id)

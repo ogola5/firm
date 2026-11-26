@@ -5,7 +5,7 @@
  * Screenshots go to screens/systems/.
  */
 import { expect, test } from "@playwright/test";
-import { apiGet, apiPost, apiToken, signIn, type Row } from "./helpers";
+import { apiGet, apiPost, apiToken, showTab, signIn, type Row } from "./helpers";
 
 const dir = "screens/systems";
 
@@ -21,6 +21,7 @@ test("a fault shows its system and related equipment; the legacy system page hol
   const fault = await reportOn(request, "11-P-401", "Won't start", "Pump 401 refuses to start, alarms will not reset");
   await signIn(page, "automation");
   await page.goto(`/faults?mode=history&fault=${fault.id}`);
+  await showTab(page, "What we know");
   const related = page.getByLabel("Related equipment");
   await expect(related.getByRole("link", { name: "Line 4 pump A unit" })).toBeVisible();
   await expect(related.getByText("Legacy system")).toBeVisible();
@@ -51,7 +52,7 @@ test("similar faults are ranked on the device when there is no network", async (
   test.skip(!controlled, "The service worker only runs on a production build (vite preview / Docker)");
 
   // While connected: open the fault once (its details and the case index are saved on the device).
-  await page.goto(`/faults?mode=history&fault=${fault.id}`);
+  await page.goto(`/faults?mode=history&fault=${fault.id}&tab=know`);
   await expect(page.getByLabel("Similar earlier faults").getByText(/Similar problem description|Same problem described/).first()).toBeVisible();
   await page.waitForLoadState("networkidle");
 

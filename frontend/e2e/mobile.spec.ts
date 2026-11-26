@@ -53,10 +53,10 @@ test("history shows one thing at a time: tap a breakdown, then back to the list"
   await signIn(page, "st-electrical");
   await page.getByRole("navigation", { name: "Quick" }).getByRole("link", { name: "History" }).click();
   await expect(page.getByText("Tap a breakdown to see what was found and what was tried.")).toBeVisible();
-  await expect(page.getByText("Work order context")).toHaveCount(0); // nothing opens by itself
+  await expect(page.getByRole("list", { name: "Progress" })).toHaveCount(0); // nothing opens by itself
   const first = page.getByRole("main").getByRole("button").filter({ hasText: /KPC-DMO-/ }).first();
   await first.click();
-  await expect(page.getByText("Work order context")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Progress" })).toBeVisible();
   await expectNoSidewaysScroll(page, "fault detail");
   await page.getByRole("button", { name: "Back to list" }).click();
   await expect(page.getByText("Tap a breakdown to see what was found and what was tried.")).toBeVisible();

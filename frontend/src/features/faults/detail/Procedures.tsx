@@ -108,7 +108,7 @@ export function ReuseRecords() {
   const unresolved = context.reuse_records.filter((item) => item.actor_id === user.id && !item.outcome);
   return (
     <Card>
-      <CardHeader><CardTitle>Procedure reuse and outcome confirmation</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Procedures used on this fault</CardTitle></CardHeader>
       <CardContent className="grid gap-3">
         {context.reuse_records.map((item) => (
           <div key={String(item.id)} className="grid gap-1 border-t border-border pt-3 text-sm first:border-0 first:pt-0">

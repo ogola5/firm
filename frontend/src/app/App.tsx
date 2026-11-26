@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
+import { Toaster } from "../components/ui/toaster";
 import { normalizeUser, type User } from "../auth";
 import { DemoMailbox } from "../features/account/DemoMailbox";
+import { Tour } from "../features/tour/Tour";
 import { Enrol } from "../features/account/Enrol";
 import { ResetPassword } from "../features/account/ResetPassword";
 import { API_BASE as API, SESSION_ENDED } from "../offline/api";
@@ -67,9 +69,12 @@ export function App() {
     return () => window.removeEventListener(SESSION_ENDED, onEnded);
   }, []);
   return (
+    <>
     <Routes>
       {/* Demonstration only: where the prototype's emails go (no real mail is sent). */}
       <Route path="/mailbox" element={<DemoMailbox />} />
+      {/* Guided demo for presentations (switches between demonstration accounts). */}
+      <Route path="/tour" element={<Tour />} />
       {user
         ? <Route path="*" element={<Shell user={user} onLogout={logout} />} />
         : <>
@@ -78,5 +83,7 @@ export function App() {
           <Route path="*" element={<Login onLogin={setUser} />} />
         </>}
     </Routes>
+    <Toaster />
+    </>
   );
 }

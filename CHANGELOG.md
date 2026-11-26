@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-12-02 — UI/UX: next step, plain language, "Needs you now", search, night and sunlight modes, guided demo
+
+- **Fault page:**
+  - **Progress line in plain words:** Reported → Sorted (With Electrical) → Taken → On site → Signed off → Confirmed.
+  - **Next step for this person:** for example "Take this job", "I'm on site", "Write up your visit", "Review and sign off" or "Confirm it works". On phones it stays within reach above the bottom tabs.
+  - **Three tabs:** Now, What we know, History, kept in the address so a link can open a tab.
+- **Plain language:** statuses and headings in the words people use ("Waiting to be taken", "Who has worked on it", "What happened, in order", "It's fixed: ask for sign-off").
+- **Toasts and skeletons:** short confirmations near the thumb instead of a box at the top of a long page, and grey outlines while loading.
+- **"Needs you now":** one prioritised list on each home, safety first, each item with one button (`GET /api/v1/me/needs-you`). The duplicate escalation panel on engineer homes is removed.
+- **Equipment page** (`/equipment/{id}`): open faults, its own history with what worked, usual causes, likely-to-fail status, system, drawings and "Report a fault on this" (`GET /api/v1/equipment/{id}/summary`).
+- **Search in the header** from any screen: tags and names go to the equipment page; words search the library or earlier faults. Equipment search works offline.
+- **Display modes:** Day, Night (night shifts, control rooms), Sunlight (outdoors, higher contrast) or follow the phone. In the menu and on My account, saved on the device. Hard-coded whites replaced with theme colours.
+- **Guided demo** (`/tour`, linked from sign-in): the Line 4 story in 11 chapters. Each chapter switches to that person's demo account and screen, with a bar saying what to notice and "Next".
+
 ## 2026-12-01 — Pillar C: smarter similar faults, related equipment, offline. Pillar B: system pages, tools and parts
 
 **Pillar C — repeat-fault intelligence**

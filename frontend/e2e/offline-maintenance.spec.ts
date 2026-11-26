@@ -96,27 +96,27 @@ test("Systems Automation investigates offline; every step syncs exactly once wit
 
   await signIn(page, "automation");
   await page.goto(`/faults?mode=history&fault=${fault.id}`);
-  await expect(page.getByRole("button", { name: "Acknowledge" })).toBeVisible(); // investigation cached
+  await expect(page.getByRole("button", { name: "Take this job" })).toBeVisible(); // investigation cached
 
   // Real browser disconnection (not the simulator).
   await context.setOffline(true);
-  await page.getByRole("button", { name: "Acknowledge" }).click();
+  await page.getByRole("button", { name: "Take this job" }).click();
   await expect(page.getByText("saved on this device", { exact: false }).first()).toBeVisible();
 
-  const diagnosisForm = page.locator("form", { hasText: "Record possible cause and checks" });
+  const diagnosisForm = page.locator("form", { hasText: "What did you find?" });
   await diagnosisForm.getByLabel("Possible cause").fill("Loose actuator supply terminal");
   await diagnosisForm.getByLabel("Diagnostic method").fill("Continuity test at the junction box");
-  await diagnosisForm.getByRole("button", { name: "Save diagnosis" }).click();
+  await diagnosisForm.getByRole("button", { name: "Save what you found" }).click();
   await expect(page.getByText("Diagnosis: No connection", { exact: false })).toBeVisible();
 
-  const interventionForm = page.locator("form", { hasText: "Record each intervention" });
+  const interventionForm = page.locator("form", { hasText: "What did you do?" });
   await interventionForm.getByLabel("Action taken").fill("Reseated the connector");
   await interventionForm.getByLabel("Outcome").selectOption("FAILED");
-  await interventionForm.getByRole("button", { name: "Save intervention" }).click();
+  await interventionForm.getByRole("button", { name: "Save what you did" }).click();
   await expect(page.getByText("Intervention: No connection", { exact: false })).toBeVisible();
   await interventionForm.getByLabel("Action taken").fill("Replaced the terminal block");
   await interventionForm.getByLabel("Outcome").selectOption("SUCCESS");
-  await interventionForm.getByRole("button", { name: "Save intervention" }).click();
+  await interventionForm.getByRole("button", { name: "Save what you did" }).click();
   await expect(page.getByLabel("Changes waiting")).toHaveText("4");
 
   // Reopen the app while the API is still unreachable: the queued work is still there.

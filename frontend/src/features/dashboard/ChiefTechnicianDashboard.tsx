@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Input } from "../../components/ui/form-controls";
 import { Page, PageHeader, Stat } from "../../components/ui/page";
 import { KnowledgeImpactPanel } from "../library/TypeLibrary";
+import { NeedsYouNow } from "./NeedsYouNow";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { type DataRow } from "../../lib/types";
 import { errorMessage } from "../../lib/query";
@@ -116,7 +117,7 @@ export function ChiefTechnicianDashboard({ user }: { user: User }) {
   return (
     <Page>
       {header}
-      <div className="mb-4"><KnowledgeImpactPanel user={user} /></div>
+      <div className="mb-4 grid gap-4"><NeedsYouNow /><KnowledgeImpactPanel user={user} /></div>
       {message && <Alert variant="success" className="mb-3">{message}</Alert>}
       {saveCompetencies.isError && <Alert variant="destructive" className="mb-3">{errorMessage(saveCompetencies.error, "Competencies could not be saved.")}</Alert>}
 

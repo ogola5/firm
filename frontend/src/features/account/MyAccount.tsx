@@ -10,6 +10,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Field, Input } from "../../components/ui/form-controls";
 import { Page, PageHeader } from "../../components/ui/page";
+import { ThemeSwitch } from "../../components/ThemeSwitch";
 import { newPassword, PASSWORD_HINT } from "../../lib/companyEmail";
 import { spokenTime } from "../../lib/format";
 import { errorMessage } from "../../lib/query";
@@ -132,6 +133,10 @@ export function MyAccount({ user, onSignOut }: { user: User; onSignOut: () => vo
       <PageHeader eyebrow="My account" title={user.display_name} description={user.email} />
       {account.isError && <Alert variant="destructive" className="mb-4">{errorMessage(account.error, "Your account details need a connection.")}</Alert>}
       <div className="grid gap-4 xl:grid-cols-2">
+        <Card className="xl:col-span-2">
+          <CardHeader><CardTitle>Display</CardTitle><CardDescription>Night for night shifts and the control room; Sunlight for outdoors. Saved on this device.</CardDescription></CardHeader>
+          <CardContent><ThemeSwitch /></CardContent>
+        </Card>
         <Card>
           <CardHeader><CardTitle>Your details</CardTitle><CardDescription>Your job and section are set by the System Administrator.</CardDescription></CardHeader>
           <CardContent>

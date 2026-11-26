@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BookOpen, CheckCircle2, Clock, Search, ShieldAlert, Sparkles, UserRound, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { can, type User } from "../../auth";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
@@ -101,7 +101,8 @@ function LibrarySearchResults({ query }: { query: string }) {
 }
 
 export function LibraryIndex({ user }: { user: User }) {
-  const [search, setSearch] = useState("");
+  const [params] = useSearchParams();
+  const [search, setSearch] = useState(() => params.get("q") ?? ""); // from the header search
   const [section, setSection] = useState(user.section || "");
   const debounced = useDebounced(search.trim());
   const types = useQuery({ queryKey: ["library", "types"], queryFn: () => api<{ types: TypeRow[] }>("/api/v1/library/types") });

@@ -9,7 +9,7 @@
  *      the supervisor sees the complete investigation before publishing.
  */
 import { expect, test } from "@playwright/test";
-import { apiGet, apiToken, cardWithHeading, equipmentIn, openFault, signIn, userId, type Row } from "./helpers";
+import { apiGet, apiToken, cardWithHeading, equipmentIn, openFault, showTab, signIn, userId, type Row } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -56,8 +56,8 @@ test("Scenario 1 + 3: first-time fault to published knowledge, keeping the faile
   // Systems Automation responds first, then hands its findings to Electrical.
   await signIn(page, "automation");
   await openFault(page, faultId);
-  await page.getByRole("button", { name: "Acknowledge" }).click();
-  await expect(page.getByText("Fault acknowledge recorded.")).toBeVisible();
+  await page.getByRole("button", { name: "Take this job" }).click();
+  await expect(page.getByText("You have taken this job.")).toBeVisible();
   await page.getByLabel("Next section", { exact: true }).selectOption("Electrical");
   await page.getByLabel("What did your section find?").fill("SCADA command reaches the drive; no response.");
   await page.getByLabel("What should the next section do?").fill("Check the drive supply and terminals.");
@@ -119,14 +119,15 @@ test("Scenario 1 + 3: first-time fault to published knowledge, keeping the faile
   // Chief signs off; Operations confirms service.
   await signIn(page, "ct-electrical");
   await openFault(page, faultId);
-  const log = cardWithHeading(page, "Investigation and intervention log");
+  await showTab(page, "History");
+  const log = cardWithHeading(page, "Checks and fixes tried");
   await expect(log.getByText("FAILED intervention")).toBeVisible();
   await expect(log.getByText("SUCCESS intervention")).toBeVisible();
   await page.getByRole("button", { name: "Approve technical completion" }).click();
   await expect(page.getByText("Chief technical review approved.")).toBeVisible();
   await signIn(page, "operations");
   await openFault(page, faultId);
-  await page.getByRole("button", { name: "Confirm restored and close" }).click();
+  await page.getByRole("button", { name: "Yes, it works: close it" }).click();
   await expect(page.getByText("Operational restoration confirmed")).toBeVisible();
 
   // The procedure is drafted from the write-up: check it and send it.
@@ -147,14 +148,14 @@ test("Scenario 1 + 3: first-time fault to published knowledge, keeping the faile
   // Technical review, then publication with the full investigation in view.
   await signIn(page, "ct-electrical");
   await page.goto("/approvals");
-  await cardWithHeading(page, procedureTitle).getByRole("button", { name: "Approve technical review" }).click();
+  await cardWithHeading(page, procedureTitle).getByRole("button", { name: "It's right: send for publishing" }).click();
   await expect(page.getByText("Technical review approved; awaiting supervisor publication.")).toBeVisible();
   await signIn(page, "supervisor");
   await page.goto("/approvals");
   const reviewCard = cardWithHeading(page, procedureTitle);
   await expect(reviewCard.getByText("FAILED:")).toBeVisible(); // Scenario 3: failed attempt visible to the approver
   await expect(reviewCard.getByText("SUCCESS:")).toBeVisible();
-  await reviewCard.getByRole("button", { name: "Approve & publish" }).click();
+  await reviewCard.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText("Procedure published to the approved library.")).toBeVisible();
 
   await signIn(page, "st-electrical");
@@ -178,11 +179,12 @@ test("Scenario 2: a recurring fault surfaces history and reuses the approved pro
   await signIn(page, "automation");
   await openFault(page, repeatId);
   await expect(page.getByText(/Seen before on this equipment: \d+ earlier report/)).toBeVisible();
-  await expect(cardWithHeading(page, "Most likely causes and confirmed fixes").getByText(cause)).toBeVisible();
-  await expect(cardWithHeading(page, "Reported history on this equipment").getByText("Reset the actuator controller").first()).toBeVisible();
-  const procedures = cardWithHeading(page, "Approved procedures for this equipment or symptom");
+  await showTab(page, "What we know");
+  await expect(cardWithHeading(page, "Most likely causes").getByText(cause)).toBeVisible();
+  await expect(cardWithHeading(page, "Earlier faults on this equipment").getByText("Reset the actuator controller").first()).toBeVisible();
+  const procedures = cardWithHeading(page, "Approved procedures");
   await expect(procedures.getByRole("heading", { name: procedureTitle })).toBeVisible();
-  await page.getByRole("button", { name: "Acknowledge" }).click();
+  await page.getByRole("button", { name: "Take this job" }).click();
   await procedures.locator("article").filter({ hasText: procedureTitle }).getByRole("button", { name: "Record use on this fault" }).click();
   await expect(page.getByText("Procedure use recorded.")).toBeVisible();
 

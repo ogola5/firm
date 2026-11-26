@@ -7,7 +7,7 @@
  *   → a later change creates v3 → earlier versions stay visible.
  */
 import { expect, test } from "@playwright/test";
-import { cardWithHeading, closedFaultViaApi, openFault, signIn } from "./helpers";
+import { cardWithHeading, closedFaultViaApi, openFault, showTab, signIn } from "./helpers";
 
 test("Scenario 6: review, revision, publication and versioning of a work procedure", async ({ page, request }) => {
   test.setTimeout(240_000);
@@ -20,6 +20,7 @@ test("Scenario 6: review, revision, publication and versioning of a work procedu
   // The technician submits version 1.
   await signIn(page, "st-mechanical");
   await openFault(page, faultId);
+  await showTab(page, "History");
   await page.getByLabel("Procedure title").fill(title);
   await page.getByLabel("Observed symptom").fill("High vibration at the pump bearing housing");
   await page.getByLabel("Confirmed cause").fill("Worn mechanical seal");
@@ -33,13 +34,14 @@ test("Scenario 6: review, revision, publication and versioning of a work procedu
   await page.goto("/approvals");
   const firstReview = cardWithHeading(page, title);
   await firstReview.getByLabel("Review notes").fill("Add the vibration acceptance limit after replacement.");
-  await firstReview.getByRole("button", { name: "Request clarification" }).click();
+  await firstReview.getByRole("button", { name: "Ask the author a question" }).click();
   await expect(page.getByText("Clarification request recorded for the contributor.")).toBeVisible();
 
   // The technician revises: version 2.
   await signIn(page, "st-mechanical");
   await openFault(page, faultId);
-  const timeline = cardWithHeading(page, "Event and review timeline");
+  await showTab(page, "History");
+  const timeline = cardWithHeading(page, "What happened, in order");
   await expect(timeline.getByText("Add the vibration acceptance limit after replacement.")).toBeVisible();
   await timeline.getByRole("button", { name: "Revise this version" }).click();
   await expect(page.getByLabel("Procedure title")).toHaveValue(title);
@@ -58,17 +60,18 @@ test("Scenario 6: review, revision, publication and versioning of a work procedu
   await expect(changes.getByText(/confirm vibration below 4\.5 mm\/s/)).toBeVisible();
   await expect(changes.getByLabel("Added").first()).toBeVisible();
   await page.screenshot({ path: "screens/governance/1-what-changed.png", fullPage: true });
-  await cardWithHeading(page, title).getByRole("button", { name: "Approve technical review" }).click();
+  await cardWithHeading(page, title).getByRole("button", { name: "It's right: send for publishing" }).click();
   await expect(page.getByText("Technical review approved; awaiting supervisor publication.")).toBeVisible();
   await signIn(page, "supervisor");
   await page.goto("/approvals");
-  await cardWithHeading(page, title).getByRole("button", { name: "Approve & publish" }).click();
+  await cardWithHeading(page, title).getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText("Procedure published to the approved library.")).toBeVisible();
 
   // A later change to the approved version creates version 3; earlier versions remain.
   await signIn(page, "st-mechanical");
   await openFault(page, faultId);
-  const versions = cardWithHeading(page, "Event and review timeline");
+  await showTab(page, "History");
+  const versions = cardWithHeading(page, "What happened, in order");
   await expect(versions.getByText(/· v1$/)).toBeVisible();
   await expect(versions.getByText(/· v2$/)).toBeVisible();
   await versions.getByRole("button", { name: "Revise this version" }).last().click();

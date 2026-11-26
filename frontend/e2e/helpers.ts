@@ -85,7 +85,13 @@ export async function closedFaultViaApi(
 
 export async function openFault(page: Page, faultId: string) {
   await page.goto(`/faults?mode=history&fault=${encodeURIComponent(faultId)}`);
-  await expect(page.getByText("Work order context")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Progress" })).toBeVisible();
+}
+
+/** The fault page has three tabs: Now (default), What we know, History. */
+export async function showTab(page: Page, name: "Now" | "What we know" | "History") {
+  await page.getByRole("tab", { name: new RegExp(`^${name}`) }).click();
+  await expect(page.getByRole("tabpanel", { name })).toBeVisible();
 }
 
 /** The card (Card root) that contains a heading with this exact text. */

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { type User } from "../../auth";
 import { Alert } from "../../components/ui/alert";
-import { Badge, statusVariant } from "../../components/ui/badge";
+import { Badge, statusVariant, statusWords } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { ChangesSincePrevious } from "./ProcedureVersions";
@@ -61,7 +61,7 @@ export function ProcedureReview({ user }: { user: User }) {
             <Card key={id}>
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
-                  <Badge variant={statusVariant(String(item.status))}>{String(item.status).replace(/_/g, " ")}</Badge>
+                  <Badge variant={statusVariant(String(item.status))}>{statusWords(String(item.status))}</Badge>
                   <small className="text-muted-foreground">{String(item.reference)} · v{String(item.version)} · {String(item.section)}</small>
                 </div>
                 <CardTitle>{String(item.title)}</CardTitle>
@@ -90,9 +90,9 @@ export function ProcedureReview({ user }: { user: User }) {
                   <Textarea value={comments[id] || ""} onChange={(event) => setComments({ ...comments, [id]: event.target.value })} placeholder="Required for a clarification request or rejection" />
                 </Field>
                 <div className="flex flex-wrap gap-2">
-                  <Button disabled={review.isPending} onClick={() => review.mutate({ id, decision: "APPROVE" })}>{isSupervisor ? "Approve & publish" : "Approve technical review"}</Button>
-                  <Button variant="outline" disabled={review.isPending} onClick={() => review.mutate({ id, decision: "REQUEST_CLARIFICATION" })}>Request clarification</Button>
-                  <Button variant="outline" disabled={review.isPending} onClick={() => review.mutate({ id, decision: "REJECT" })}>Reject</Button>
+                  <Button disabled={review.isPending} onClick={() => review.mutate({ id, decision: "APPROVE" })}>{isSupervisor ? "Publish" : "It's right: send for publishing"}</Button>
+                  <Button variant="outline" disabled={review.isPending} onClick={() => review.mutate({ id, decision: "REQUEST_CLARIFICATION" })}>Ask the author a question</Button>
+                  <Button variant="outline" disabled={review.isPending} onClick={() => review.mutate({ id, decision: "REJECT" })}>Not accepted</Button>
                 </div>
               </CardContent>
             </Card>

@@ -37,7 +37,7 @@ export function ChoiceButtons<T extends string>({
             className={cn(
               "min-h-12 rounded-lg border px-4 py-2 text-left text-[15px] font-semibold transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              pressed ? resultTone(tone, option.value) : "border-input bg-white text-foreground hover:bg-secondary",
+              pressed ? resultTone(tone, option.value) : "border-input bg-card text-foreground hover:bg-secondary",
             )}
           >
             <span className="block">{option.label}</span>

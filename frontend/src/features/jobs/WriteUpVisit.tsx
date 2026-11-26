@@ -232,7 +232,7 @@ export function WriteUpVisit({ user }: { user: User }) {
                               key={cause}
                               type="button"
                               onClick={() => setFound(cause)}
-                              className="min-h-10 rounded-lg border border-input bg-white px-3 text-sm font-semibold hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="min-h-10 rounded-lg border border-input bg-card px-3 text-sm font-semibold hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               {cause}
                             </button>

@@ -9,8 +9,8 @@ import { PersonalWorkspace } from "./PersonalWorkspace";
 import { RecognitionPanel } from "./RecognitionPanel";
 import { SectionPicture } from "./SectionPicture";
 import { WatchPanel } from "../watch/WatchList";
-import { EscalationsPanel } from "../escalation/Escalation";
 import { KnowledgeImpactPanel } from "../library/TypeLibrary";
+import { NeedsYouNow } from "./NeedsYouNow";
 
 // Charts are only needed by management roles; technicians never download them.
 const ManagementOverview = lazy(() => import("./ManagementOverview").then((m) => ({ default: m.ManagementOverview })));
@@ -19,14 +19,14 @@ const ManagementOverview = lazy(() => import("./ManagementOverview").then((m) =>
 export function Dashboard({ user }: { user: User }) {
   switch (user.access.home) {
     case "my_reports":
-      return <PersonalWorkspace user={user} />;
+      return <PersonalWorkspace user={user} before={<NeedsYouNow />} />;
     case "my_jobs":
       // Your own jobs first; what may need attention next comes after them.
-      return <MyJobs user={user} before={<EscalationsPanel user={user} />} after={<><KnowledgeImpactPanel user={user} /><WatchPanel user={user} /></>} />;
+      return <MyJobs user={user} before={<NeedsYouNow />} after={<><KnowledgeImpactPanel user={user} /><WatchPanel user={user} /></>} />;
     case "section_oversight":
       return <ChiefTechnicianDashboard user={user} />;
     case "section_engineering":
-      return <MyJobs user={user} before={<><EscalationsPanel user={user} /><SectionPicture user={user} /></>} after={<><KnowledgeImpactPanel user={user} /><WatchPanel user={user} /></>} />;
+      return <MyJobs user={user} before={<><NeedsYouNow /><SectionPicture user={user} /></>} after={<><KnowledgeImpactPanel user={user} /><WatchPanel user={user} /></>} />;
     case "administration":
       return <AdminHome user={user} />;
     case "workforce":

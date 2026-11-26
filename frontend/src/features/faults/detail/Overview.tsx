@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { CloudOff } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Alert } from "../../../components/ui/alert";
-import { Badge, statusVariant } from "../../../components/ui/badge";
+import { Badge, statusVariant, statusWords } from "../../../components/ui/badge";
+import { ProgressLine } from "./NextStep";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
 import { Field, Input, NativeSelect } from "../../../components/ui/form-controls";
@@ -55,7 +56,7 @@ function TriageForm() {
   }
 
   return (
-    <form className="mt-4 grid gap-3 border-t border-border pt-4" onSubmit={submit}>
+    <form id="fault-triage" className="mt-4 grid gap-3 border-t border-border pt-4" onSubmit={submit}>
       <div>
         <strong>Systems Automation asset confirmation</strong>
         <p className="m-0 text-sm text-muted-foreground">
@@ -98,41 +99,7 @@ function TriageForm() {
   );
 }
 
-function WorkflowActions() {
-  const { user, faultId, can, done, fail } = useDetail();
-  const [busy, setBusy] = useState(false);
-
-  async function perform(action: string) {
-    setBusy(true);
-    try {
-      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/action?action=${action}`, { method: "POST" });
-      await done(`Fault ${action.replace("_", " ")} recorded.`, true);
-    } catch (reason) {
-      if (isOfflineError(reason)) {
-        await queueFaultAction(user.id, faultId, action);
-        await done(`${action.replace("_", " ")}: ${OFFLINE_SAVED}`);
-      } else {
-        fail(reason, "Fault action failed.");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const status = can.status;
-  return (
-    <div className="mt-4 flex flex-wrap gap-2">
-      {["REPORTED", "TRIAGED", "ASSIGNED"].includes(status) && <Button variant="outline" disabled={busy} onClick={() => perform("acknowledge")}>Acknowledge</Button>}
-      {status === "ACKNOWLEDGED" && <Button variant="outline" disabled={busy} onClick={() => perform("on_site")}>On site</Button>}
-      {["ON_SITE", "ACKNOWLEDGED"].includes(status) && <Button variant="outline" disabled={busy} onClick={() => perform("diagnose")}>Mark diagnosed</Button>}
-      {!["RESTORED", "CLOSED", "AWAITING_CHIEF_REVIEW"].includes(status) && can.canRestore && (
-        <Button disabled={busy} onClick={() => perform("restore")}>Request technical completion review</Button>
-      )}
-    </div>
-  );
-}
-
-export function Overview({ message, error }: { message: string; error: string }) {
+export function Overview({ error }: { error: string }) {
   const { context, offline, can } = useDetail();
   const fault = context.fault;
   return (
@@ -151,8 +118,8 @@ export function Overview({ message, error }: { message: string; error: string })
         <CardContent className="pt-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Work order context</p>
-              <h3 className="mt-1">{String(fault.reference)} · {String(fault.equipment_tag)}</h3>
+              <ProgressLine />
+              <h3 className="mt-3">{String(fault.reference)} · {String(fault.equipment_tag)}</h3>
               {Boolean(fault.safety_hazard) && (
                 <p className="my-2 rounded-md border-2 border-destructive bg-destructive/10 px-3 py-2 font-extrabold text-destructive">
                   SAFETY: the reporter says someone or something is at risk.
@@ -167,10 +134,10 @@ export function Overview({ message, error }: { message: string; error: string })
               {Boolean(fault.operating_conditions) && !String(fault.description || "").includes("Already done") && <p className="mb-0 mt-1 text-sm"><strong>Operating conditions:</strong> {String(fault.operating_conditions)}</p>}
               {Boolean(fault.operational_impact) && <p className="mb-0 mt-1 text-sm"><strong>Operational effect:</strong> {String(fault.operational_impact)}</p>}
             </div>
-            <Badge variant={statusVariant(can.status)}>{can.status.replace(/_/g, " ")}</Badge>
+            <Badge variant={statusVariant(can.status)} className="normal-case">{statusWords(can.status)}</Badge>
           </div>
           <p className="mb-0 text-sm text-muted-foreground">
-            Assigned section: {String(fault.assigned_section || "Unassigned")} · Reported by {String(fault.reporter_name || "Unknown")} · {new Date(String(fault.created_at)).toLocaleString()}
+            With {String(fault.assigned_section || "Systems Automation")} · Reported by {String(fault.reporter_name || "Unknown")} · {new Date(String(fault.created_at)).toLocaleString()}
             {fault.reported_on_behalf_of ? ` · On behalf of ${String(fault.reported_on_behalf_of)}` : ""}
           </p>
           {!can.assetConfirmed && (
@@ -183,16 +150,12 @@ export function Overview({ message, error }: { message: string; error: string })
           )}
           {context.previous_faults.length > 0 && (
             <Alert variant="warning" className="mt-3">
-              Seen before on this equipment: {context.previous_faults.length} earlier report(s). Review the diagnosis and intervention history before repeating work.
+              Seen before on this equipment: {context.previous_faults.length} earlier report(s). See “What we know” before repeating work.
             </Alert>
           )}
           {can.canTriageCurrent && !offline && <TriageForm />}
-          {can.canUpdate && can.canWorkAssignment && can.assetConfirmed && <WorkflowActions />}
-          {can.canUpdate && !can.assetConfirmed && <p className="mb-0 text-sm text-muted-foreground">Technical actions are disabled until the physical equipment is confirmed.</p>}
-          {can.status === "AWAITING_CHIEF_REVIEW" && <Alert variant="warning" className="mt-3">Work is waiting for Chief Technician review. Operations cannot confirm restoration until technical completion is approved.</Alert>}
-          {can.status === "RESTORED" && <Alert variant="success" className="mt-3">Chief technical review is complete. Waiting for Operations to confirm service restoration.</Alert>}
+          {can.canUpdate && !can.assetConfirmed && <p className="mb-0 text-sm text-muted-foreground">Work can start once the equipment is confirmed.</p>}
           {Boolean(fault.closure_remarks) && <p className="mb-0 text-sm"><strong>Operator closure remarks:</strong> {String(fault.closure_remarks)}</p>}
-          {message && <Alert variant="success" className="mt-3">{message}</Alert>}
           {error && <Alert variant="destructive" className="mt-3">{error}</Alert>}
         </CardContent>
       </Card>

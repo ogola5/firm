@@ -41,11 +41,10 @@ test("CT asks the regional SE, the SE takes it to the CE, the CE sees only what 
   // 2. Senior Engineer (Mechanical, Nairobi), on a phone: it is at the top of their home.
   const se = await phone(browser);
   await signIn(se, "senior-engineer-mechanical");
-  const panel = se.getByText(/Escalated to you \(\d+\)/);
-  await expect(panel).toBeVisible();
-  await expect(se.getByRole("link", { name: new RegExp(reference) })).toBeVisible();
+  const needs = se.getByLabel("Needs you now");
+  await expect(needs.getByRole("link", { name: new RegExp(reference) })).toBeVisible();
   await se.screenshot({ path: `${dir}/2-se-home.png`, fullPage: true });
-  await se.getByRole("link", { name: new RegExp(reference) }).click();
+  await needs.getByRole("link", { name: new RegExp(reference) }).click();
   const seCard = se.getByLabel("Escalation", { exact: true });
   await seCard.getByRole("button", { name: "Add guidance" }).click();
   await seCard.getByLabel(/Guidance for the Chief Technician/).fill("Check the upstream tank for sediment before cleaning again");
@@ -61,7 +60,7 @@ test("CT asks the regional SE, the SE takes it to the CE, the CE sees only what 
   // 3. Chief Engineer (whole Mechanical section): sees it because it persists.
   const ce = await phone(browser);
   await signIn(ce, "chief-engineer-mechanical");
-  await expect(ce.getByRole("link", { name: new RegExp(reference) })).toBeVisible();
+  await expect(ce.getByLabel("Needs you now").getByRole("link", { name: new RegExp(reference) })).toBeVisible();
   await ce.screenshot({ path: `${dir}/4-ce-home.png`, fullPage: true });
   await ce.getByRole("navigation", { name: "Quick" }).getByRole("link", { name: "Escalated" }).click();
   await expect(ce.getByRole("heading", { name: "Escalations" })).toBeVisible();

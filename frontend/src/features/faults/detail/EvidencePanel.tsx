@@ -104,7 +104,7 @@ function RestorationConfirmation() {
         <Textarea value={comments} onChange={(event) => setComments(event.target.value)} placeholder="Optional confirmation note; required if service is still affected" />
       </Field>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" onClick={() => confirm(true)}>Confirm restored and close</Button>
+        <Button type="button" onClick={() => confirm(true)}>Yes, it works: close it</Button>
         <Button type="button" variant="outline" onClick={() => confirm(false)}>Still not working — return to section</Button>
       </div>
     </div>
@@ -136,8 +136,8 @@ export function EvidencePanel() {
   return (
     <Card>
       <CardHeader>
-        <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Shared evidence and operations updates</p>
-        <CardTitle className="mt-1">Progress and evidence</CardTitle>
+        <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Shared with Operations</p>
+        <CardTitle className="mt-1">Updates and evidence</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
         {context.attachments.map((item) => {

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { NeedsYouNow } from "./NeedsYouNow";
 import { can, type User } from "../../auth";
 import { Alert } from "../../components/ui/alert";
 import { RankedBars } from "../../components/charts/RankedBars";
@@ -47,11 +48,7 @@ export function ManagementOverview({ user }: { user: User }) {
   return (
     <Page>
       <PageHeader eyebrow={eyebrow} title={title} description={`${user.access.home_purpose} ${data.view_level || "Summary"} · not verified operating performance.`} />
-      {user.access.home === "supervision" && (
-        <Alert variant="warning" className="mb-4">
-          Procedures that chiefs have approved wait for your publication. <Link to="/approvals" className="font-bold">Open procedure review</Link>
-        </Alert>
-      )}
+      {user.access.home === "supervision" && <div className="mb-4"><NeedsYouNow /></div>}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Total faults" value={data.total_faults ?? 0} />
         <Stat label="Open faults" value={data.open_faults ?? 0} />

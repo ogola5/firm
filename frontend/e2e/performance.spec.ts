@@ -63,7 +63,7 @@ test("@perf frontend measurements", async ({ browser }) => {
   const opened = Math.min(5, await rows.count());
   for (let index = 0; index < opened; index += 1) {
     await rows.nth(index).click();
-    await expect(page.getByText("Work order context")).toBeVisible();
+    await expect(page.getByRole("list", { name: "Progress" })).toBeVisible();
   }
   await page.waitForTimeout(1500); // background cache refresh after sign-in
 

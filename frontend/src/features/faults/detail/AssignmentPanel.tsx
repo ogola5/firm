@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Badge, statusVariant } from "../../../components/ui/badge";
+import { Badge, statusVariant, statusWords } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Field, Input, NativeSelect, Textarea } from "../../../components/ui/form-controls";
@@ -195,8 +195,8 @@ export function AssignmentPanel() {
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Accountable section handoffs</p>
-            <CardTitle className="mt-1">One breakdown, shared findings</CardTitle>
+            <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Sections</p>
+            <CardTitle className="mt-1">Who has worked on it</CardTitle>
           </div>
           <span className="text-sm text-muted-foreground">Active section: {String(active?.section || "Awaiting operator confirmation")}</span>
         </div>
@@ -207,7 +207,7 @@ export function AssignmentPanel() {
             <li key={String(item.id)} className="grid gap-1 rounded-lg border border-border p-3 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <strong>{index + 1}. {String(item.section)}</strong>
-                <Badge variant={statusVariant(String(item.status))}>{String(item.status).replace(/_/g, " ")}</Badge>
+                <Badge variant={statusVariant(String(item.status))}>{statusWords(String(item.status))}</Badge>
               </div>
               <small className="text-muted-foreground">
                 {item.assigned_user_name ? `Owner: ${String(item.assigned_user_name)}` : "Awaiting section acknowledgement"} · {new Date(String(item.created_at)).toLocaleString()} · {String(item.elapsed_minutes)} min in assignment

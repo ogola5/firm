@@ -82,7 +82,7 @@ test("HR sets a retirement date, redeems points and records an award the whole c
   await expect(page.getByText("Redemption recorded; the person has been emailed.")).toBeVisible();
 
   await page.getByRole("button", { name: "Employee of the Quarter" }).click();
-  const candidate = page.getByRole("radio").first();
+  const candidate = page.getByRole("main").getByRole("radio").first(); // not the display-mode switch in the menu
   if (await candidate.count()) {
     await candidate.check();
     await page.getByLabel("Citation (what they did)").fill("Procedures colleagues used to fix repeat faults first time.");

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { type User } from "../../auth";
 import { Alert } from "../../components/ui/alert";
-import { Badge, statusVariant } from "../../components/ui/badge";
+import { Badge, statusVariant, statusWords } from "../../components/ui/badge";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input, NativeSelect } from "../../components/ui/form-controls";
 import { Pagination, usePagination } from "../../components/ui/pagination";
@@ -54,7 +54,7 @@ export function Faults({ user }: { user: User }) {
   const requestedScope = searchParams.get("scope") || "";
   const scope = SCOPES.includes(requestedScope) ? requestedScope : "";
   const selectedId = searchParams.get("fault") || "";
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? ""); // from the header search
   const debouncedSearch = useDebounced(search.trim());
   const [message, setMessage] = useState("");
   const canReport = (user.permissions || []).includes("faults.report");
@@ -170,7 +170,7 @@ export function Faults({ user }: { user: User }) {
                 {Boolean(fault.safety_hazard) && <span className="w-fit rounded bg-destructive px-2 py-0.5 text-xs font-extrabold text-destructive-foreground">SAFETY</span>}
                 <span className="flex items-start justify-between gap-2">
                   <strong className="min-w-0 truncate">{String(fault.equipment_tag || "Asset not identified")}</strong>
-                  <Badge variant={statusVariant(String(fault.status))} className="shrink-0">{String(fault.status).replace(/_/g, " ")}</Badge>
+                  <Badge variant={statusVariant(String(fault.status))} className="shrink-0">{statusWords(String(fault.status))}</Badge>
                 </span>
                 <span className="text-sm">{String(fault.symptom)}</span>
                 <span className="text-xs text-muted-foreground">
@@ -212,7 +212,7 @@ export function Faults({ user }: { user: User }) {
                       </TableCell>
                       <TableCell>{String(fault.reporter_name || "—")}</TableCell>
                       <TableCell>{String(fault.symptom)}</TableCell>
-                      <TableCell><Badge variant={statusVariant(String(fault.status))}>{String(fault.status).replace(/_/g, " ")}</Badge></TableCell>
+                      <TableCell><Badge variant={statusVariant(String(fault.status))}>{statusWords(String(fault.status))}</Badge></TableCell>
                       <TableCell>{String(fault.assigned_section || "Unassigned")}</TableCell>
                     </TableRow>
                   );

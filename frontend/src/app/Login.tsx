@@ -106,6 +106,11 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
       </form>
 
       <div className="mt-6 border-t border-border pt-4">
+        {accounts.length > 0 && (
+          <Link to="/tour" className="mb-3 flex items-center justify-between rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5 font-bold no-underline">
+            Guided demo: one fault, from report to knowledge <span aria-hidden>›</span>
+          </Link>
+        )}
         <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Demonstration accounts</p>
         <div className="mt-3 grid gap-2">
           <Field label="Demonstration account">

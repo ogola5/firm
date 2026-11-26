@@ -60,7 +60,7 @@ function ToggleChips({ label, options, value, onChange }: { label: string; optio
             }}
             className={cn(
               "min-h-11 rounded-lg border px-3 py-2 text-left text-[15px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              pressed ? "border-primary bg-primary text-primary-foreground" : "border-input bg-white hover:bg-secondary",
+              pressed ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card hover:bg-secondary",
             )}
           >
             {pressed ? "✓ " : ""}{option}
@@ -143,8 +143,11 @@ function observedAt(when: When, time: string): string {
  * wrong, and the effect. Only the last two are required clicks; equipment can
  * be a tag or a plain description.
  */
-export function ReportBreakdownForm({ user, onReported }: { user: User; onReported?: (outcome: ReportOutcome) => void }) {
-  const [query, setQuery] = useState("");
+export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }: {
+  user: User; onReported?: (outcome: ReportOutcome) => void; initialEquipment?: string;
+}) {
+  // From an equipment page: start with its tag; the reporter still confirms "Yes, this one".
+  const [query, setQuery] = useState(initialEquipment);
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [unidentified, setUnidentified] = useState(false);
@@ -374,7 +377,7 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
                     key={String(item.id)}
                     type="button"
                     onClick={() => { setPickedId(String(item.id)); setConfirmed(true); setUnidentified(false); setShowOthers(false); }}
-                    className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-input bg-white px-4 py-2 text-left hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-input bg-card px-4 py-2 text-left hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <span><strong>{String(item.tag)}</strong> · {String(item.name)}</span>
                     <span className="text-sm text-muted-foreground">{String(item.location)} · {String(item.station)}</span>
@@ -384,7 +387,7 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
                 <button
                   type="button"
                   onClick={() => { setUnidentified(true); setPickedId(null); setConfirmed(false); setShowOthers(false); }}
-                  className="min-h-12 rounded-lg border border-dashed border-input bg-white px-4 py-2 text-left hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="min-h-12 rounded-lg border border-dashed border-input bg-card px-4 py-2 text-left hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Not sure which one: send my description to Systems Automation to identify
                 </button>
@@ -461,7 +464,7 @@ export function ReportBreakdownForm({ user, onReported }: { user: User; onReport
                 <ImagePlus className="size-4" aria-hidden /> Attach a SCADA screenshot or file (optional)
               </summary>
               <div className="flex flex-wrap items-center gap-3 py-2">
-                <span className="hidden md:inline">Press <kbd className="rounded border border-input bg-white px-1.5 text-sm">Ctrl</kbd> + <kbd className="rounded border border-input bg-white px-1.5 text-sm">V</kbd> in the box above to paste a screenshot, or</span>
+                <span className="hidden md:inline">Press <kbd className="rounded border border-input bg-card px-1.5 text-sm">Ctrl</kbd> + <kbd className="rounded border border-input bg-card px-1.5 text-sm">V</kbd> in the box above to paste a screenshot, or</span>
                 <label className="inline-flex min-h-11 cursor-pointer items-center font-bold text-ring underline md:min-h-0">
                   choose a file
                   <input type="file" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.csv,.txt,.json,.log" className="sr-only" onChange={(event) => addFiles(Array.from(event.target.files || []))} />

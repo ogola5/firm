@@ -22,7 +22,7 @@ function ModeButtons({ mode, onChange }: { mode: NetworkMode; onChange: (mode: N
           onClick={() => onChange(option.value)}
           className={cn(
             "min-h-9 rounded-full border px-3 text-xs font-extrabold",
-            mode === option.value ? "border-primary bg-primary text-primary-foreground" : "border-input bg-white text-muted-foreground hover:bg-secondary",
+            mode === option.value ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card text-muted-foreground hover:bg-secondary",
           )}
         >
           {option.label}

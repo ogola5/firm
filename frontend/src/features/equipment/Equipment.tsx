@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { useState } from "react";
@@ -50,7 +51,7 @@ export function Equipment({ user }: { user: User }) {
             <TableBody>
               {items.map((item) => (
                 <TableRow key={String(item.id)}>
-                  <TableCell className="font-bold">{String(item.tag)}</TableCell>
+                  <TableCell className="font-bold"><Link to={`/equipment/${encodeURIComponent(String(item.id))}`}>{String(item.tag)}</Link></TableCell>
                   <TableCell>{String(item.name)}</TableCell>
                   <TableCell>{String(item.station)}</TableCell>
                   <TableCell>{String(item.section)}</TableCell>

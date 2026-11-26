@@ -199,7 +199,7 @@ export function Knowledge({ user }: { user: User }) {
               onClick={() => setFilter(value)}
               className={cn(
                 "min-h-9 rounded-full border px-3 text-xs font-extrabold",
-                filter === value ? "border-primary bg-primary text-primary-foreground" : "border-input bg-white text-muted-foreground hover:bg-secondary",
+                filter === value ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card text-muted-foreground hover:bg-secondary",
               )}
             >
               {label}

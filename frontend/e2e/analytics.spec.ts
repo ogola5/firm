@@ -3,7 +3,7 @@
  * comparisons are in words, and similar faults explain why they ranked.
  */
 import { expect, test } from "@playwright/test";
-import { apiGet, apiToken, openFault, signIn, type Row } from "./helpers";
+import { apiGet, apiToken, openFault, showTab, signIn, type Row } from "./helpers";
 
 test("manager sees trends, attention list and data quality for all sections", async ({ page }) => {
   await signIn(page, "maintenance-manager");
@@ -50,6 +50,7 @@ test("a technician sees similar earlier faults with the reasons they ranked", as
   expect(faults.length).toBeGreaterThan(0);
   await signIn(page, "st-electrical");
   await openFault(page, String(faults[0].id));
+  await showTab(page, "What we know");
   const panel = page.getByRole("region", { name: "Similar earlier faults" });
   await expect(panel.getByText("Similar is not the same cause. Check before you act.")).toBeVisible();
   await expect(panel.getByText(/Same equipment|Same type of equipment|Same problem described|Similar problem description|Same fault category|Nothing similar enough/).first()).toBeVisible();

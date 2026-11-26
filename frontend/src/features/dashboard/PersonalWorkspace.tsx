@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { BookOpen, History, Plus } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { type User } from "../../auth";
 import { Alert } from "../../components/ui/alert";
@@ -16,7 +16,7 @@ import { api } from "../../offline/api";
 
 type Availability = "AVAILABLE" | "UNAVAILABLE";
 
-export function PersonalWorkspace({ user }: { user: User }) {
+export function PersonalWorkspace({ user, before }: { user: User; before?: ReactNode }) {
   const isOperator = user.role === "operations";
   const [availability, setAvailability] = useState<Availability>(user.availability_status);
 
@@ -70,6 +70,7 @@ export function PersonalWorkspace({ user }: { user: User }) {
           )}
         </>}
       />
+      {before && <div className="mb-4">{before}</div>}
       {updateAvailability.isError && <Alert variant="destructive" className="mb-3">{errorMessage(updateAvailability.error, "Availability could not be updated.")}</Alert>}
       {queue.isError && <Alert variant="destructive" className="mb-3">Could not load breakdowns. Reconnect and try again.</Alert>}
       {fromCache && <Alert variant="warning" className="mb-3">Offline: showing breakdowns saved on this device.</Alert>}

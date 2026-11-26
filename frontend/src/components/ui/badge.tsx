@@ -33,3 +33,17 @@ export function statusVariant(status: string): BadgeProps["variant"] {
   if (["CONFLICT", "AWAITING_CHIEF_REVIEW", "CLARIFICATION_REQUESTED", "PENDING", "PENDING_SYNC", "MEDIUM"].includes(value)) return "warning";
   return "default";
 }
+
+/** Status in the words people use (fault, section work and procedure statuses). Unknown codes are tidied, not hidden. */
+const STATUS_WORDS: Record<string, string> = {
+  REPORTED: "Reported", TRIAGED: "Being sorted", ASSIGNED: "Waiting to be taken", ACKNOWLEDGED: "Taken", ON_SITE: "On site",
+  DIAGNOSED: "Cause found", AWAITING_CHIEF_REVIEW: "Waiting for sign-off", RESTORED: "Fixed: confirm it works", CLOSED: "Closed",
+  OPEN: "Open", ESCALATED: "Handed over", SUBMITTED: "Waiting for review", CHIEF_APPROVED: "Waiting to be published",
+  CLARIFICATION_REQUESTED: "Question asked", APPROVED: "Published", SUPERSEDED: "Replaced by a newer version", WITHDRAWN: "Withdrawn",
+  REJECTED: "Not accepted", PENDING: "Waiting", CONFIRMED: "Confirmed",
+};
+
+export function statusWords(status: string): string {
+  const value = (status || "").toUpperCase();
+  return STATUS_WORDS[value] ?? (value.charAt(0) + value.slice(1).toLowerCase()).replace(/_/g, " ");
+}

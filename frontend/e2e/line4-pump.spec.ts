@@ -5,7 +5,7 @@
  * Screenshots of every step go to screens/line4/.
  */
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { cardWithHeading, openFault, signIn, userId } from "./helpers";
+import { cardWithHeading, openFault, showTab, signIn, userId } from "./helpers";
 
 const dir = "screens/line4";
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 };
@@ -97,16 +97,19 @@ test("Line 4 pump A will not start: report, allocate, write-up, sign-off, confir
   // 4. Chief Technician (desk): sees every step, including what did not work, and signs off.
   await signIn(page, "ct-systems-automation");
   await openFault(page, faultId);
-  const log = cardWithHeading(page, "Investigation and intervention log");
+  await showTab(page, "History");
+  const log = cardWithHeading(page, "Checks and fixes tried");
   await expect(log.getByText("FAILED intervention")).toBeVisible();
   await page.screenshot({ path: `${dir}/8-ct-review.png`, fullPage: true });
+  // The next step takes the Chief Technician straight to the sign-off.
+  await page.getByRole("region", { name: "Next step" }).getByRole("button", { name: "Review and sign off" }).click();
   await page.getByRole("button", { name: "Approve technical completion" }).click();
   await expect(page.getByText("Chief technical review approved.")).toBeVisible();
 
   // 5. Operations, on a phone: confirms the pump is running and closes it.
   await openFault(ops, faultId);
   await ops.screenshot({ path: `${dir}/9-operations-confirm.png`, fullPage: true });
-  await ops.getByRole("button", { name: "Confirm restored and close" }).click();
+  await ops.getByRole("button", { name: "Yes, it works: close it" }).click();
   await expect(ops.getByText("Operational restoration confirmed")).toBeVisible();
 
   // 6. The PT's fix becomes a procedure draft (the exact sequence, including the step that did not work).

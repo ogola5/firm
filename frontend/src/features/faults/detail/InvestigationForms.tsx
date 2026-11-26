@@ -65,7 +65,7 @@ function DiagnosisForm() {
   return (
     <Card>
       <form onSubmit={handleSubmit(submit)} noValidate>
-        <CardHeader><CardTitle>Record possible cause and checks</CardTitle></CardHeader>
+        <CardHeader><CardTitle>What did you find?</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
           <Field label="Possible cause" error={errors.possible_cause?.message}><Input aria-invalid={Boolean(errors.possible_cause)} {...register("possible_cause")} /></Field>
           <Field label="Diagnostic method" error={errors.diagnostic_method?.message}><Input aria-invalid={Boolean(errors.diagnostic_method)} {...register("diagnostic_method")} /></Field>
@@ -80,7 +80,7 @@ function DiagnosisForm() {
           <label className="flex items-center gap-2 text-sm font-semibold">
             <input type="checkbox" className="size-4" {...register("workaround")} /> This is a workaround or temporary reset
           </label>
-          <Button type="submit" className="justify-self-start" disabled={isSubmitting}>Save diagnosis</Button>
+          <Button type="submit" className="justify-self-start" disabled={isSubmitting}>Save what you found</Button>
         </CardContent>
       </form>
     </Card>
@@ -111,7 +111,7 @@ function InterventionForm() {
   return (
     <Card>
       <form onSubmit={handleSubmit(submit)} noValidate>
-        <CardHeader><CardTitle>Record each intervention</CardTitle></CardHeader>
+        <CardHeader><CardTitle>What did you do?</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
           <Field label="Related diagnosis">
             <NativeSelect {...register("diagnosis_id")}>
@@ -129,7 +129,7 @@ function InterventionForm() {
             </NativeSelect>
           </Field>
           <Field label="Notes"><Textarea {...register("notes")} /></Field>
-          <Button type="submit" className="justify-self-start" disabled={isSubmitting}>Save intervention</Button>
+          <Button type="submit" className="justify-self-start" disabled={isSubmitting}>Save what you did</Button>
         </CardContent>
       </form>
     </Card>

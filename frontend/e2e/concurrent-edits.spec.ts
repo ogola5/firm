@@ -21,7 +21,7 @@ test("Scenario 5: a stale offline change is held for reconciliation, not applied
   await openFault(page, fault.id);
   await setSimulatedNetwork(page, "offline");
   await expect(page.getByText("this is the copy saved on this device", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Acknowledge" }).click();
+  await page.getByRole("button", { name: "Take this job" }).click();
   await expect(page.getByText("saved on this device and queued", { exact: false })).toBeVisible();
 
   // Meanwhile a supervisor takes the same breakdown online.

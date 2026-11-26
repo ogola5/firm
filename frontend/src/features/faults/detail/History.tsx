@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Badge, statusVariant } from "../../../components/ui/badge";
+import { Badge, statusVariant, statusWords } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { type DataRow } from "../../../lib/types";
@@ -23,8 +23,8 @@ export function RankedCauses() {
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Ranked troubleshooting</p>
-            <CardTitle className="mt-1">Most likely causes and confirmed fixes</CardTitle>
+            <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">From earlier faults</p>
+            <CardTitle className="mt-1">Most likely causes</CardTitle>
           </div>
           <span className="text-sm text-muted-foreground">{context.repeat_routing?.seen_before ? "Repeat history shared with Systems Automation first" : "Systems Automation first response"}</span>
         </div>
@@ -32,7 +32,7 @@ export function RankedCauses() {
       <CardContent>
         <ol className="m-0 grid list-none gap-2 p-0">
           {context.ranked_causes.map((cause, index) => (
-            <li key={String(cause.possible_cause)} className={cn("grid grid-cols-[32px_1fr] gap-3 rounded-lg border border-border p-3 text-sm", Boolean(cause.recurrence_warning) && "border-warning/40 bg-[#fff8e8]")}>
+            <li key={String(cause.possible_cause)} className={cn("grid grid-cols-[32px_1fr] gap-3 rounded-lg border border-border p-3 text-sm", Boolean(cause.recurrence_warning) && "border-warning/40 bg-warning/10")}>
               <span className="grid size-8 place-items-center rounded-full bg-primary text-xs font-extrabold text-primary-foreground">{index + 1}</span>
               <div className="grid gap-1">
                 <strong>{String(cause.possible_cause)}</strong>
@@ -96,7 +96,7 @@ export function EquipmentHistory() {
         </Card>
       )}
       <Card>
-        <CardHeader><CardTitle>Reported history on this equipment</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Earlier faults on this equipment</CardTitle></CardHeader>
         <CardContent>
           {context.previous_faults.length ? context.previous_faults.map((item) => (
             <Entry key={String(item.id)}>
@@ -112,7 +112,7 @@ export function EquipmentHistory() {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle>Approved procedures for this equipment or symptom</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Approved procedures</CardTitle></CardHeader>
         <CardContent>
           {context.approved_procedures.length ? context.approved_procedures.map((item) => (
             <Entry key={String(item.id)}>
@@ -151,7 +151,7 @@ export function InvestigationLog({ onRevise }: { onRevise: (revision: Revision) 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
-        <CardHeader><CardTitle>Investigation and intervention log</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Checks and fixes tried</CardTitle></CardHeader>
         <CardContent>
           {context.diagnoses.map((item) => (
             <Entry key={String(item.id)}>
@@ -173,7 +173,7 @@ export function InvestigationLog({ onRevise }: { onRevise: (revision: Revision) 
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle>Event and review timeline</CardTitle></CardHeader>
+        <CardHeader><CardTitle>What happened, in order</CardTitle></CardHeader>
         <CardContent>
           {context.timeline.map((item) => (
             <Entry key={String(item.id)}>
@@ -185,7 +185,7 @@ export function InvestigationLog({ onRevise }: { onRevise: (revision: Revision) 
             <Entry key={String(item.id)}>
               <div className="flex items-center justify-between gap-2">
                 <strong>{String(item.reference)} · v{String(item.version)}</strong>
-                <Badge variant={statusVariant(String(item.status))}>{String(item.status).replace(/_/g, " ")}</Badge>
+                <Badge variant={statusVariant(String(item.status))}>{statusWords(String(item.status))}</Badge>
               </div>
               <p className="m-0">{String(item.title)} · by {String(item.author_name)}</p>
               {((item.reviews || []) as DataRow[]).map((review, index) => (
