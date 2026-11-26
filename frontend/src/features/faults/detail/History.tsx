@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Badge, statusVariant } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
@@ -65,8 +66,35 @@ export function EquipmentHistory() {
     }
   }
 
+  const system = context.system;
+  const related = context.related_faults ?? [];
   return (
     <div className="grid gap-4 lg:grid-cols-2">
+      {system && (
+        <Card className="lg:col-span-2" aria-label="Related equipment">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">
+              Part of <Link to={`/library/systems/${system.id}`}>{system.name}</Link>{system.legacy ? <Badge variant="warning" className="ml-2 normal-case">Legacy system</Badge> : null}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 text-sm">
+            {related.length ? (
+              <>
+                <p className="m-0 mb-2 text-muted-foreground">Recent faults on the equipment it works with: check whether they are connected.</p>
+                {related.map((item) => (
+                  <Entry key={item.id}>
+                    <strong><Link to={`/faults?mode=history&fault=${item.id}`}>{item.reference}</Link> · {item.equipment_tag} · {item.symptom}</strong>
+                    <small className="text-muted-foreground">{item.reported_at ? new Date(item.reported_at).toLocaleDateString() : ""} · {item.equipment_name}</small>
+                    {item.cause && <p className="m-0"><strong>Cause:</strong> {item.cause}</p>}
+                    {item.did_not_work.map((action) => <p key={action} className={cn("m-0", failedStyle)}><strong>FAILED:</strong> {action}</p>)}
+                    {item.worked && <p className="m-0"><strong>Worked:</strong> {item.worked}</p>}
+                  </Entry>
+                ))}
+              </>
+            ) : <p className="m-0 text-muted-foreground">No recent faults on the equipment it works with. <Link to={`/library/systems/${system.id}`}>How the system connects</Link></p>}
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardHeader><CardTitle>Reported history on this equipment</CardTitle></CardHeader>
         <CardContent>

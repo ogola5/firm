@@ -11,18 +11,19 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.services.analytics.facts import FaultFacts
+from app.services.vocabulary import overlap
 
 MIN_SCORE = 0.30
-STOP_WORDS = {"the", "a", "an", "and", "or", "of", "on", "in", "at", "to", "is", "not", "no", "with", "for", "from", "by"}
 RECENCY_HALF_LIFE_DAYS = 120
+# Equipment credit: same item 1.0; related (works in the same system) 0.6; same type 0.5.
+RELATED_EQUIPMENT = 0.6
+SAME_TYPE = 0.5
+# Tags with different letters for the same type (11-P-501 and PUMP-101 are both pumps). Mirrors catalogue.TYPE_ALIASES.
+TYPE_ALIASES = {"P": "PUMP"}
 
 
-def words(text: str) -> set[str]:
-    return {word for word in re.split(r"[^a-z0-9]+", text.lower()) if len(word) > 1 and word not in STOP_WORDS}
-
-
-def jaccard(left: set[str], right: set[str]) -> float:
-    return len(left & right) / len(left | right) if left and right else 0.0
+def kind(code: str) -> str:
+    return TYPE_ALIASES.get(code, code)
 
 
 def score(target: FaultFacts, candidate: FaultFacts, now: datetime, weights=None) -> tuple[float, list[str]]:
@@ -33,15 +34,22 @@ def score(target: FaultFacts, candidate: FaultFacts, now: datetime, weights=None
     if target.equipment_id and candidate.equipment_id == target.equipment_id:
         equipment = 1.0
         reasons.append("Same equipment")
-    elif target.equipment_type and candidate.equipment_type == target.equipment_type:
-        equipment = 0.5
-        reasons.append(f"Same type of equipment ({candidate.equipment_type})")
+    else:
+        if target.system_id and candidate.system_id == target.system_id:
+            equipment = RELATED_EQUIPMENT
+            reasons.append(f"Related equipment ({candidate.equipment_tag}, same {candidate.system_name or 'system'})")
+        if target.equipment_type and kind(candidate.equipment_type) == kind(target.equipment_type):
+            equipment = max(equipment, SAME_TYPE)
+            reasons.append(f"Same type of equipment ({kind(candidate.equipment_type)})")
 
-    symptom = jaccard(words(f"{target.symptom} {target.description}"), words(f"{candidate.symptom} {candidate.description}"))
-    if symptom >= 0.5:
+    # Shorthand and word forms count: "drive tripped hot" matches "VFD trip on overtemperature" (services/vocabulary.py).
+    symptom = overlap(f"{target.symptom} {target.description}", f"{candidate.symptom} {candidate.description}")
+    if symptom >= 0.6:
         reasons.append("Same problem described")
-    elif symptom > 0:
+    elif symptom >= 0.3:
         reasons.append("Similar problem description")
+    else:
+        symptom = 0.0  # a word or two in common is not a similar problem
 
     category = 1.0 if target.category and candidate.category == target.category else 0.0
     if category:

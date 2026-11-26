@@ -28,7 +28,7 @@ from app.services import accounts, notifications
 from app.services.access import role_key
 from app.services.catalogue import ACTION_TYPES, CAUSE_CATEGORIES, type_name, type_of
 from app.services.report_answers import answer_insights
-from app.services import text_search
+from app.services import systems, text_search
 
 # The problems Operations choose from when reporting (frontend reportQuestions.ts), plus older wordings.
 SYMPTOM_RULES: list[tuple[str, str]] = [
@@ -121,6 +121,7 @@ def procedure_card(db: Session, update: ProcedureUpdate, now: datetime | None = 
         "status": update.status, "section": update.section,
         "symptom": update.observed_symptom, "cause": update.confirmed_cause,
         "checks": update.diagnostic_procedure, "fix": update.corrective_action, "safety": update.safety,
+        "tools": update.tools_materials or "",
         "author": author.display_name if author else "", "contributors": contributors,
         "source_fault": {"id": source.id, "reference": source.reference} if source else None,
         "evidence": procedure_evidence(db, update, now),
@@ -308,7 +309,7 @@ def type_page(db: Session, user: User, code: str, now: datetime | None = None) -
         "code": code, "name": type_name(code),
         "sections": sorted({item.section for item in equipment}),
         "equipment": [{"id": item.id, "tag": item.tag, "name": item.name, "station": item.station, "region": item.region,
-                       "section": item.section} for item in sorted(equipment, key=lambda row: row.tag)],
+                       "section": item.section, "system": systems.summary(db, item)} for item in sorted(equipment, key=lambda row: row.tag)],
         "faults": len(faults),
         "owner": owner,
         "can_assign_owner": key in ASSIGNERS,
@@ -555,7 +556,7 @@ def search_results(db: Session, query: str, limit: int = 25) -> list[dict]:
 # --- versions of one procedure, for side-by-side comparison --------------------------------------------
 
 COMPARED_FIELDS = [("title", "Title"), ("observed_symptom", "When you see"), ("confirmed_cause", "Cause"),
-                   ("diagnostic_procedure", "Check first"), ("corrective_action", "Fix"), ("safety", "Safety")]
+                   ("diagnostic_procedure", "Check first"), ("corrective_action", "Fix"), ("tools_materials", "Tools and parts"), ("safety", "Safety")]
 PUBLIC = (CURRENT, "SUPERSEDED", "WITHDRAWN")
 
 

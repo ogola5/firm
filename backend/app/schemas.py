@@ -223,6 +223,7 @@ class ProcedureUpdateCreate(BaseModel):
     diagnostic_procedure: str
     corrective_action: str
     safety: str = ""
+    tools_materials: str = ""
     # Adds to an existing approved procedure (a new version credited to this author) instead of starting a new one.
     builds_on_id: str = ""
     # What changed and why (required for a revision or an improvement to an existing procedure).

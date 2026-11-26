@@ -36,6 +36,10 @@ export type FaultContext = {
   expert_notes?: ExpertNote[];
   equipment_type?: string;
   watch?: { reasons: string[]; level: string } | null;
+  /** The system this equipment works in, and recent faults on its other parts (related equipment). */
+  system?: { id: string; name: string; legacy: boolean; station: string } | null;
+  related_faults?: Array<{ id: string; reference: string; equipment_tag: string; equipment_name: string; symptom: string;
+    reported_at: string | null; status: string; cause: string; worked: string; did_not_work: string[] }>;
 };
 
 export type DrawingDifference = {

@@ -63,6 +63,31 @@ class User(Base):
     requested_region: Mapped[str] = mapped_column(String, default="")
 
 
+class System(Base):
+    """Equipment that works together, and what people know about it as a whole (legacy systems especially)."""
+    __tablename__ = "systems"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, unique=True)
+    station: Mapped[str] = mapped_column(String, default="")
+    legacy: Mapped[int] = mapped_column(Integer, default=0)
+    description: Mapped[str] = mapped_column(Text, default="")
+    how_it_connects: Mapped[str] = mapped_column(Text, default="")
+    known_limitations: Mapped[str] = mapped_column(Text, default="")
+    updated_by_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SystemChange(Base):
+    """One modification to a system over the years (rewiring, replaced parts, changed logic)."""
+    __tablename__ = "system_changes"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    system_id: Mapped[str] = mapped_column(ForeignKey("systems.id"), index=True)
+    changed_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    what_changed: Mapped[str] = mapped_column(Text)
+    recorded_by_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Notification(Base):
     """In-app notice for one person: shown under the bell, kept after it is read."""
     __tablename__ = "notifications"
@@ -298,6 +323,8 @@ class Equipment(Base):
     aliases: Mapped[str] = mapped_column(Text, default="")
     # From the pump station: Western, Nairobi or Coast.
     region: Mapped[str] = mapped_column(String, default="")
+    # The system it works in with other equipment (related equipment), if known.
+    system_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class Fault(Base):
@@ -483,6 +510,8 @@ class ProcedureUpdate(Base):
     status: Mapped[str] = mapped_column(String, default="SUBMITTED")
     # Why this version differs from the one before it (revisions and improvements).
     change_reason: Mapped[str] = mapped_column(Text, default="")
+    # Tools, test equipment and parts the job needs.
+    tools_materials: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

@@ -11,6 +11,7 @@ import { Input, NativeSelect, Textarea } from "../../components/ui/form-controls
 import { EmptyState, Page, PageHeader } from "../../components/ui/page";
 import { spokenTime } from "../../lib/format";
 import { useDebounced } from "../../lib/hooks";
+import { SystemsList } from "./SystemPage";
 import { errorMessage } from "../../lib/query";
 import { api } from "../../offline/api";
 
@@ -27,7 +28,7 @@ type TypeRow = {
 type Evidence = { worked: number; failed: number; used: number; last_confirmed_working: string | null; fading: boolean; freshness: string };
 type ProcedureCard = {
   id: string; reference: string; title: string; version: number; status: string; symptom: string; cause: string; checks: string;
-  fix: string; safety: string; author: string; contributors: string[]; source_fault: { id: string; reference: string } | null;
+  fix: string; safety: string; tools: string; author: string; contributors: string[]; source_fault: { id: string; reference: string } | null;
   evidence: Evidence; history: Array<{ version: number; reference: string; status: string; author: string; created_at: string | null }>;
 };
 type Symptom = {
@@ -42,7 +43,8 @@ type Symptom = {
 };
 type TypePage = {
   code: string; name: string; sections: string[]; faults: number; owner: Owner; can_assign_owner: boolean; can_withdraw: boolean;
-  equipment: Array<{ id: string; tag: string; name: string; station: string; region: string; section: string }>;
+  equipment: Array<{ id: string; tag: string; name: string; station: string; region: string; section: string;
+    system: { id: string; name: string; legacy: boolean } | null }>;
   symptoms: Symptom[];
   watch_out: {
     expert_notes: Array<{ id: string; title: string; expert: string; year: number; how_it_fails: string; first_checks: string; what_fools_people: string; tricks: string }>;
@@ -128,6 +130,8 @@ export function LibraryIndex({ user }: { user: User }) {
         </NativeSelect>
       </div>
       <LibrarySearchResults query={debounced} />
+      {debounced.length < 3 && <SystemsList />}
+      {debounced.length < 3 && <h2 className="mb-3 mt-0 text-lg">Types of equipment</h2>}
       {types.isError && <Alert variant="destructive">{errorMessage(types.error, "The library is not available.")}</Alert>}
       {types.data && !rows.length && debounced.length < 3 && <EmptyState>No equipment type matches.</EmptyState>}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -194,6 +198,7 @@ function ProcedureBlock({ card, canWithdraw, onChanged }: { card: ProcedureCard;
         <div><div className="text-xs font-bold uppercase text-muted-foreground">Check first</div><p className="m-0 whitespace-pre-line">{card.checks}</p></div>
         <div><div className="text-xs font-bold uppercase text-muted-foreground">Fix</div><p className="m-0 whitespace-pre-line">{card.fix}</p></div>
       </div>
+      {card.tools && <p className="m-0 text-sm"><strong>Tools and parts:</strong> {card.tools}</p>}
       {card.safety && <p className="m-0 flex gap-1.5 text-sm"><ShieldAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />{card.safety}</p>}
       <div className="text-xs text-muted-foreground">
         By {card.contributors.join(", ") || card.author}
@@ -398,7 +403,10 @@ export function TypeLibraryPage({ user }: { user: User }) {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">Equipment of this type</CardTitle></CardHeader>
               <CardContent className="grid gap-1 text-sm">
-                {data.equipment.map((item) => <div key={item.id}><strong>{item.tag}</strong> · {item.name} <span className="text-muted-foreground">· {item.station}{item.region ? `, ${item.region}` : ""}</span></div>)}
+                {data.equipment.map((item) => (
+                  <div key={item.id}><strong>{item.tag}</strong> · {item.name} <span className="text-muted-foreground">· {item.station}{item.region ? `, ${item.region}` : ""}</span>
+                    {item.system && <span className="block text-xs">Part of <Link to={`/library/systems/${item.system.id}`}>{item.system.name}</Link></span>}</div>
+                ))}
               </CardContent>
             </Card>
           </div>

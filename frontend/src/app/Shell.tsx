@@ -33,6 +33,7 @@ const Reports = lazy(() => import("../features/reports/Reports").then((m) => ({ 
 const Analytics = lazy(() => import("../features/analytics/Analytics").then((m) => ({ default: m.Analytics })));
 const LibraryIndex = lazy(() => import("../features/library/TypeLibrary").then((m) => ({ default: m.LibraryIndex })));
 const TypeLibraryPage = lazy(() => import("../features/library/TypeLibrary").then((m) => ({ default: m.TypeLibraryPage })));
+const SystemPage = lazy(() => import("../features/library/SystemPage").then((m) => ({ default: m.SystemPage })));
 const Notifications = lazy(() => import("../features/notifications/Notifications").then((m) => ({ default: m.Notifications })));
 const ProcedureVersions = lazy(() => import("../features/procedures/ProcedureVersions").then((m) => ({ default: m.ProcedureVersions })));
 const Escalations = lazy(() => import("../features/escalation/Escalation").then((m) => ({ default: m.Escalations })));
@@ -232,6 +233,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             {areas.has("equipment") && <Route path="/equipment" element={<Equipment user={user} />} />}
             {seesFaults && <Route path="/faults" element={<Faults user={user} />} />}
             {areas.has("library") && <Route path="/library" element={<LibraryIndex user={user} />} />}
+            {areas.has("library") && <Route path="/library/systems/:id" element={<SystemPage user={user} />} />}
             {areas.has("library") && <Route path="/library/:code" element={<TypeLibraryPage user={user} />} />}
             {(areas.has("library") || areas.has("approvals")) && <Route path="/procedures/:id/versions" element={<ProcedureVersions user={user} />} />}
             {areas.has("knowledge") && <Route path="/knowledge" element={<Knowledge user={user} />} />}

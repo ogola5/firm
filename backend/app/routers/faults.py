@@ -16,7 +16,8 @@ from app.services.access import ACTIVE_ASSIGNMENT_STATUSES, current_assignment, 
 from app.services.procedures import procedure_update_payload
 from app.services import escalation, fault_operations
 from app.services.report_answers import answer_filter, report_details_of
-from app.services import text_search
+from app.services import systems, text_search
+from app.services.knowledge_library import procedure_type
 import re
 from app.models import ExpertSession
 from app.services.analytics import watchlist
@@ -358,6 +359,12 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
         .order_by(ProcedureUpdate.version.desc())
         .limit(50)
     ).all()
+    # A match on the problem words alone must be for the same type of equipment: a drive that tripped
+    # should not be offered a PLC's UPS-battery procedure because both say "Stopped / tripped".
+    this_type = type_of(fault.equipment.tag) if fault.equipment_confirmed and fault.equipment else ""
+    if this_type:
+        applicable_updates = [item for item in applicable_updates
+                              if db.get(Fault, item.fault_id).equipment_id == fault.equipment_id or procedure_type(db, item) == this_type]
     latest_approved: dict[str, ProcedureUpdate] = {}
     for item in applicable_updates:
         current = latest_approved.get(item.lineage_id)
@@ -379,6 +386,10 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
         .order_by(KnowledgeEntry.updated_at.desc())
         .limit(30)
     ).all()
+    if this_type:
+        # Same rule for older instructions; general ones (no equipment) stay.
+        legacy_knowledge = [item for item in legacy_knowledge if not item.equipment_id or item.equipment_id == fault.equipment_id
+                            or (db.get(Equipment, item.equipment_id) and type_of(db.get(Equipment, item.equipment_id).tag) == this_type)]
     ranked_causes: dict[str, dict] = {}
     for prior_fault in previous_faults:
         prior_diagnoses = db.scalars(select(Diagnosis).where(Diagnosis.fault_id == prior_fault.id)).all()
@@ -442,6 +453,9 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
         } for item in expert_notes],
         "equipment_type": equipment_code,
         "watch": watch,
+        # Related equipment: the system this works in, and what its other parts have been doing.
+        "system": systems.summary(db, equipment) if identified else None,
+        "related_faults": systems.related_faults(db, fault) if identified else [],
         "fault": {
             "id": fault.id,
             "reference": fault.reference,

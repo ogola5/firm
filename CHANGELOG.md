@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-12-01 — Pillar C: smarter similar faults, related equipment, offline. Pillar B: system pages, tools and parts
+
+**Pillar C — repeat-fault intelligence**
+- **Shorthand and word forms:** similar-fault matching uses the same vocabulary as search (`services/vocabulary.py`). "VFD hot trip" finds "drive tripped on overtemperature"; "valves stuck" finds "valve sticking". A word or two in common no longer counts as a similar problem.
+- **Related equipment:** equipment now belongs to systems (e.g. Line 4 pump A unit: pump, drive, lube-oil panel, vibration monitor, RTU).
+  - Related equipment counts in the ranking (0.6, between same equipment 1.0 and same type 0.5), with the reason shown.
+  - The fault page shows "Part of …" and recent faults on the equipment it works with.
+- **Fixed — pump tags:** 11-P-501 and PUMP-101 are now recognised as the same type (pumps) in similar faults.
+- **Fixed — matches across equipment types:** a fault no longer gets another equipment type's procedures or older instructions just because the problem words match ("Stopped / tripped").
+- **Offline:** similar faults are ranked on the phone with no connection.
+  - The case index (`GET /api/v1/intelligence/case-index`) is saved with the offline data and carries the server's weights and vocabulary, so the phone applies the same rules (`frontend/src/lib/similarity.ts`).
+  - Offline results say when the copy was saved.
+- **Fixed — stemming:** "valves" was reduced to "valv" and missed "valve". Fixed on both the server and the phone, with matching unit tests.
+
+**Pillar B — knowledge library**
+- **System pages** (`/library/systems/{id}`, Systems section on the Library home; legacy systems first), with:
+  - what the system is, how the parts connect (interlocks, permits, signals) and its known limitations
+  - **changes over the years** (re-wiring, replaced parts), which anyone in maintenance can record
+  - its equipment, drawing differences, expert notes and recent faults
+
+  CTs and engineers edit the text.
+- **Tools and parts on procedures:** filled in from what was used on the visit, shown on the library card and included in version comparison.
+- **API:**
+  - `GET /api/v1/library/systems`, `GET /api/v1/library/systems/{id}`
+  - `PATCH /api/v1/library/systems/{id}`, `POST /api/v1/library/systems/{id}/changes`
+  - `system_id` on equipment; `system` and `related_faults` on the fault context
+- **Migration `0012`.** Illustrative systems and change histories (`app/seed_systems.py`).
+
 ## 2026-11-30 — Notification centre; side-by-side procedure versions
 
 - **Notification centre** (bell in the header, `/notifications`; also emailed where email already went):

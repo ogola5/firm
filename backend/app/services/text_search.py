@@ -17,23 +17,8 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-# Shorthand and plain words people use, both ways where it makes sense. Lower case.
-SYNONYMS: dict[str, list[str]] = {
-    "vfd": ["drive", "inverter"], "drive": ["vfd", "inverter"], "inverter": ["vfd", "drive"],
-    "mov": ["valve", "actuator"], "valve": ["mov", "actuator"], "actuator": ["mov", "valve"],
-    "hot": ["overtemperature", "temperature", "heat"], "heat": ["hot", "overtemperature", "temperature"],
-    "overheat": ["overtemperature", "hot", "temperature"], "overtemp": ["overtemperature", "temperature"],
-    "trip": ["tripped", "overload"], "trips": ["trip", "tripped"],
-    "comms": ["communication", "telemetry"], "communication": ["comms", "telemetry"], "offline": ["communication", "lost"],
-    "lt": ["level"], "level": ["lt"], "pt": ["pressure"], "pressure": ["pt"], "tt": ["temperature"], "ft": ["flow", "meter"],
-    "pmp": ["pump"], "pump": ["p"], "leak": ["leaking", "drip", "weep"], "drip": ["leak"], "dripping": ["leak"],
-    "stuck": ["sticking", "jammed"], "noise": ["noisy", "vibration", "knocking"], "vibration": ["noise"],
-    "rtu": ["telemetry", "station"], "scada": ["hmi", "workstation"], "hmi": ["scada", "workstation"],
-    "strainer": ["filter", "basket"], "filter": ["strainer"], "blocked": ["blockage", "clogged", "sediment"],
-    "latch": ["latched", "reset"], "latched": ["latch", "reset"], "seal": ["gasket", "leak"],
-    "alignment": ["misalignment", "aligned"], "misaligned": ["misalignment", "alignment"],
-}
-STOPWORDS = {"the", "a", "an", "and", "or", "of", "on", "in", "at", "to", "is", "it", "was", "not", "no", "with", "for", "from", "by"}
+# Shorthand and synonyms live in services/vocabulary.py (shared with similar faults and the offline copy).
+from app.services.vocabulary import STOPWORDS, SYNONYMS  # noqa: E402
 SIMILAR_ENOUGH = 0.6
 
 

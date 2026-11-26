@@ -32,6 +32,7 @@ def equipment_list(search: str = "", station: str = "", user: User = Depends(cur
         {
             "id": e.id, "tag": e.tag, "name": e.name, "aliases": e.aliases, "category": e.category,
             "station": e.station, "location": e.location, "section": e.section, "region": e.region,
+            "system_id": e.system_id,
             "criticality": e.criticality, "operational_status": e.operational_status,
             "description": e.description,
         }

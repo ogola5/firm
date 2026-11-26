@@ -15,10 +15,11 @@ const procedureSchema = z.object({
   diagnostic_procedure: z.string().trim().min(1, "Describe how to diagnose it"),
   corrective_action: z.string().trim().min(1, "Describe the corrective action"),
   safety: z.string().trim(),
+  tools_materials: z.string().trim(),
   change_reason: z.string().trim(),
 });
 type ProcedureValues = z.infer<typeof procedureSchema>;
-const EMPTY: ProcedureValues = { title: "", observed_symptom: "", confirmed_cause: "", diagnostic_procedure: "", corrective_action: "", safety: "", change_reason: "" };
+const EMPTY: ProcedureValues = { title: "", observed_symptom: "", confirmed_cause: "", diagnostic_procedure: "", corrective_action: "", safety: "", tools_materials: "", change_reason: "" };
 
 export function ProcedureForm({ revision, onDone }: { revision: Revision; onDone: () => void }) {
   const { faultId, can, offline, done, fail } = useDetail();
@@ -36,6 +37,7 @@ export function ProcedureForm({ revision, onDone }: { revision: Revision; onDone
       diagnostic_procedure: String(revision.values.diagnostic_procedure ?? ""),
       corrective_action: String(revision.values.corrective_action ?? ""),
       safety: String(revision.values.safety ?? ""),
+      tools_materials: String(revision.values.tools_materials ?? ""),
       change_reason: "",
     });
   }, [revision, reset]);
@@ -75,6 +77,7 @@ export function ProcedureForm({ revision, onDone }: { revision: Revision; onDone
           </div>
           <Field label="Diagnostic procedure" error={errors.diagnostic_procedure?.message}><Textarea {...register("diagnostic_procedure")} /></Field>
           <Field label="Corrective action" error={errors.corrective_action?.message}><Textarea {...register("corrective_action")} /></Field>
+          <Field label="Tools and parts"><Textarea rows={2} {...register("tools_materials")} /></Field>
           <Field label="Safety notes"><Textarea {...register("safety")} /></Field>
           {revision && (
             <Field label="What changed and why" hint="Reviewers and future readers see this next to the comparison." error={errors.change_reason?.message}>

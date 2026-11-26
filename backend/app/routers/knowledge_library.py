@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 from app.db import db_dep
 from app.deps import current_user
 from app.models import Fault, User
+from datetime import date
+
 from app.services import knowledge_library as library
+from app.services import systems
 from app.services.access import TECHNICAL_ROLES, require_fault_scope, require_roles, role_definition, role_key
 
 router = APIRouter()
@@ -44,6 +47,41 @@ def library_search(q: str = "", user: User = Depends(current_user), db: Session 
 def library_type(code: str, user: User = Depends(current_user), db: Session = Depends(db_dep)):
     require_roles(user, *READERS)
     return library.type_page(db, user, code)
+
+
+@router.get("/api/v1/library/systems")
+def library_systems(user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """Systems (equipment that works together), legacy ones first."""
+    require_roles(user, *READERS)
+    return {"systems": systems.system_list(db)}
+
+
+@router.get("/api/v1/library/systems/{system_id}")
+def library_system(system_id: str, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    require_roles(user, *READERS)
+    return systems.system_page(db, user, system_id)
+
+
+class SystemUpdate(BaseModel):
+    description: str | None = Field(default=None, max_length=4000)
+    how_it_connects: str | None = Field(default=None, max_length=4000)
+    known_limitations: str | None = Field(default=None, max_length=4000)
+
+
+class SystemChangeRequest(BaseModel):
+    what_changed: str = Field(min_length=10, max_length=2000)
+    changed_on: date | None = None
+
+
+@router.patch("/api/v1/library/systems/{system_id}")
+def edit_system(system_id: str, req: SystemUpdate, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    return systems.update_system(db, user, system_id, req.model_dump())
+
+
+@router.post("/api/v1/library/systems/{system_id}/changes")
+def add_system_change(system_id: str, req: SystemChangeRequest, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """Record a modification (re-wiring, replaced part, changed logic) so the next person knows."""
+    return systems.record_change(db, user, system_id, req.what_changed, req.changed_on)
 
 
 @router.get("/api/v1/library/owner-candidates")

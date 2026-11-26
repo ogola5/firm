@@ -19,7 +19,7 @@ type ProcedureMatch = {
   evidence: { worked: number; fading: boolean };
 };
 
-type Draft = { title: string; symptom: string; cause: string; check: string; fix: string; avoid: string; safety: string };
+type Draft = { title: string; symptom: string; cause: string; check: string; fix: string; avoid: string; tools: string; safety: string };
 
 /** Builds the draft from what the technician already recorded, so nothing is retyped. */
 export function draftFromContext(context: FaultContext, userId: string): Draft {
@@ -39,6 +39,7 @@ export function draftFromContext(context: FaultContext, userId: string): Draft {
   const failedBefore = context.previous_faults.flatMap((item) => ((item.interventions || []) as DataRow[])
     .filter((step) => step.outcome === "FAILED").map((step) => String(step.corrective_action)));
   const avoid = [...new Set([...failedHere, ...failedBefore])];
+  const tools = [...new Set(sequence.map((item) => String(item.tools_materials ?? "").trim()).filter(Boolean))].join("; ");
   const equipment = String(fault.equipment_name ?? fault.equipment_tag);
   return {
     title: cause ? `${String(fault.symptom)} on ${equipment}: check ${cause.charAt(0).toLowerCase()}${cause.slice(1)}` : `${String(fault.symptom)} on ${equipment}`,
@@ -47,6 +48,7 @@ export function draftFromContext(context: FaultContext, userId: string): Draft {
     check: String(diagnosis?.quick_check || "") || (cause ? `Check for: ${cause}.` : ""),
     fix,
     avoid: avoid.length ? `${avoid.join("; ")}. These did not fix it.` : "",
+    tools,
     safety: "",
   };
 }
@@ -58,6 +60,7 @@ const FIELDS: Array<{ key: keyof Draft; label: string; from?: string; multiline?
   { key: "check", label: "Check this first", multiline: true },
   { key: "fix", label: "Fix", from: "From the steps that got it working, in order", multiline: true },
   { key: "avoid", label: "Don't bother with", from: "From the steps that didn't work, on this job and earlier ones", multiline: true },
+  { key: "tools", label: "Tools and parts", from: "From what you used on the visit", multiline: true, placeholder: "For example: loop calibrator, M20 cable gland, desiccant packs" },
   { key: "safety", label: "Safety", from: "Add permit or isolation points if this job needs them", multiline: true, placeholder: "For example: isolate the actuator supply at the MCC before opening the terminal box" },
 ];
 
@@ -103,6 +106,7 @@ export function ProcedureDraft({ user }: { user: User }) {
             .filter(Boolean).join("\n"),
           corrective_action: draft.fix.trim(),
           safety: draft.safety.trim(),
+          tools_materials: draft.tools.trim(),
           ...(buildsOn ? { builds_on_id: buildsOn, change_reason: changeReason.trim() } : {}),
         }),
       });

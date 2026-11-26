@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Diagnosis, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, utc_datetime, utcnow
+from app.models import Diagnosis, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, System, utc_datetime, utcnow
 
 REPEAT_WINDOW = timedelta(days=90)
 CAME_BACK_WINDOW = timedelta(days=30)
@@ -46,6 +46,9 @@ class FaultFacts:
     has_back_in_service_time: bool = False
     write_up_lag_hours: list[float] = field(default_factory=list)
     last_activity_at: datetime | None = None
+    # The system the equipment works in (related equipment), if known.
+    system_id: str | None = None
+    system_name: str = ""
     # Filled by link_history():
     is_repeat: bool = False
     came_back: bool | None = None  # None: restored too recently to know
@@ -109,6 +112,7 @@ def load_facts(db: Session, section: str | None = None, now: datetime | None = N
         select(Fault, Equipment).join(Equipment, Fault.equipment_id == Equipment.id, isouter=True)
     ).all()
     facts: dict[str, FaultFacts] = {}
+    system_names = {item.id: item.name for item in db.scalars(select(System))}
     for fault, equipment in rows:
         identified = bool(fault.equipment_confirmed and equipment and not equipment.tag.startswith("UNCONFIRMED-"))
         facts[fault.id] = FaultFacts(
@@ -127,6 +131,8 @@ def load_facts(db: Session, section: str | None = None, now: datetime | None = N
             status=fault.status,
             reported_at=utc_datetime(fault.created_at),
             restored_at=utc_datetime(fault.restored_at) if fault.restored_at else None,
+            system_id=equipment.system_id if identified else None,
+            system_name=system_names.get(equipment.system_id, "") if identified and equipment.system_id else "",
         )
 
     events = db.execute(

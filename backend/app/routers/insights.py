@@ -6,6 +6,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db import db_dep
 from app.deps import current_user
 from app.models import Fault, User, utcnow
@@ -156,3 +157,29 @@ def intelligence_similar_faults(
         candidates = [item for item in facts if item.section == user.section]
     return {"fault_id": fault_id, "similar": similar_faults(target, candidates, utcnow(), limit),
             "note": "Similar is not the same cause. Check before you act."}
+
+
+@router.get("/api/v1/intelligence/case-index")
+def intelligence_case_index(user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """Everything the phone needs to rank similar faults with no connection: past cases (the same scope as
+    similar-faults), the weights and the vocabulary. The phone applies exactly the server's rules."""
+    from app.services.analytics import similarity
+    from app.services.vocabulary import export
+
+    require_roles(user, *SECTION_ROLES, *ORG_WIDE)
+    facts = load_facts(db)
+    if role_key(user) in SECTION_ROLES and role_key(user) != "systems_automation":
+        facts = [item for item in facts if item.section == user.section]
+    return {
+        "generated_at": utcnow().isoformat(),
+        "weights": list(settings.similarity_weights), "min_score": similarity.MIN_SCORE,
+        "half_life_days": similarity.RECENCY_HALF_LIFE_DAYS, "related_equipment": similarity.RELATED_EQUIPMENT,
+        "same_type": similarity.SAME_TYPE, "type_aliases": similarity.TYPE_ALIASES, "vocabulary": export(),
+        "cases": [{
+            "id": item.id, "reference": item.reference, "equipment_id": item.equipment_id, "equipment_tag": item.equipment_tag,
+            "equipment_name": item.equipment_name, "equipment_type": item.equipment_type, "system_id": item.system_id,
+            "system_name": item.system_name, "category": item.category, "symptom": item.symptom,
+            "description": item.description[:300], "reported_at": item.reported_at.isoformat(),
+            "causes": item.causes[:3], "worked": item.actions("SUCCESS")[:3], "did_not_work": item.actions("FAILED")[:3],
+        } for item in facts],
+    }

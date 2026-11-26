@@ -41,6 +41,11 @@ export async function refreshOfflineCache(permissions: string[]): Promise<{ refr
   }
   if (permissions.includes("faults.read")) {
     jobs.push(["faults", async () => cacheFaults(await api<Row[]>("/api/v1/faults"))]);
+    // Past cases with the server's similarity rules, so similar faults can be ranked with no connection.
+    // Not every role may have it (403): that part simply fails on its own.
+    jobs.push(["case_index", async () => {
+      await db.syncMeta.put({ key: "case_index", value: await api("/api/v1/intelligence/case-index") });
+    }]);
   }
   if (permissions.includes("knowledge.read")) {
     jobs.push(["knowledge", async () => {

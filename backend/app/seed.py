@@ -501,6 +501,8 @@ def _seed_database():
     db.commit()
     seed_knowledge_capture(db)
     ensure_extra_equipment(db)
+    from app.seed_systems import seed_systems
+    seed_systems(db)  # equipment that works together (related equipment); legacy system pages
     from app.seed_library import seed_library
     seed_library(db)  # worked cases and procedures for the types that fail most; knowledge owners
     from app.demo_content import fill_demo_answers, refresh_generic_demo
