@@ -33,13 +33,13 @@ export function Tour() {
         {STORY.map((chapter, index) => (
           <li key={chapter.title} className="list-none">
             <Card>
-              <CardContent className="flex flex-wrap items-start justify-between gap-3 pt-5">
-                <div className="min-w-0">
+              <CardContent className="flex items-start justify-between gap-3 pt-5">
+                <div className="min-w-0 flex-1">
                   <p className="m-0 text-xs font-bold text-muted-foreground">{index + 1} · {chapter.who}</p>
                   <p className="m-0 text-base font-bold">{chapter.title}</p>
                   <ul className="m-0 mt-1 grid gap-0.5 pl-5 text-sm">{chapter.notice.map((line) => <li key={line}>{line}</li>)}</ul>
                 </div>
-                <Button variant="outline" disabled={busy} onClick={() => void go(index, setBusy)}>Show</Button>
+                <Button variant="outline" className="shrink-0" disabled={busy} onClick={() => void go(index, setBusy)}>Show</Button>
               </CardContent>
             </Card>
           </li>

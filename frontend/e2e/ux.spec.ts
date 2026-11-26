@@ -24,12 +24,15 @@ test("a fault shows where it is and the one next step; tabs hold the rest", asyn
   await signIn(page, "automation");
   // Home: one list of what needs this person.
   const needs = page.getByLabel("Needs you now");
+  await expect(needs.getByRole("link").first()).toBeVisible();
+  const showAll = needs.getByRole("button", { name: /Show all/ });
+  if (await showAll.isVisible()) await showAll.click(); // oldest first: the newest may be beyond the first five
   await expect(needs.getByText(new RegExp(fault.reference)).first()).toBeVisible();
   await page.screenshot({ path: `${dir}/1-needs-you-now-phone.png`, fullPage: true });
 
   await page.goto(`/faults?mode=history&fault=${fault.id}`);
   const progress = page.getByRole("list", { name: "Progress" });
-  await expect(progress.locator('[aria-current="step"]')).toContainText("Sorted");
+  await expect(progress.locator('[aria-current="step"]')).toContainText("With Systems Automation");
   const next = page.getByRole("region", { name: "Next step" });
   await expect(next.getByText("Waiting to be taken")).toBeVisible();
   await page.screenshot({ path: `${dir}/2-fault-next-step-phone.png` });

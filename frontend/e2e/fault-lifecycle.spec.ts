@@ -123,6 +123,7 @@ test("Scenario 1 + 3: first-time fault to published knowledge, keeping the faile
   const log = cardWithHeading(page, "Checks and fixes tried");
   await expect(log.getByText("FAILED intervention")).toBeVisible();
   await expect(log.getByText("SUCCESS intervention")).toBeVisible();
+  await page.getByRole("region", { name: "Next step" }).getByRole("button", { name: "Review and sign off" }).click();
   await page.getByRole("button", { name: "Approve technical completion" }).click();
   await expect(page.getByText("Chief technical review approved.")).toBeVisible();
   await signIn(page, "operations");
