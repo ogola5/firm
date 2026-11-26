@@ -68,6 +68,13 @@ def withdraw_procedure(update_id: str, req: WithdrawRequest, user: User = Depend
     return library.withdraw(db, user, update_id, req.reason)
 
 
+@router.get("/api/v1/procedure-updates/{update_id}/versions")
+def procedure_versions(update_id: str, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """All versions of this procedure for side-by-side comparison (unpublished ones only for author and reviewers)."""
+    require_roles(user, *READERS)
+    return library.lineage_versions(db, user, update_id)
+
+
 @router.get("/api/v1/faults/{fault_id}/procedure-matches")
 def procedure_matches(fault_id: str, user: User = Depends(current_user), db: Session = Depends(db_dep)):
     """At write-up: approved procedures this fix might add to, instead of starting a duplicate."""

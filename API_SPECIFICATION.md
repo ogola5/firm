@@ -196,3 +196,5 @@ Fault list, detail, context and My jobs include:
 - Out-of-region faults return 404, like out-of-section ones.
 - Enrolment, approval, account creation and access changes take `requested_region` or `region` (Western, Nairobi, Coast). It is required for regional roles.
 Knowledge library by equipment type: see [KNOWLEDGE_LIBRARY.md](KNOWLEDGE_LIBRARY.md#api) for the library, owner, withdrawal, write-up match and impact endpoints.
+
+Notifications and procedure versions: see CHANGELOG.md (2026-11-30) for GET /api/v1/notifications, POST /api/v1/notifications/{id}/read, POST /api/v1/notifications/read-all and GET /api/v1/procedure-updates/{id}/versions. Revisions and improvements (builds_on_id) require change_reason (5+ characters).

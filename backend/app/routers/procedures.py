@@ -46,6 +46,8 @@ def submit_procedure_update(fault_id: str, req: ProcedureUpdateCreate, user: Use
             raise HTTPException(status_code=404, detail="The procedure to add to is not a current approved procedure")
         if library.procedure_type(db, base) != type_of(fault.equipment.tag):
             raise HTTPException(status_code=422, detail="Only add to a procedure for the same type of equipment")
+        if len(req.change_reason.strip()) < 5:
+            raise HTTPException(status_code=422, detail="Say what this changes and why")
     version = (max(db.scalars(select(ProcedureUpdate.version).where(ProcedureUpdate.lineage_id == base.lineage_id)).all(), default=base.version) + 1) if base else 1
     update = ProcedureUpdate(
         id=update_id,
@@ -62,6 +64,7 @@ def submit_procedure_update(fault_id: str, req: ProcedureUpdateCreate, user: Use
         version=version,
         lineage_id=base.lineage_id if base else update_id,
         previous_update_id=base.id if base else None,
+        change_reason=req.change_reason.strip()[:1000] if base else "",
         status="SUBMITTED",
     )
     db.add(update)
@@ -91,6 +94,8 @@ def revise_procedure_update(update_id: str, req: ProcedureUpdateCreate, user: Us
     fields = [req.title, req.observed_symptom, req.confirmed_cause, req.diagnostic_procedure, req.corrective_action]
     if any(not value.strip() for value in fields):
         raise HTTPException(status_code=422, detail="Title, symptom, cause, diagnostic procedure and corrective action are required")
+    if len(req.change_reason.strip()) < 5:
+        raise HTTPException(status_code=422, detail="Say what this version changes and why")
     versions = db.scalars(select(ProcedureUpdate.version).where(ProcedureUpdate.lineage_id == previous.lineage_id)).all()
     version = max(versions, default=previous.version) + 1
     revision_id = str(uuid.uuid4())
@@ -110,6 +115,7 @@ def revise_procedure_update(update_id: str, req: ProcedureUpdateCreate, user: Us
         version=version,
         lineage_id=previous.lineage_id,
         previous_update_id=previous.id,
+        change_reason=req.change_reason.strip()[:1000],
         status="SUBMITTED",
     )
     db.add(revision)

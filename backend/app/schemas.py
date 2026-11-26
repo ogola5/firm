@@ -225,6 +225,8 @@ class ProcedureUpdateCreate(BaseModel):
     safety: str = ""
     # Adds to an existing approved procedure (a new version credited to this author) instead of starting a new one.
     builds_on_id: str = ""
+    # What changed and why (required for a revision or an improvement to an existing procedure).
+    change_reason: str = ""
 
 
 class ProcedureReviewRequest(BaseModel):

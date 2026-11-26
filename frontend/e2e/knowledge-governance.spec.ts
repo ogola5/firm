@@ -45,11 +45,19 @@ test("Scenario 6: review, revision, publication and versioning of a work procedu
   await expect(page.getByLabel("Procedure title")).toHaveValue(title);
   await page.getByLabel("Corrective action", { exact: true }).fill("Replace the seal; confirm vibration below 4.5 mm/s (illustrative limit).");
   await page.getByRole("button", { name: "Submit revision" }).click();
+  await expect(page.getByText("Say what this version changes and why")).toBeVisible(); // a reason is required
+  await page.getByLabel("What changed and why").fill("Added the vibration acceptance limit, as the chief asked.");
+  await page.getByRole("button", { name: "Submit revision" }).click();
   await expect(page.getByText("A new immutable procedure version has been submitted.")).toBeVisible();
 
-  // Technical approval, then publication.
+  // Technical approval, then publication. The reviewer sees exactly what changed, and why.
   await signIn(page, "ct-mechanical");
   await page.goto("/approvals");
+  const changes = cardWithHeading(page, title).getByLabel("What changed");
+  await expect(changes.getByText("Added the vibration acceptance limit, as the chief asked.")).toBeVisible();
+  await expect(changes.getByText(/confirm vibration below 4\.5 mm\/s/)).toBeVisible();
+  await expect(changes.getByLabel("Added").first()).toBeVisible();
+  await page.screenshot({ path: "screens/governance/1-what-changed.png", fullPage: true });
   await cardWithHeading(page, title).getByRole("button", { name: "Approve technical review" }).click();
   await expect(page.getByText("Technical review approved; awaiting supervisor publication.")).toBeVisible();
   await signIn(page, "supervisor");
@@ -65,6 +73,7 @@ test("Scenario 6: review, revision, publication and versioning of a work procedu
   await expect(versions.getByText(/· v2$/)).toBeVisible();
   await versions.getByRole("button", { name: "Revise this version" }).last().click();
   await page.getByLabel("Safety notes").fill("Lock out the motor and verify zero energy before opening the seal housing.");
+  await page.getByLabel("What changed and why").fill("Added the lock-out step to the safety notes.");
   await page.getByRole("button", { name: "Submit revision" }).click();
   await expect(page.getByText("A new immutable procedure version has been submitted.")).toBeVisible();
   await expect(versions.getByText(/· v3$/)).toBeVisible();

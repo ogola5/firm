@@ -565,6 +565,7 @@ def test_investigation_review_revision_reuse_and_appraisal_cycle():
     revision = client.post(f"/api/v1/procedure-updates/{update_id}/revisions", headers=principal, json={
         **procedure,
         "diagnostic_procedure": "Inspect the event log, record the continuity value, and compare the post-repair value",
+        "change_reason": "Added the measured continuity value, as the chief asked",
     })
     assert revision.status_code == 200
     assert revision.json()["version"] == 2

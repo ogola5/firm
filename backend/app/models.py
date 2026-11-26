@@ -63,6 +63,19 @@ class User(Base):
     requested_region: Mapped[str] = mapped_column(String, default="")
 
 
+class Notification(Base):
+    """In-app notice for one person: shown under the bell, kept after it is read."""
+    __tablename__ = "notifications"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    kind: Mapped[str] = mapped_column(String)
+    title: Mapped[str] = mapped_column(String)
+    body: Mapped[str] = mapped_column(Text, default="")
+    link: Mapped[str] = mapped_column(String, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class EquipmentTypeOwner(Base):
     """The named person (CT or SE) who keeps an equipment type's knowledge current."""
     __tablename__ = "equipment_type_owners"
@@ -468,6 +481,8 @@ class ProcedureUpdate(Base):
     lineage_id: Mapped[str] = mapped_column(String, index=True)
     previous_update_id: Mapped[Optional[str]] = mapped_column(ForeignKey("procedure_updates.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String, default="SUBMITTED")
+    # Why this version differs from the one before it (revisions and improvements).
+    change_reason: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

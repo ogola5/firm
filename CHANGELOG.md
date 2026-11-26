@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-11-30 — Notification centre; side-by-side procedure versions
+
+- **Notification centre** (bell in the header, `/notifications`; also emailed where email already went):
+  - **Who hears what:**
+    - new fault → Systems Automation
+    - safety report → SA and the owning section's CT in that region
+    - hand-over to a section → that section's CT
+    - job allocated → the technician (links to the job card)
+    - job taken → CT
+    - waiting for sign-off or hand-over → CT
+    - returned → technician
+    - signed off → reporter ("please confirm") and technician
+    - "not fixed" → CT and technician
+    - seen again → CT
+    - escalations and guidance → SE / CE / CT
+    - procedure to review → section CT and CE
+    - ready to publish → supervisors
+    - published / question / not accepted → author
+    - knowledge owner named, procedure withdrawn, "your procedure helped" → the person concerned
+  - **How it works:**
+    - Driven from the fault timeline, in one place (`services/notifications.py`); nobody is notified of their own action.
+    - Demo history is seeded quietly, so it doesn't fill anyone's bell.
+    - `GET /api/v1/notifications`, `POST /api/v1/notifications/{id}/read`, `POST /api/v1/notifications/read-all`.
+- **Side-by-side procedure versions** (`/procedures/{id}/versions`, linked from the library):
+  - Pick any two versions and see the changes field by field, line by line (removed, added, unchanged listed).
+  - Each version shows its author, date, source fault, change reason, who checked it and who published it, and the review notes.
+  - Reviewers see "What changed since v…" with the reason on the approval card.
+  - `GET /api/v1/procedure-updates/{id}/versions`; unpublished versions are visible only to the author and reviewers.
+- **Change reasons are required** for every revision and every improvement to an existing procedure (proposal module 7: author, time, change reason and approving supervisor are all recorded).
+- Migration `0011`.
+
 ## 2026-11-29 — Proper search, and report answers as queryable data (PostgreSQL, no second database)
 
 - **Library search** across cases, approved procedures, expert knowledge and older instructions (`GET /api/v1/library/search?q=`):

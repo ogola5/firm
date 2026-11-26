@@ -21,6 +21,7 @@ def procedure_update_payload(item: ProcedureUpdate, author: User | None = None, 
         "lineage_id": item.lineage_id,
         "previous_update_id": item.previous_update_id,
         "status": item.status,
+        "change_reason": item.change_reason or "",
         "created_at": item.created_at.isoformat(),
         "reviews": [
             {

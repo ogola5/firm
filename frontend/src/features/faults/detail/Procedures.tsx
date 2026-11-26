@@ -15,13 +15,14 @@ const procedureSchema = z.object({
   diagnostic_procedure: z.string().trim().min(1, "Describe how to diagnose it"),
   corrective_action: z.string().trim().min(1, "Describe the corrective action"),
   safety: z.string().trim(),
+  change_reason: z.string().trim(),
 });
 type ProcedureValues = z.infer<typeof procedureSchema>;
-const EMPTY: ProcedureValues = { title: "", observed_symptom: "", confirmed_cause: "", diagnostic_procedure: "", corrective_action: "", safety: "" };
+const EMPTY: ProcedureValues = { title: "", observed_symptom: "", confirmed_cause: "", diagnostic_procedure: "", corrective_action: "", safety: "", change_reason: "" };
 
 export function ProcedureForm({ revision, onDone }: { revision: Revision; onDone: () => void }) {
   const { faultId, can, offline, done, fail } = useDetail();
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<ProcedureValues>({
+  const { register, handleSubmit, reset, setError, formState: { errors, isSubmitting } } = useForm<ProcedureValues>({
     resolver: zodResolver(procedureSchema), defaultValues: EMPTY,
   });
 
@@ -35,12 +36,17 @@ export function ProcedureForm({ revision, onDone }: { revision: Revision; onDone
       diagnostic_procedure: String(revision.values.diagnostic_procedure ?? ""),
       corrective_action: String(revision.values.corrective_action ?? ""),
       safety: String(revision.values.safety ?? ""),
+      change_reason: "",
     });
   }, [revision, reset]);
 
   if (!can.canSubmitProcedure || offline) return null;
 
   async function submit(values: ProcedureValues) {
+    if (revision && values.change_reason.length < 5) {
+      setError("change_reason", { message: "Say what this version changes and why" });
+      return;
+    }
     const path = revision
       ? `/api/v1/procedure-updates/${encodeURIComponent(revision.id)}/revisions`
       : `/api/v1/faults/${encodeURIComponent(faultId)}/procedure-updates`;
@@ -70,6 +76,11 @@ export function ProcedureForm({ revision, onDone }: { revision: Revision; onDone
           <Field label="Diagnostic procedure" error={errors.diagnostic_procedure?.message}><Textarea {...register("diagnostic_procedure")} /></Field>
           <Field label="Corrective action" error={errors.corrective_action?.message}><Textarea {...register("corrective_action")} /></Field>
           <Field label="Safety notes"><Textarea {...register("safety")} /></Field>
+          {revision && (
+            <Field label="What changed and why" hint="Reviewers and future readers see this next to the comparison." error={errors.change_reason?.message}>
+              <Textarea rows={2} placeholder="e.g. added the vibration acceptance limit the chief asked for" {...register("change_reason")} />
+            </Field>
+          )}
           <Button type="submit" className="justify-self-start" disabled={isSubmitting}>{revision ? "Submit revision" : "Submit for chief technical review"}</Button>
         </CardContent>
       </form>

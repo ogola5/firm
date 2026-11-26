@@ -10,6 +10,7 @@ import { cn } from "../lib/utils";
 import { refreshOfflineCache } from "../offline/cache";
 import { useConnection, useSyncState } from "../offline/hooks";
 import { getSyncEngine, requestBackgroundSync, setSyncActor, startAutoSync } from "../offline/sync";
+import { NotificationBell } from "../features/notifications/Notifications";
 
 // Route-level code splitting: each area loads only when first opened.
 const Dashboard = lazy(() => import("../features/dashboard/Dashboard").then((m) => ({ default: m.Dashboard })));
@@ -32,6 +33,8 @@ const Reports = lazy(() => import("../features/reports/Reports").then((m) => ({ 
 const Analytics = lazy(() => import("../features/analytics/Analytics").then((m) => ({ default: m.Analytics })));
 const LibraryIndex = lazy(() => import("../features/library/TypeLibrary").then((m) => ({ default: m.LibraryIndex })));
 const TypeLibraryPage = lazy(() => import("../features/library/TypeLibrary").then((m) => ({ default: m.TypeLibraryPage })));
+const Notifications = lazy(() => import("../features/notifications/Notifications").then((m) => ({ default: m.Notifications })));
+const ProcedureVersions = lazy(() => import("../features/procedures/ProcedureVersions").then((m) => ({ default: m.ProcedureVersions })));
 const Escalations = lazy(() => import("../features/escalation/Escalation").then((m) => ({ default: m.Escalations })));
 
 // Menu entries come from the account's access profile (server-defined per level); only icons and paths live here.
@@ -204,17 +207,21 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
               {sync.phase === "waiting_retry" && pending > 0 && <span className="hidden md:inline">· retrying automatically</span>}
             </div>
           </div>
+          <div className="flex shrink-0 items-center gap-2">
+          <NotificationBell />
           <Button variant="outline" className="min-h-11 shrink-0 px-3 md:px-4" onClick={() => void getSyncEngine().syncNow("manual")} disabled={sync.phase === "syncing"}
             aria-label={sync.phase === "syncing" ? "Syncing" : "Sync now"}>
             <RefreshCw className={cn(sync.phase === "syncing" && "animate-spin")} />
             <span className="hidden md:inline">{sync.phase === "syncing" ? "Syncing…" : "Sync now"}</span>
             <span className="grid min-w-5 place-items-center rounded-full bg-secondary px-1.5 text-2xs" aria-label="Changes waiting">{pending}</span>
           </Button>
+          </div>
         </header>
         <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/dashboard" element={<Dashboard user={user} />} />
             <Route path="/account" element={<MyAccount user={user} onSignOut={onLogout} />} />
+            <Route path="/notifications" element={<Notifications user={user} />} />
             {areas.has("analytics") && <Route path="/analytics" element={<Analytics user={user} />} />}
             {areas.has("reports") && <Route path="/reports" element={<Reports user={user} />} />}
             {areas.has("escalations") && <Route path="/escalations" element={<Escalations user={user} />} />}
@@ -226,6 +233,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             {seesFaults && <Route path="/faults" element={<Faults user={user} />} />}
             {areas.has("library") && <Route path="/library" element={<LibraryIndex user={user} />} />}
             {areas.has("library") && <Route path="/library/:code" element={<TypeLibraryPage user={user} />} />}
+            {(areas.has("library") || areas.has("approvals")) && <Route path="/procedures/:id/versions" element={<ProcedureVersions user={user} />} />}
             {areas.has("knowledge") && <Route path="/knowledge" element={<Knowledge user={user} />} />}
             {areas.has("approvals") && <Route path="/approvals" element={<ProcedureReview user={user} />} />}
             {areas.has("people") && <Route path="/people" element={<People user={user} />} />}

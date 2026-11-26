@@ -107,6 +107,7 @@ def test_a_write_up_can_add_to_an_existing_procedure_which_then_supersedes_it():
         "title": base["title"] + " (and check alignment after seal work)", "observed_symptom": "Won't start",
         "confirmed_cause": base["cause"], "diagnostic_procedure": base["checks"] + "\n4. After seal work, check coupling alignment.",
         "corrective_action": base["fix"], "safety": "", "builds_on_id": base["id"],
+        "change_reason": "Added the alignment check after seal work",
     })
     assert submitted.status_code == 200, submitted.text
     new = submitted.json()

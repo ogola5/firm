@@ -5,6 +5,7 @@ import { Alert } from "../../components/ui/alert";
 import { Badge, statusVariant } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { ChangesSincePrevious } from "./ProcedureVersions";
 import { Field, Textarea } from "../../components/ui/form-controls";
 import { EmptyState, Page, PageHeader } from "../../components/ui/page";
 import { errorMessage } from "../../lib/query";
@@ -72,6 +73,7 @@ export function ProcedureReview({ user }: { user: User }) {
                 <p className="m-0"><strong>Diagnostic procedure:</strong> {String(item.diagnostic_procedure)}</p>
                 <p className="m-0"><strong>Corrective action:</strong> {String(item.corrective_action)}</p>
                 <p className="m-0"><strong>Safety:</strong> {String(item.safety || "No additional notes supplied")}</p>
+                <ChangesSincePrevious id={id} version={Number(item.version)} />
                 <div className="grid gap-1.5 rounded-md bg-muted p-3">
                   <strong>Recorded diagnostic evidence</strong>
                   {diagnoses.map((entry, index) => (

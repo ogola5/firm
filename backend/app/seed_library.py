@@ -95,6 +95,7 @@ LIBRARY: list[dict] = [
              "safety": SAFE_ISOLATION},
             # A colleague's improvement: version 2 supersedes version 1.
             {"case": 1, "author": "engineer-instrumentation", "builds_on": 0,
+             "reason": "Water also came in along the cable: added the cable gland check and the drip loop.",
              "title": "Level reading drifts at night: water in the housing or through the cable gland",
              "checks": "1. Manual dip to confirm the tank is steady.\n2. Open the housing and check for water.\n3. Check the cable gland: water often enters along the cable.",
              "fix": "Dry the housing, replace the cover seal, re-make the cable gland with a drip loop, add a desiccant pack.",
@@ -228,7 +229,7 @@ def seed_library(db) -> None:
                 confirmed_cause=spec["cases"][proc["case"]]["cause"], diagnostic_procedure=proc["checks"],
                 corrective_action=proc["fix"], safety=proc["safety"],
                 version=(base.version + 1) if base else 1, lineage_id=base.lineage_id if base else proc_id,
-                previous_update_id=base.id if base else None, status="APPROVED",
+                previous_update_id=base.id if base else None, change_reason=proc.get("reason", ""), status="APPROVED",
                 created_at=approved_at - timedelta(days=1), updated_at=approved_at,
             ))
             db.flush()

@@ -78,6 +78,7 @@ export function ProcedureDraft({ user }: { user: User }) {
   });
   const [buildsOn, setBuildsOn] = useState<string | null>(null); // null: not chosen yet; "": a new procedure
   const chosen = matches.data?.find((item) => item.id === buildsOn);
+  const [changeReason, setChangeReason] = useState("");
 
   useEffect(() => {
     if (query.data && !draft) setDraft(draftFromContext(query.data.context, user.id));
@@ -102,7 +103,7 @@ export function ProcedureDraft({ user }: { user: User }) {
             .filter(Boolean).join("\n"),
           corrective_action: draft.fix.trim(),
           safety: draft.safety.trim(),
-          ...(buildsOn ? { builds_on_id: buildsOn } : {}),
+          ...(buildsOn ? { builds_on_id: buildsOn, change_reason: changeReason.trim() } : {}),
         }),
       });
       setSent(true);
@@ -156,6 +157,13 @@ export function ProcedureDraft({ user }: { user: User }) {
                   </span>
                 </label>
               ))}
+              {chosen && (
+                <div className="grid gap-1.5">
+                  <label htmlFor="change-reason" className="text-[15px] font-bold">What does your version add or change? <span className="block text-xs font-semibold text-muted-foreground">Shown to reviewers next to a side-by-side comparison</span></label>
+                  <Textarea id="change-reason" rows={2} value={changeReason} onChange={(event) => setChangeReason(event.target.value)}
+                    placeholder="e.g. it blocks again within a week if the upstream tank has sediment: added that check" />
+                </div>
+              )}
               <label className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 ${buildsOn === "" ? "border-primary bg-primary/5" : "border-border"}`}>
                 <input type="radio" name="builds-on" className="size-4" checked={buildsOn === ""} onChange={() => setBuildsOn("")} />
                 <strong>No, this is a different problem: start a new procedure</strong>
@@ -187,13 +195,14 @@ export function ProcedureDraft({ user }: { user: User }) {
                 })}
                 {error && <Alert variant="destructive">{error}</Alert>}
                 <div className="flex flex-wrap items-center gap-4 border-t border-border pt-5">
-                  <Button type="submit" size="lg" disabled={missing.length > 0 || sending || (Boolean(matches.data?.length) && buildsOn === null)}>
+                  <Button type="submit" size="lg" disabled={missing.length > 0 || sending || (Boolean(matches.data?.length) && buildsOn === null) || (Boolean(chosen) && changeReason.trim().length < 5)}>
                     {sending ? "Sending…" : chosen ? `Send as an improvement to ${chosen.reference}` : "Send for review"}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => { skipProcedure(user.id, faultId); navigate("/dashboard"); }}>Nothing new to add</Button>
                   <span className="text-sm text-muted-foreground">
                     {missing.length ? `Still needed: ${missing.join(", ")}.`
                       : matches.data?.length && buildsOn === null ? "First say whether it adds to an existing procedure (above)."
+                        : chosen && changeReason.trim().length < 5 ? "Say what your version adds or changes (above)."
                         : "Your Chief Technician checks it, then a Supervisor publishes it."}
                   </span>
                 </div>

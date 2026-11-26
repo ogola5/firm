@@ -24,7 +24,7 @@ from app.models import (
     Diagnosis, DrawingDifference, Equipment, EquipmentTypeOwner, ExpertSession, Fault, Intervention, KnowledgeEntry,
     KnowledgeReuse, KnowledgeReuseOutcome, ProcedureReview, ProcedureUpdate, User, utc_datetime, utcnow,
 )
-from app.services import accounts
+from app.services import accounts, notifications
 from app.services.access import role_key
 from app.services.catalogue import ACTION_TYPES, CAUSE_CATEGORIES, type_name, type_of
 from app.services.report_answers import answer_insights
@@ -356,6 +356,9 @@ def assign_owner(db: Session, user: User, code: str, owner_id: str) -> dict:
         row.owner_id, row.assigned_by_id, row.assigned_at = person.id, user.id, utcnow()
     else:
         db.add(EquipmentTypeOwner(equipment_type=code, owner_id=person.id, assigned_by_id=user.id, assigned_at=utcnow()))
+    notifications.notify(db, [person], "knowledge", f"You now keep the knowledge for {type_name(code)}",
+                         f"Named by {user.display_name}. Check what is fading and withdraw what no longer works.", f"/library/{code}",
+                         exclude=user.id)
     accounts.send_mail(db, person.email, f"You now keep the knowledge for {type_name(code)}",
                        f"Hello {person.display_name},\n\n{user.display_name} has named you the knowledge owner for {type_name(code)}.\n"
                        "You will hear when procedures for this equipment are written or revised. Please keep its page current: "
@@ -382,6 +385,8 @@ def withdraw(db: Session, user: User, update_id: str, reason: str) -> dict:
                            decision="WITHDRAWN", comments=reason))
     author = db.get(User, update.author_id)
     if author and author.id != user.id:
+        notifications.notify(db, [author], "knowledge", f"Withdrawn: {update.title}",
+                             f"{user.display_name}: {reason}. It stays in the history and still counts for you.", f"/library/{code}")
         accounts.send_mail(db, author.email, f"{update.reference} has been withdrawn",
                            f"Hello {author.display_name},\n\n{user.display_name} withdrew \"{update.title}\": {reason}\n"
                            "It stays in the history and still counts for you; it is no longer shown as current guidance.")
@@ -438,6 +443,9 @@ def notify_owner(db: Session, update: ProcedureUpdate, what: str) -> None:
         return
     person = db.get(User, owner["id"])
     author = db.get(User, update.author_id)
+    notifications.notify(db, [person], "knowledge", f"{what}: {update.title}",
+                         f"{author.display_name if author else 'A colleague'} · {type_name(code)}, version {update.version}",
+                         f"/library/{code}")
     accounts.send_mail(db, person.email, f"{what}: {update.reference} ({type_name(code)})",
                        f"Hello {person.display_name},\n\n{author.display_name if author else 'A colleague'} — {what.lower()}: "
                        f"\"{update.title}\" (version {update.version}).\n{settings.app_url.rstrip('/')}/library/{code}")
@@ -454,6 +462,8 @@ def thank_author(db: Session, reuse: KnowledgeReuse, outcome: str) -> None:
     if not author:
         return
     tag = fault.equipment.tag if fault and fault.equipment_confirmed and fault.equipment else "a breakdown"
+    notifications.notify(db, [author], "recognition", f"Your procedure helped {colleague.display_name if colleague else 'a colleague'}",
+                         f"They fixed {tag} with {update.reference} \"{update.title}\" and confirmed it worked. Thank you.", "/recognition")
     accounts.send_mail(db, author.email, f"Your procedure helped {colleague.display_name if colleague else 'a colleague'}",
                        f"Hello {author.display_name},\n\n{colleague.display_name if colleague else 'A colleague'} used "
                        f"{update.reference} \"{update.title}\" on {tag} and confirmed it worked. Thank you: this is exactly "
@@ -541,3 +551,50 @@ def search_results(db: Session, query: str, limit: int = 25) -> list[dict]:
             rows.append({**base, "title": f"{entry.reference}: {entry.title}", "type_code": code,
                          "link": f"/library/{code}" if code else "/knowledge"})
     return rows
+
+# --- versions of one procedure, for side-by-side comparison --------------------------------------------
+
+COMPARED_FIELDS = [("title", "Title"), ("observed_symptom", "When you see"), ("confirmed_cause", "Cause"),
+                   ("diagnostic_procedure", "Check first"), ("corrective_action", "Fix"), ("safety", "Safety")]
+PUBLIC = (CURRENT, "SUPERSEDED", "WITHDRAWN")
+
+
+def can_see_draft(user: User, update: ProcedureUpdate) -> bool:
+    """Unpublished versions: the author, the section's reviewers and supervisors."""
+    key = role_key(user)
+    return (update.author_id == user.id or key in ("supervisor", "system_administrator", "maintenance_manager")
+            or (key in ("technician_ct", "chief_engineer") and user.section == update.section))
+
+
+def lineage_versions(db: Session, user: User, update_id: str) -> dict:
+    """Every version of a procedure: content, author, when, why it changed, who approved it, review notes."""
+    start = db.get(ProcedureUpdate, update_id)
+    if not start:
+        raise HTTPException(status_code=404, detail="Procedure not found")
+    versions = db.scalars(select(ProcedureUpdate).where(ProcedureUpdate.lineage_id == start.lineage_id)
+                          .order_by(ProcedureUpdate.version, ProcedureUpdate.created_at)).all()
+    visible = [item for item in versions if item.status in PUBLIC or can_see_draft(user, item)]
+    if start not in visible:
+        raise HTTPException(status_code=404, detail="Procedure not found")
+    rows = []
+    for item in visible:
+        reviews = db.scalars(select(ProcedureReview).where(ProcedureReview.procedure_update_id == item.id)
+                             .order_by(ProcedureReview.created_at)).all()
+        published = next((review for review in reviews if review.decision == "SUPERVISOR_APPROVED"), None)
+        technical = next((review for review in reviews if review.decision == "TECHNICAL_APPROVED"), None)
+        author = db.get(User, item.author_id)
+        source = db.get(Fault, item.fault_id)
+        rows.append({
+            "id": item.id, "reference": item.reference, "version": item.version, "status": item.status,
+            "author": author.display_name if author else "", "created_at": _iso(item.created_at),
+            "change_reason": item.change_reason or "",
+            "source_fault": {"id": source.id, "reference": source.reference} if source else None,
+            "technical_review_by": technical.reviewer.display_name if technical and technical.reviewer else "",
+            "published_by": published.reviewer.display_name if published and published.reviewer else "",
+            "published_at": _iso(published.created_at) if published else None,
+            "reviews": [{"decision": review.decision, "comments": review.comments, "created_at": _iso(review.created_at),
+                         "by": review.reviewer.display_name if review.reviewer else ""} for review in reviews],
+            "fields": {key: getattr(item, key) or "" for key, _ in COMPARED_FIELDS},
+        })
+    return {"lineage_id": start.lineage_id, "field_labels": dict(COMPARED_FIELDS), "versions": rows,
+            "equipment_type": procedure_type(db, start)}

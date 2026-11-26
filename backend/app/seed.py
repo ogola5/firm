@@ -71,6 +71,14 @@ def demo_email(username: str) -> str:
 
 
 def seed_database():
+    """Load the illustrative demonstration dataset (no notifications for demo history)."""
+    from app.services.notifications import quiet
+
+    with quiet():
+        _seed_database()
+
+
+def _seed_database():
     """Load the illustrative demonstration dataset into an empty database.
 
     Safe to call repeatedly: data is only created when no users exist.

@@ -37,6 +37,9 @@ def add_event(db: Session, fault_id: str, event_type: str, actor_id: str, payloa
         payload=json.dumps(payload, default=str),
         created_at=created_at or utcnow(),
     ))
+    # Who should hear about it is decided just before the save commits (services/notifications.py).
+    from app.services.notifications import queue_event
+    queue_event(db, fault_id, event_type, actor_id, payload)
 
 
 def audit_user_change(db: Session, actor_id: str, action: str, target: User, details: dict) -> None:

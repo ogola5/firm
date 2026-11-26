@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Fault, FaultAssignment, User, utc_datetime, utcnow
-from app.services import accounts
+from app.services import accounts, notifications
 from app.services.access import current_assignment, role_key, user_region
 from app.services.audit import add_event
 
@@ -82,6 +82,8 @@ def escalate(db: Session, fault: Fault, level: int, reason: str, actor_id: str =
         "level": level, "to": to, "reason": reason, "automatic": actor_id == SYSTEM_ACTOR,
         "notified": [person.display_name for person in people],
     }, created_at=now)
+    notifications.notify(db, people, "escalation", f"Escalated to you ({to}): {fault.reference}",
+                         f"{place(fault)}. Reason: {reason}", f"/faults?mode=history&fault={fault.id}", exclude=actor_id)
     for person in people:
         accounts.send_mail(db, person.email, f"Escalated to you ({to}): {fault.reference}",
                            f"Hello {person.display_name},\n\n{place(fault)}\nProblem: {fault.symptom}\nReason: {reason}\n\n"
@@ -179,6 +181,8 @@ def add_guidance(db: Session, user: User, fault: Fault, note: str) -> None:
     assignment: FaultAssignment | None = current_assignment(fault)
     if assignment and assignment.assigned_user:
         people.append(assignment.assigned_user)
+    notifications.notify(db, people, "escalation", f"Guidance from the {LEVELS[fault.escalation_level]}: {fault.reference}",
+                         f"{user.display_name}: {note}", f"/faults?mode=history&fault={fault.id}", exclude=user.id)
     for person in people:
         accounts.send_mail(db, person.email, f"Guidance from the {LEVELS[fault.escalation_level]}: {fault.reference}",
                            f"Hello {person.display_name},\n\n{place(fault)}\n{user.display_name}: {note}")

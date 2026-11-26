@@ -198,7 +198,7 @@ function ProcedureBlock({ card, canWithdraw, onChanged }: { card: ProcedureCard;
       <div className="text-xs text-muted-foreground">
         By {card.contributors.join(", ") || card.author}
         {card.source_fault ? <> · from <Link to={`/faults?mode=history&fault=${card.source_fault.id}`}>{card.source_fault.reference}</Link></> : null}
-        {card.history.length > 1 && <> · versions: {card.history.map((item) => `v${item.version} ${item.status.toLowerCase()}`).join(", ")}</>}
+        {card.history.length > 1 && <> · <Link to={`/procedures/${card.id}/versions`} className="font-semibold">compare {card.history.length} versions</Link></>}
       </div>
       {canWithdraw && !withdrawing && <Button variant="ghost" size="sm" className="w-fit" onClick={() => setWithdrawing(true)}>No longer valid…</Button>}
       {withdrawing && (

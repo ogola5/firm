@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.db import engine
 from app.routers import (
     knowledge_library,
+    notifications,
     accounts,
     analytics,
     assignments,
@@ -102,7 +103,7 @@ def health() -> dict:
 
 
 for module in (
-    auth, accounts, people, team, reports, recognition, library, knowledge_library, expertise, equipment, faults, investigation, jobs, procedures,
+    auth, accounts, people, team, reports, recognition, library, knowledge_library, notifications, expertise, equipment, faults, investigation, jobs, procedures,
     assignments, attachments, knowledge, intelligence, analytics, insights, integrations, sync,
 ):
     app.include_router(module.router)
