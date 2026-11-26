@@ -1,15 +1,15 @@
 /**
  * Scenarios 1–3 (MASTER BUILD PROMPT §16), driven through the desk workflow:
- *   1. First-time fault: control-room report → Systems Automation → Electrical →
- *      job card → visit write-up with real times → sign-off → Operations confirms
- *      → procedure drafted from the write-up → technical review → publication.
+ *   1. First-time fault: control-room report straight to Electrical → anyone free takes it →
+ *      job card → visit write-up with real times → working again → Operations confirms →
+ *      the Chief Technician checks the write-up → procedure drafted → technical review → publication.
  *   2. Recurring fault: the same problem again shows "seen before", earlier
  *      attempts, ranked causes and the approved procedure, which is reused.
  *   3. Failed intervention: the failed and successful attempts both remain and
  *      the supervisor sees the complete investigation before publishing.
  */
 import { expect, test } from "@playwright/test";
-import { apiGet, apiToken, cardWithHeading, equipmentIn, openFault, showTab, signIn, userId, type Row } from "./helpers";
+import { apiGet, apiToken, cardWithHeading, equipmentIn, openFault, showTab, signIn, type Row } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -47,43 +47,23 @@ test("Scenario 1 + 3: first-time fault to published knowledge, keeping the faile
   // Operations reports from the control room in four answers.
   await signIn(page, "operations");
   await reportFromControlRoom(page, String(equipment.tag), `SCADA: ${String(equipment.tag)} TRIP ${run}`);
+  // Who should come: the section that looks after it, chosen for the reporter.
+  await expect(page.getByRole("group", { name: "Who should come" }).getByRole("button", { name: /^Electrical/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Submit report" }).click();
   await expect(page.getByRole("heading", { name: /Reported · KPC-DMO-\d+/ })).toBeVisible();
+  await expect(page.locator("p", { hasText: "Who has it now:" })).toContainText("Electrical");
   await page.getByRole("link", { name: "Open this report" }).click();
   faultId = new URL(page.url()).searchParams.get("fault")!;
   expect(faultId).toBeTruthy();
 
-  // Systems Automation responds first, then hands its findings to Electrical.
-  await signIn(page, "automation");
-  await openFault(page, faultId);
-  await page.getByRole("button", { name: "Take this job" }).click();
-  await expect(page.getByText("You have taken this job.")).toBeVisible();
-  await page.getByLabel("Next section", { exact: true }).selectOption("Electrical");
-  await page.getByLabel("What did your section find?").fill("SCADA command reaches the drive; no response.");
-  await page.getByLabel("What should the next section do?").fill("Check the drive supply and terminals.");
-  await page.getByRole("button", { name: "Send with findings" }).click();
-  await expect(page.getByText("Findings handed to Electrical")).toBeVisible();
-
-  await signIn(page, "ct-systems-automation");
-  await openFault(page, faultId);
-  await page.getByRole("button", { name: "Approve escalation" }).click();
-  await expect(page.getByText("Chief technical review approved.")).toBeVisible();
-
-  const technicianId = await userId(request, "st-electrical");
-  await signIn(page, "ct-electrical");
-  await openFault(page, faultId);
-  await page.getByLabel("Assigned technician").selectOption(technicianId);
-  await page.getByLabel("Expected response by").fill("2030-01-15T10:00");
-  await page.getByRole("button", { name: "Assign work" }).click();
-  await expect(page.getByText("Section assignment and response target saved.")).toBeVisible();
-
-  // The technician takes the job from My jobs and prints the job card.
+  // Straight to Electrical (it looks after the drive): no Systems Automation step, no waiting for allocation.
+  // Anyone free in the workshop takes it from My jobs and prints the job card.
   await signIn(page, "st-electrical");
   await expect(page.getByRole("heading", { name: "My jobs" })).toBeVisible();
   // This job's row, identified by its own links (other jobs may be on the same equipment).
   const jobRow = (section: string) => page.getByRole("region", { name: section }).locator("article")
     .filter({ has: page.locator(`a[href="/jobs/${faultId}/card"]`) });
-  await jobRow("Assigned to you, not visited yet").getByRole("button", { name: "I'm taking this job" }).click();
+  await jobRow("New: nobody has taken it yet").getByRole("button", { name: "Take this job" }).click();
   await expect(page.getByText(`You have taken ${String(equipment.tag)}`)).toBeVisible();
   await jobRow("To write up").getByRole("link", { name: "Print job card" }).click();
   await expect(page.getByRole("article", { name: "Job card" })).toContainText(`SCADA: ${String(equipment.tag)} TRIP ${run}`);
@@ -113,23 +93,25 @@ test("Scenario 1 + 3: first-time fault to published knowledge, keeping the faile
   await page.getByRole("group", { name: "Differs from the drawing" }).getByRole("button", { name: "Yes" }).click();
   await page.getByLabel("What is different?").fill("Supply on terminal X4; drawing shows X1");
   await page.getByLabel(/Parts and materials used/).fill("1 x terminal block");
-  await page.getByRole("button", { name: "Save and ask Chief to sign off" }).click();
-  await expect(page.getByRole("heading", { name: "Sent to your Chief Technician for sign-off" })).toBeVisible();
+  await page.getByRole("button", { name: "Save: it's working again" }).click();
+  await expect(page.getByRole("heading", { name: "Working again: Operations will confirm" })).toBeVisible();
 
-  // Chief signs off; Operations confirms service.
+  // Operations confirms at once: nobody waits for a sign-off.
+  await signIn(page, "operations");
+  await openFault(page, faultId);
+  await page.getByRole("button", { name: "Yes, it works: close it" }).click();
+  await expect(page.getByText("Operational restoration confirmed")).toBeVisible();
+
+  // The Chief Technician checks the write-up afterwards, every attempt included.
   await signIn(page, "ct-electrical");
   await openFault(page, faultId);
   await showTab(page, "History");
   const log = cardWithHeading(page, "Checks and fixes tried");
   await expect(log.getByText("FAILED intervention")).toBeVisible();
   await expect(log.getByText("SUCCESS intervention")).toBeVisible();
-  await page.getByRole("region", { name: "Next step" }).getByRole("button", { name: "Review and sign off" }).click();
-  await page.getByRole("button", { name: "Approve technical completion" }).click();
-  await expect(page.getByText("Chief technical review approved.")).toBeVisible();
-  await signIn(page, "operations");
-  await openFault(page, faultId);
-  await page.getByRole("button", { name: "Yes, it works: close it" }).click();
-  await expect(page.getByText("Operational restoration confirmed")).toBeVisible();
+  await page.getByRole("region", { name: "Next step" }).getByRole("button", { name: "Check the write-up" }).click();
+  await page.getByRole("button", { name: "Write-up is good" }).click();
+  await expect(page.getByText("Write-up approved.")).toBeVisible();
 
   // The procedure is drafted from the write-up: check it and send it.
   await signIn(page, "st-electrical");
@@ -177,7 +159,7 @@ test("Scenario 2: a recurring fault surfaces history and reuses the approved pro
   await page.getByRole("link", { name: "Open this report" }).click();
   const repeatId = new URL(page.url()).searchParams.get("fault")!;
 
-  await signIn(page, "automation");
+  await signIn(page, "pt-electrical");
   await openFault(page, repeatId);
   await expect(page.getByText(/Seen before on this equipment: \d+ earlier report/)).toBeVisible();
   await showTab(page, "What we know");

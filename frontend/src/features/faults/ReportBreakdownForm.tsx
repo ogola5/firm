@@ -20,8 +20,7 @@ import { queueAttachment, queueFaultReport } from "../../offline/outbox";
 import {
   ACTIONS, composeReport, looksHazardous, missingFollowUps, PROBLEMS, STATES, visibleFollowUps, type Answers,
 } from "./reportQuestions";
-
-const TECHNICAL_ROLES = ["technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"];
+import { ALL_SECTIONS } from "./detail/context";
 
 type SeenVia = "SCADA" | "SITE_WALK";
 type When = "now" | "15m" | "1h" | "custom";
@@ -167,10 +166,11 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
   const [previews, setPreviews] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [done, setDone] = useState<(ReportOutcome & { summary: string }) | null>(null);
+  const [done, setDone] = useState<(ReportOutcome & { summary: string; section: string }) | null>(null);
+  // Who should come: straight to that section. Defaults to the section that looks after the equipment.
+  const [sendTo, setSendTo] = useState("");
 
   const text = useDebounced(query.trim(), 200);
-  const sectionScoped = TECHNICAL_ROLES.includes(user.role);
   const matches = useQuery({
     queryKey: ["equipment", "search", text],
     enabled: text.length >= 2,
@@ -178,7 +178,8 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
       try {
         return await api<DataRow[]>(`/api/v1/equipment?search=${encodeURIComponent(text)}`);
       } catch (reason) {
-        if (isOfflineError(reason)) return searchCachedEquipment(text, sectionScoped ? user.section : undefined);
+        // Any section's equipment: whoever answers the workshop phone can log it.
+        if (isOfflineError(reason)) return searchCachedEquipment(text);
         throw reason;
       }
     },
@@ -197,6 +198,8 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
   useEffect(() => () => previews.forEach((url) => URL.revokeObjectURL(url)), [previews]);
 
   const hasEquipment = Boolean(chosen) || query.trim().length > 0;
+  const lookedAfterBy = chosen ? String(chosen.section || "") : "";
+  const section = sendTo || (ALL_SECTIONS.includes(lookedAfterBy) ? lookedAfterBy : "Systems Automation");
   const missing = useMemo(() => [
     !hasEquipment && "the equipment",
     !problem && "what is wrong",
@@ -225,6 +228,7 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
 
   function changeQuery(value: string) {
     setQuery(value);
+    setSendTo("");
     setPickedId(null);
     setConfirmed(false);
     setUnidentified(false);
@@ -276,6 +280,7 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
       observed_at: observedAt(when, whenTime),
       safety_hazard: hazard === "yes",
       callback: callback.trim(),
+      send_to: section,
       report_details: {
         problem,
         answers: Object.fromEntries(Object.entries(answers).filter(([key]) => asked.includes(key))),
@@ -288,7 +293,7 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
     const priority = hazard === "yes" ? "Critical (safety)" : effectPicked.severity;
     const summary = `${reportLines.filter((line) => !line.startsWith("⚠")).slice(0, 2).join(" ")} Priority ${priority}.`;
     try {
-      const created = await api<{ id: string; reference: string }>("/api/v1/faults", { method: "POST", body: JSON.stringify(payload) });
+      const created = await api<{ id: string; reference: string; assigned_section?: string }>("/api/v1/faults", { method: "POST", body: JSON.stringify(payload) });
       const failed: string[] = [];
       for (const file of files) {
         const form = new FormData();
@@ -300,7 +305,7 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
         }
       }
       const message = `Reported · ${created.reference}${failed.length ? `. Not attached: ${failed.join(", ")}` : ""}`;
-      setDone({ faultId: created.id, message, offline: false, summary });
+      setDone({ faultId: created.id, message, offline: false, summary, section: created.assigned_section || section });
       onReported?.({ faultId: created.id, message, offline: false });
     } catch (reason) {
       if (!isOfflineError(reason)) {
@@ -310,7 +315,7 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
         const { faultId } = await queueFaultReport(user, payload, { equipment_tag: isConfirmed ? chosen?.tag : undefined });
         for (const file of files) await queueAttachment(user.id, faultId, file);
         const message = `${OFFLINE_SAVED} The reference number is given when it reaches the server.`;
-        setDone({ faultId, message, offline: true, summary });
+        setDone({ faultId, message, offline: true, summary, section });
         onReported?.({ faultId, message, offline: true });
       }
     } finally {
@@ -329,10 +334,10 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
           {done.offline && <p className="m-0">{done.message}</p>}
           <p className="m-0 text-base">{done.summary}</p>
           {hazard === "yes" && (
-            <Alert variant="destructive">Marked SAFETY: it is at the top of Systems Automation's list. Follow the site emergency procedure and inform the shift supervisor now if you have not.</Alert>
+            <Alert variant="destructive">Marked SAFETY: it is at the top of every list in the workshop. Follow the site emergency procedure and inform the shift supervisor now if you have not.</Alert>
           )}
           <p className="m-0 text-muted-foreground">
-            <strong className="text-foreground">Who has it now:</strong> Systems Automation. They hand it to the right section if needed. Follow it under <strong className="text-foreground">My reports</strong>.
+            <strong className="text-foreground">Who has it now:</strong> {done.section}. Anyone free there can take it straight away. Follow it under <strong className="text-foreground">My reports</strong>.
           </p>
           <div className="flex flex-wrap gap-3 pt-2">
             <Button type="button" onClick={reset}>Report another fault</Button>
@@ -367,7 +372,7 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
               </div>
             )}
             {chosen && !confirmed && (
-              <span className="text-sm text-muted-foreground">Not sure? You can still submit. Systems Automation will confirm the equipment.</span>
+              <span className="text-sm text-muted-foreground">Not sure? You can still submit. Whoever takes the job confirms the equipment.</span>
             )}
 
             {(showOthers || (text.length >= 2 && !chosen && !unidentified && !matches.isLoading)) && (
@@ -389,13 +394,22 @@ export function ReportBreakdownForm({ user, onReported, initialEquipment = "" }:
                   onClick={() => { setUnidentified(true); setPickedId(null); setConfirmed(false); setShowOthers(false); }}
                   className="min-h-12 rounded-lg border border-dashed border-input bg-card px-4 py-2 text-left hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  Not sure which one: send my description to Systems Automation to identify
+                  Not sure which one: send my description to be identified
                 </button>
               </div>
             )}
             {unidentified && (
               <div className="rounded-lg border border-dashed border-input px-4 py-3 text-[15px]">
-                <strong>Equipment to be identified.</strong> Systems Automation will confirm which asset this is. Your description is kept as you typed it.
+                <strong>Equipment to be identified.</strong> Whoever takes the job confirms which asset this is. Your description is kept as you typed it.
+              </div>
+            )}
+            {hasEquipment && (
+              <div className="grid gap-1.5 pt-1">
+                <span className="text-sm font-bold">Who should come?</span>
+                <ChoiceButtons label="Who should come" options={ALL_SECTIONS.map((value) => ({
+                  value, label: value, hint: value === lookedAfterBy ? "Looks after this equipment" : value === "Systems Automation" && !lookedAfterBy ? "Not sure: they sort it" : undefined,
+                }))} value={section} onChange={setSendTo} />
+                <span className="text-sm text-muted-foreground">It goes straight to {section}. Anyone free there can take it.</span>
               </div>
             )}
             {chosen && seenBefore > 0 && (

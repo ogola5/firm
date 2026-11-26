@@ -164,7 +164,7 @@ def workflow_summary(faults: list[Fault], db: Session) -> dict:
             suggested_section = assignment_payload.get("suggested_section") or (fault.equipment.section if fault.equipment else "")
             assigned_section = assignment_payload.get("assigned_section") or section
             if (
-                assignment_payload.get("routing_strategy") != "SYSTEMS_AUTOMATION_FIRST"
+                assignment_payload.get("routing_strategy") not in ("SYSTEMS_AUTOMATION_FIRST", "REPORTER_CHOSE")
                 and suggested_section
                 and assigned_section != suggested_section
             ):

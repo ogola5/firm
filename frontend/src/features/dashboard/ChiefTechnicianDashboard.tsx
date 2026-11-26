@@ -44,7 +44,7 @@ function FaultQueue({ rows, empty }: { rows: DataRow[]; empty: string }) {
               {String(fault.severity) === "Critical" && <Badge variant="destructive">Critical</Badge>}
             </span>
             <small className="text-muted-foreground">
-              {fault.awaiting_review ? "Chief decision required" : fault.awaiting_assignment ? "Awaiting assignment" : `Assigned to ${String(fault.assigned_user_name || fault.assigned_section)}`}
+              {fault.handover_review ? "Hand-over to approve" : fault.write_up_to_check ? "Write-up to check" : fault.awaiting_assignment ? "Nobody has taken it yet" : `Taken by ${String(fault.assigned_user_name || fault.assigned_section)}`}
             </small>
           </span>
         </Link>
@@ -94,7 +94,7 @@ export function ChiefTechnicianDashboard({ user }: { user: User }) {
     <PageHeader
       eyebrow={`${user.section} · technical supervision`}
       title="Section oversight"
-      description="Allocate work, review technical decisions and monitor your section's full fault lifecycle."
+      description="Anyone free takes new work. You see who took what, check write-ups after the fix, and step in when nobody has taken something."
     />
   );
   if (!workspace.data) {
@@ -111,7 +111,8 @@ export function ChiefTechnicianDashboard({ user }: { user: User }) {
   const counts = workspace.data.counts || {};
   const active = (workspace.data.faults || []).filter((fault) => !["RESTORED", "CLOSED"].includes(String(fault.status)));
   const sectionFaults = active.filter((fault) => fault.assigned_section === user.section).sort(prioritize);
-  const reviewFaults = active.filter((fault) => fault.awaiting_review).sort(prioritize);
+  // Write-ups are checked after the fix, so working and closed faults can be waiting for a check too.
+  const reviewFaults = (workspace.data.faults || []).filter((fault) => fault.awaiting_review).sort(prioritize);
   const escalatedFaults = active.filter((fault) => fault.escalated).sort(prioritize);
 
   return (
@@ -122,7 +123,7 @@ export function ChiefTechnicianDashboard({ user }: { user: User }) {
       {saveCompetencies.isError && <Alert variant="destructive" className="mb-3">{errorMessage(saveCompetencies.error, "Competencies could not be saved.")}</Alert>}
 
       <ol className="m-0 mb-4 flex list-none flex-wrap items-center gap-1 rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground" aria-label="Fault responsibility flow">
-        {["Operations reports", "Chief assigns", "ST / PT investigate", "Chief reviews", "Operations confirms"].map((step, index) => (
+        {["Operations reports to a section", "Anyone free takes it", "Working again", "Operations confirms", "You check the write-up"].map((step, index) => (
           <li key={step} className="flex items-center gap-1">
             {index > 0 && <ChevronRight className="size-4" aria-hidden />}
             <span className={index % 2 ? "font-bold text-ring" : ""}>{step}</span>
@@ -131,19 +132,19 @@ export function ChiefTechnicianDashboard({ user }: { user: User }) {
       </ol>
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Awaiting assignment" value={counts.awaiting_assignment || 0} />
+        <Stat label="Not taken yet" value={counts.awaiting_assignment || 0} />
         <Stat label={`Active in ${user.section}`} value={counts.active_section || 0} />
         <Stat label="Under investigation" value={counts.investigating || 0} />
-        <Stat label="Awaiting my review" value={counts.awaiting_review || 0} />
+        <Stat label="To check" value={counts.awaiting_review || 0} />
         <Stat label="Overdue" value={counts.overdue || 0} />
         <Stat label="Critical unresolved" value={counts.critical || 0} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <QueueCard title="Needs Chief review" description="Escalations and technical completion requests awaiting your decision." rows={reviewFaults} empty="No review decisions are waiting." />
+        <QueueCard title="To check" description="Write-ups to check (already working again) and hand-overs to another section." rows={reviewFaults} empty="Nothing to check." />
         <QueueCard
           title="Active section work"
-          description="Unassigned, allocated and in-progress faults in your section."
+          description="Not taken yet, taken and in progress in your section."
           rows={sectionFaults}
           empty="No active faults are assigned to your section."
           footer={<Button variant="link" asChild className="mt-2"><Link to="/faults">Browse section faults</Link></Button>}

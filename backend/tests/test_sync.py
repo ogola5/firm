@@ -131,7 +131,7 @@ def test_concurrent_offline_edits_are_held_for_reconciliation():
     # Re-applying still fails because the job belongs to the supervisor; it stays open.
     retry = client.post(f"/api/v1/sync/conflicts/{stale_ack['event_id']}/resolve", headers=automation, json={"decision": "APPLY"})
     assert retry.status_code == 409
-    assert "owned by another employee" in retry.json()["detail"]
+    assert "Already taken by" in retry.json()["detail"]
 
     assert client.post(
         f"/api/v1/sync/conflicts/{stale_ack['event_id']}/resolve", headers=automation, json={"decision": "DISCARD"},

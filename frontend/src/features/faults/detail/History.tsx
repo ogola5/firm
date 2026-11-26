@@ -15,6 +15,17 @@ function Entry({ className, children }: { className?: string; children: React.Re
 
 const failedStyle = "border-l-[3px] border-l-destructive bg-destructive/5 pl-2.5";
 
+/** Timeline entries in plain words; anything else is shown tidied. */
+const EVENT_WORDS: Record<string, string> = {
+  FAULT_REPORTED: "Reported", FAULT_ASSIGNED: "Sent to a section", FAULT_TRIAGED: "Sorted", FAULT_ACKNOWLEDGE: "Taken",
+  TAKEN_FROM_OTHER_SECTION: "Taken by someone free in another section", HELPER_ADDED: "Called someone in to help",
+  HELPER_REMOVED: "Helper no longer on the job", FAULT_ON_SITE: "On site", FAULT_DIAGNOSE: "Cause found",
+  FAULT_RESTORE: "Working again", TECHNICAL_COMPLETION_SUBMITTED_FOR_REVIEW: "Write-up sent to the Chief Technician",
+  TECHNICAL_COMPLETION_APPROVED: "Write-up checked", TECHNICAL_COMPLETION_RETURNED: "More detail asked for",
+  WRITE_UP_ADDED: "Added to the write-up", FAULT_OPERATOR_CONFIRMED: "Operations confirmed it works", FAULT_CLOSE: "Closed",
+  FAULT_OPERATOR_REJECTED_RESTORATION: "Operations says it is not fixed", VISIT_RECORDED: "Visit written up",
+};
+
 export function RankedCauses() {
   const { context } = useDetail();
   if (!context.ranked_causes?.length) return null;
@@ -26,7 +37,7 @@ export function RankedCauses() {
             <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">From earlier faults</p>
             <CardTitle className="mt-1">Most likely causes</CardTitle>
           </div>
-          <span className="text-sm text-muted-foreground">{context.repeat_routing?.seen_before ? "Repeat history shared with Systems Automation first" : "Systems Automation first response"}</span>
+          <span className="text-sm text-muted-foreground">{context.repeat_routing?.seen_before ? "This equipment has failed before: start here" : "From similar faults"}</span>
         </div>
       </CardHeader>
       <CardContent>
@@ -177,7 +188,7 @@ export function InvestigationLog({ onRevise }: { onRevise: (revision: Revision) 
         <CardContent>
           {context.timeline.map((item) => (
             <Entry key={String(item.id)}>
-              <strong>{String(item.event_type).replace(/_/g, " ")}</strong>
+              <strong>{EVENT_WORDS[String(item.event_type)] ?? String(item.event_type).replace(/_/g, " ")}</strong>
               <small className="text-muted-foreground">{String(item.actor_name)} · {when(item.created_at)}</small>
             </Entry>
           ))}

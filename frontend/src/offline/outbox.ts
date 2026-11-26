@@ -145,7 +145,7 @@ const ACTION_STATUS: Record<string, string> = {
   acknowledge: "ACKNOWLEDGED",
   on_site: "ON_SITE",
   diagnose: "DIAGNOSED",
-  restore: "AWAITING_CHIEF_REVIEW",
+  restore: "RESTORED", // working again at once; the Chief Technician checks the write-up later
 };
 
 async function currentLocalStatus(faultId: string): Promise<string | undefined> {
@@ -178,7 +178,7 @@ export async function queueFaultReport(actor: { id: string; display_name?: strin
     severity: payload.severity,
     equipment_id: payload.equipment_id ?? null,
     equipment_tag: extra.equipment_tag ?? payload.reported_equipment_text ?? "Asset not identified",
-    assigned_section: "Systems Automation",
+    assigned_section: payload.send_to || extra.section || "Systems Automation",
     reporter_id: actor.id,
     created_at: event.client_timestamp,
     offline_pending: true,
@@ -256,7 +256,7 @@ export async function queueOperatorUpdate(actor: { id: string; display_name?: st
 /** A whole site visit written up offline; the server applies it with the same rules. */
 export async function queueVisit(actor: { id: string }, faultId: string, visit: Row & { request_signoff?: boolean }) {
   const event = await enqueue({ eventType: "VISIT_RECORDED", actorId: actor.id, faultId, payload: visit });
-  await updateLocalFault(faultId, { status: visit.request_signoff ? "AWAITING_CHIEF_REVIEW" : "DIAGNOSED", visit_pending_sync: true });
+  await updateLocalFault(faultId, { status: visit.request_signoff ? "RESTORED" : "DIAGNOSED", visit_pending_sync: true });
   return event;
 }
 

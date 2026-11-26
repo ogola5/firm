@@ -24,7 +24,7 @@ LEVELS = [
     ("st-electrical", "ST", "my_jobs", {"home", "faults", "equipment", "knowledge"}, {"analytics", "approvals", "people"}, "Electrical section"),
     ("pt-mechanical", "PT", "my_jobs", {"home", "faults"}, {"analytics", "approvals"}, "Mechanical section"),
     ("ct-electrical", "CT", "section_oversight", {"home", "analytics", "approvals"}, {"people"}, "Electrical section"),
-    ("assistant-engineer-instrumentation", "AE", "my_jobs", {"home", "faults"}, {"analytics", "approvals"}, "Instrumentation section"),
+    ("assistant-engineer-systems-automation", "AE", "my_jobs", {"home", "faults"}, {"analytics", "approvals"}, "Systems Automation section"),
     ("engineer-electrical", "E", "my_jobs", {"home", "faults"}, {"analytics", "approvals"}, "Electrical section"),
     ("senior-engineer-electrical", "SE", "my_jobs", {"home", "faults"}, {"analytics", "approvals"}, "Electrical section"),
     ("chief-engineer-electrical", "CE", "section_engineering", {"home", "analytics", "approvals", "faults"}, {"people"}, "Electrical section"),
@@ -57,7 +57,8 @@ def test_abilities_follow_the_level():
         return set(sign_in(username)["user"]["access"]["can"])
     assert {"jobs.allocate", "work.signoff", "procedures.review", "analytics.section"} <= can("ct-electrical")
     assert "jobs.allocate" not in can("pt-electrical") and "jobs.work" in can("pt-electrical")
-    assert "faults.restore" in can("senior-engineer-electrical") and "faults.restore" not in can("engineer-electrical")
+    # Whoever is on the job can say it works again; Operations confirm it.
+    assert "faults.restore" in can("senior-engineer-electrical") and "faults.restore" in can("engineer-electrical")
     assert {"analytics.section", "procedures.review", "jobs.work"} <= can("chief-engineer-electrical")
     assert "analytics.org" in can("maintenance-manager")
     assert can("ceo") & {"faults.read", "analytics.org", "similar.view"} == set()

@@ -29,8 +29,10 @@ function TriageForm() {
     enabled: unconfirmed && query.length >= 2,
     queryFn: () => api<DataRow[]>(`/api/v1/equipment?search=${encodeURIComponent(query)}`),
   });
-  const options = (can.activeAssignment?.section === "Systems Automation" ? ["Systems Automation"] : ALL_SECTIONS).filter((item) => {
-    if (!can.restrictedTriage) return true;
+  // Confirming the equipment keeps the job where it is; moving it to another section is a handoff.
+  const current = can.activeAssignment ? String(can.activeAssignment.section) : "";
+  const options = (current ? [current] : ALL_SECTIONS).filter((item) => {
+    if (!can.restrictedTriage || current) return true;
     if (unconfirmed && !confirmedId && item === "Systems Automation") return true;
     return item === user.section;
   });
@@ -49,7 +51,7 @@ function TriageForm() {
       setComment("");
       setConfirmedId("");
       setAssetSearch("");
-      await done(unconfirmed ? "Asset confirmation recorded; the breakdown remains with Systems Automation." : "Asset confirmation note recorded.", true);
+      await done(unconfirmed && confirmedId ? "Equipment confirmed. You can take the job now." : "Note recorded.", true);
     } catch (reason) {
       fail(reason, "Triage could not be saved.");
     }
@@ -58,11 +60,11 @@ function TriageForm() {
   return (
     <form id="fault-triage" className="mt-4 grid gap-3 border-t border-border pt-4" onSubmit={submit}>
       <div>
-        <strong>Systems Automation asset confirmation</strong>
+        <strong>Which equipment is it?</strong>
         <p className="m-0 text-sm text-muted-foreground">
           {unconfirmed
-            ? "Confirm the actual equipment before any section handoff."
-            : `Suggested owner section: ${String(fault.suggested_section || "Not set")}. This breakdown remains with Systems Automation until findings are handed off.`}
+            ? "Whoever takes the job confirms the actual equipment first, so its history and procedures are linked."
+            : `Looked after by ${String(fault.suggested_section || "not set")}. It stays with ${current || "this section"} unless you hand it over with your findings.`}
         </p>
       </div>
       {unconfirmed && <>
@@ -75,7 +77,7 @@ function TriageForm() {
             <button
               type="button"
               key={String(item.id)}
-              onClick={() => { setConfirmedId(String(item.id)); setSection("Systems Automation"); }}
+              onClick={() => { setConfirmedId(String(item.id)); setSection(current || "Systems Automation"); }}
               className={cn("flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2 text-left", active ? "border-ring ring-1 ring-ring" : "border-border hover:bg-secondary")}
             >
               <span className="grid"><strong className="text-sm">{String(item.tag)} · {String(item.name)}</strong><small className="text-muted-foreground">{String(item.location)} · {String(item.section)}</small></span>
@@ -93,7 +95,7 @@ function TriageForm() {
         <Field label="Asset confirmation note"><Input value={comment} onChange={(event) => setComment(event.target.value)} /></Field>
       </div>
       <Button type="submit" variant="outline" className="justify-self-start">
-        {unconfirmed ? confirmedId ? "Confirm asset; keep with Systems Automation" : "Keep unconfirmed with Systems Automation" : "Save asset confirmation"}
+        {unconfirmed ? confirmedId ? "Confirm this equipment" : "Save note; still not identified" : "Save note"}
       </Button>
     </form>
   );
@@ -109,7 +111,7 @@ export function Overview({ error }: { error: string }) {
           <CloudOff />
           <span>
             {fault.offline_pending
-              ? "Reported on this device and waiting to synchronise. Investigation steps become available once Systems Automation receives it."
+              ? "Reported on this device and waiting to synchronise. The workshop sees it as soon as it reaches the server."
               : "Offline: this is the copy saved on this device. Acknowledge, on-site, diagnosis, intervention and operator updates are queued; other steps need a connection."}
           </span>
         </Alert>
@@ -145,7 +147,7 @@ export function Overview({ error }: { error: string }) {
               <strong>Asset not confirmed</strong>
               <span className="font-normal">Reported wording: {String(fault.reported_equipment_text || "Not provided")}{fault.reported_location ? ` · Location: ${String(fault.reported_location)}` : ""}</span>
               {Boolean(fault.suggested_equipment_tag) && <span className="font-normal">Possible match only: {String(fault.suggested_equipment_tag)}</span>}
-              <span className="font-normal">Do not use the suggestion as a confirmed tag. Confirm the physical asset before routing to its maintenance section.</span>
+              <span className="font-normal">Do not use the suggestion as a confirmed tag. Whoever takes the job confirms the actual equipment first.</span>
             </Alert>
           )}
           {context.previous_faults.length > 0 && (

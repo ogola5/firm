@@ -4,7 +4,9 @@ This is the prototype's proposed least-privilege model. Role titles and permissi
 
 ## Maintenance section roles
 
-Section technicians and engineers are assigned to Electrical, Instrumentation or Mechanical; Systems Automation has cross-section access to the first-response queue. Systems Automation receives the first assignment for every new breakdown, and responders can read findings and history from sections already involved in that same fault.
+Section technicians and engineers are assigned to Systems Automation (which now includes the former Instrumentation and Control section), Electrical or Mechanical. A new breakdown goes straight to the section the reporter chose (by default the one that looks after the equipment; Systems Automation when nobody knows). **Open pickup:** anyone technical (ST, PT, AE, Engineer, SE, CE, Systems Automation) in the region can take a job nobody has taken, from any section; the job then moves to their section and belongs to them and the colleagues they call in to help, from any section. Everyone in the region can look up any equipment, so whoever answers the workshop phone can log the fault. Responders can read findings and history from sections already involved in that same fault.
+
+The Chief Technician does not gate restoration: the person on the job marks it working again, Operations confirms it, and the Chief Technician checks the write-up afterwards (approve, or ask for more detail). Only a hand-over to another section still waits for the Chief Technician's approval. The Chief Technician can still give a job to a particular person, and is shown anything nobody has taken for 15 minutes.
 
 | Level | Role | Default access |
 |---|---|---|

@@ -45,8 +45,8 @@ function AllocationForm({ assignment }: { assignment: DataRow }) {
   return (
     <form className="grid gap-3 border-t border-border pt-4" onSubmit={submit}>
       <div>
-        <h4 className="m-0">Allocate section work</h4>
-        <p className="m-0 text-sm text-muted-foreground">Choose an available Senior or Principal Technician using current workload and their recorded competencies.</p>
+        <h4 className="m-0">Give it to someone (optional)</h4>
+        <p className="m-0 text-sm text-muted-foreground">Anyone free can take it themselves. Use this to give it to a particular person, or to set a response time.</p>
       </div>
       <div className="grid gap-3 md:grid-cols-3">
         <Field label="Assigned technician">
@@ -90,30 +90,136 @@ function SectionReview({ assignment, kind }: { assignment: DataRow; kind: "ESCAL
         body: JSON.stringify({ decision, comments }),
       });
       setComments("");
-      await done(decision.startsWith("APPROVE_") ? "Chief technical review approved." : "Work returned with your instructions.", true);
+      const approved = decision.startsWith("APPROVE_");
+      await done(escalation
+        ? approved ? "Hand-over approved." : "Hand-over sent back with your instructions."
+        : approved ? "Write-up approved." : "Asked for more detail in the write-up.", true);
     } catch (reason) {
-      fail(reason, "Technical review could not be saved.");
+      fail(reason, "Your review could not be saved.");
     }
   }
   const escalation = kind === "ESCALATION";
   return (
     <div className="grid gap-3 border-t border-border pt-4">
       <div>
-        <h4 className="m-0">{escalation ? `Review requested escalation to ${String(assignment.requested_next_section)}` : "Review technical completion"}</h4>
+        <h4 className="m-0">{escalation ? `Review the hand-over to ${String(assignment.requested_next_section)}` : "Check the write-up"}</h4>
         <p className="m-0 text-sm text-muted-foreground">
           {escalation
-            ? "Check the technician's findings, evidence and recommendation above before transferring the next assignment."
-            : "Verify that corrective work and test results are documented. Approval marks the section restored; Operations must still confirm service."}
+            ? "Check the findings, evidence and recommendation above before the job moves to the next section."
+            : `${String(assignment.assigned_user_name || "The technician")} has already put it back in service (Operations confirm that). Check what was found and done is clear enough for the next person.`}
         </p>
       </div>
-      <Field label="Review note or instructions">
-        <Textarea value={comments} onChange={(event) => setComments(event.target.value)} placeholder={escalation ? "Required if returning for more investigation" : "Required if returning for more work"} />
+      <Field label={escalation ? "Review note or instructions" : "Note, or what is missing"}>
+        <Textarea value={comments} onChange={(event) => setComments(event.target.value)} placeholder={escalation ? "Required if sending it back" : "Required if asking for more detail"} />
       </Field>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" onClick={() => decide(escalation ? "APPROVE_ESCALATION" : "APPROVE_COMPLETION")}>{escalation ? "Approve escalation" : "Approve technical completion"}</Button>
-        <Button type="button" variant="outline" onClick={() => decide(escalation ? "RETURN_ESCALATION" : "RETURN_COMPLETION")}>{escalation ? "Return for investigation" : "Return for more work"}</Button>
+        <Button type="button" onClick={() => decide(escalation ? "APPROVE_ESCALATION" : "APPROVE_COMPLETION")}>{escalation ? "Approve the hand-over" : "Write-up is good"}</Button>
+        <Button type="button" variant="outline" onClick={() => decide(escalation ? "RETURN_ESCALATION" : "RETURN_COMPLETION")}>{escalation ? "Send back" : "Ask for more detail"}</Button>
       </div>
     </div>
+  );
+}
+
+/** The Chief Technician asked for more detail: the person on the job adds it; it goes back to be checked. */
+function WriteUpNoteForm({ assignment }: { assignment: DataRow }) {
+  const { faultId, done, fail } = useDetail();
+  const [note, setNote] = useState("");
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    try {
+      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/assignments/${encodeURIComponent(String(assignment.id))}/write-up-note`, {
+        method: "POST", body: JSON.stringify({ note }),
+      });
+      setNote("");
+      await done("Added to your write-up. Your Chief Technician will check it again.", true);
+    } catch (reason) {
+      fail(reason, "Your addition was not saved.");
+    }
+  }
+  return (
+    <form id="fault-writeup-note" onSubmit={submit} className="grid gap-3 rounded-lg border-2 border-warning/60 p-3">
+      <div>
+        <h4 className="m-0">Add to your write-up</h4>
+        <p className="m-0 text-sm"><strong>Your Chief Technician asked:</strong> {String(assignment.completion_review_comments || "More detail.")}</p>
+      </div>
+      <Field label="What you are adding">
+        <Textarea required value={note} onChange={(event) => setNote(event.target.value)} placeholder="Readings, the test you did, the part number…" />
+      </Field>
+      <Button type="submit" className="justify-self-start" disabled={!note.trim()}>Add it</Button>
+    </form>
+  );
+}
+
+type Candidate = { id: string; name: string; section: string; role: string; available: boolean };
+
+/** Call a colleague in, from any section. They see the job, can write up what they did, and are credited. */
+function HelpersPanel({ assignment }: { assignment: DataRow }) {
+  const { faultId, can, user, done, fail } = useDetail();
+  const helpers = (assignment.helpers ?? []) as Array<{ user_id: string; name: string; section: string; note: string }>;
+  const canCall = can.onTheJob || (can.isSectionChief && assignment.section === user.section);
+  const [open, setOpen] = useState(false);
+  const [chosen, setChosen] = useState("");
+  const [note, setNote] = useState("");
+  const candidates = useQuery({
+    queryKey: ["helper-candidates", faultId, helpers.length],
+    enabled: open && canCall,
+    queryFn: () => api<Candidate[]>(`/api/v1/faults/${encodeURIComponent(faultId)}/helper-candidates`),
+  });
+
+  async function add(event: FormEvent) {
+    event.preventDefault();
+    try {
+      const added = await api<{ name: string }>(`/api/v1/faults/${encodeURIComponent(faultId)}/helpers`, {
+        method: "POST", body: JSON.stringify({ user_id: chosen, note }),
+      });
+      setChosen(""); setNote(""); setOpen(false);
+      await done(`${added.name} has been asked to help.`);
+    } catch (reason) {
+      fail(reason, "Could not call them in.");
+    }
+  }
+
+  async function remove(helperId: string, name: string) {
+    try {
+      await api(`/api/v1/faults/${encodeURIComponent(faultId)}/helpers/${encodeURIComponent(helperId)}`, { method: "DELETE" });
+      await done(`${name} is no longer on this job.`);
+    } catch (reason) {
+      fail(reason, "Could not remove them.");
+    }
+  }
+
+  if (!helpers.length && !canCall) return null;
+  return (
+    <section id="fault-helpers" aria-label="Helping on this job" className="grid gap-2 rounded-lg border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="m-0">Helping on this job</h4>
+        {canCall && !open && <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>Call someone to help</Button>}
+      </div>
+      {helpers.length
+        ? <ul className="m-0 grid gap-1 p-0">{helpers.map((helper) => (
+          <li key={helper.user_id} className="flex list-none flex-wrap items-center justify-between gap-2 text-sm">
+            <span><strong>{helper.name}</strong> · {helper.section}{helper.note ? ` · ${helper.note}` : ""}</span>
+            {canCall && <Button type="button" variant="ghost" size="sm" onClick={() => void remove(helper.user_id, helper.name)}>Remove</Button>}
+          </li>))}</ul>
+        : <p className="m-0 text-sm text-muted-foreground">Nobody yet. Anyone in the workshop, from any section, can be called in.</p>}
+      {open && (
+        <form onSubmit={add} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <Field label="Who">
+            <NativeSelect required value={chosen} onChange={(event) => setChosen(event.target.value)}>
+              <option value="">{candidates.isLoading ? "Loading…" : "Choose a colleague"}</option>
+              {(candidates.data ?? []).map((person) => (
+                <option key={person.id} value={person.id}>{person.name} · {person.section || "No section"}{person.available ? "" : " · marked away"}</option>
+              ))}
+            </NativeSelect>
+          </Field>
+          <Field label="What you need (optional)"><Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="e.g. second pair of hands on the coupling" /></Field>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={!chosen}>Call in</Button>
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -198,7 +304,7 @@ export function AssignmentPanel() {
             <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Sections</p>
             <CardTitle className="mt-1">Who has worked on it</CardTitle>
           </div>
-          <span className="text-sm text-muted-foreground">Active section: {String(active?.section || "Awaiting operator confirmation")}</span>
+          <span className="text-sm text-muted-foreground">{active ? `With ${String(active.section)}` : "Work finished"}</span>
         </div>
       </CardHeader>
       <CardContent className="grid gap-4">
@@ -210,8 +316,13 @@ export function AssignmentPanel() {
                 <Badge variant={statusVariant(String(item.status))}>{statusWords(String(item.status))}</Badge>
               </div>
               <small className="text-muted-foreground">
-                {item.assigned_user_name ? `Owner: ${String(item.assigned_user_name)}` : "Awaiting section acknowledgement"} · {new Date(String(item.created_at)).toLocaleString()} · {String(item.elapsed_minutes)} min in assignment
+                {item.assigned_user_name ? `Taken by ${String(item.assigned_user_name)}` : "Nobody has taken it yet"} · {new Date(String(item.created_at)).toLocaleString()} · {String(item.elapsed_minutes)} min
               </small>
+              {((item.helpers ?? []) as Array<{ name: string }>).length > 0 && (
+                <p className="m-0"><strong>Helped by:</strong> {((item.helpers ?? []) as Array<{ name: string }>).map((helper) => helper.name).join(", ")}</p>
+              )}
+              {item.completion_review_status === "PENDING" && <p className="m-0 text-muted-foreground">Write-up waiting for the Chief Technician's check.</p>}
+              {item.completion_review_status === "APPROVED" && <p className="m-0 text-muted-foreground">Write-up checked by the Chief Technician.</p>}
               {Boolean(item.reason) && <p className="m-0"><strong>Handoff reason:</strong> {String(item.reason)}</p>}
               {Boolean(item.instructions) && <p className="m-0"><strong>Chief Technician instructions:</strong> {String(item.instructions)}</p>}
               {Boolean(item.adviser_name) && <p className="m-0"><strong>Adviser:</strong> {String(item.adviser_name)}</p>}
@@ -219,16 +330,18 @@ export function AssignmentPanel() {
               {Boolean(item.findings) && <p className="m-0"><strong>Findings:</strong> {String(item.findings)}</p>}
               {Boolean(item.recommendation) && <p className="m-0"><strong>Recommended next action:</strong> {String(item.recommendation)}</p>}
               {item.escalation_status === "RETURNED" && Boolean(item.escalation_review_comments) && <p className="m-0"><strong>Chief review:</strong> {String(item.escalation_review_comments)}</p>}
-              {item.completion_review_status === "RETURNED" && Boolean(item.completion_review_comments) && <p className="m-0"><strong>Completion review:</strong> {String(item.completion_review_comments)}</p>}
+              {item.completion_review_status === "RETURNED" && Boolean(item.completion_review_comments) && <p className="m-0"><strong>Chief Technician asked for more:</strong> {String(item.completion_review_comments)}</p>}
             </li>
           ))}
         </ol>
         {/* These steps decide against current server state, so they are online-only. */}
+        {!offline && can.returnedAssignment && <WriteUpNoteForm assignment={can.returnedAssignment} />}
+        {!offline && can.canCheckWriteUp && can.reviewAssignment && <SectionReview assignment={can.reviewAssignment} kind="COMPLETION" />}
+        {!offline && active && Boolean(active.assigned_user_id) && <HelpersPanel assignment={active} />}
         {!offline && active && can.canReviewSection && can.assetConfirmed && <AllocationForm key={String(active.id)} assignment={active} />}
         {!offline && active && canPairAdviser(user) && active.section === user.section && Boolean(active.assigned_user_id) && <AdviserForm key={`adviser-${String(active.id)}`} assignment={active} />}
         {!offline && active && can.canReviewSection && active.escalation_status === "PENDING" && <SectionReview assignment={active} kind="ESCALATION" />}
-        {!offline && active && can.canReviewSection && active.completion_review_status === "PENDING" && <SectionReview assignment={active} kind="COMPLETION" />}
-        {!offline && active && can.canEscalate && !can.awaitingChiefReview && can.assetConfirmed && <HandoffForm assignment={active} />}
+        {!offline && active && can.canEscalate && !can.awaitingChiefReview && can.assetConfirmed && (can.onTheJob || !can.canInvestigate) && <HandoffForm assignment={active} />}
       </CardContent>
     </Card>
   );

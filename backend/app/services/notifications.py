@@ -112,15 +112,27 @@ def _assigned(db: Session, fault: Fault, payload: dict) -> User | None:
 
 # --- rules: event -> who is told -----------------------------------------------------------------------
 
+def responders(db: Session, fault: Fault) -> list[User]:
+    """Who hears about a new fault: the section it was sent to (technicians and its Chief Technician,
+    in the fault's region), and the Systems Automation desk when it was sent there."""
+    section = fault.assigned_section or "Systems Automation"
+    region = _region(fault)
+    people = [person for role in ("technician_st", "technician_pt") for person in _people(db, role, section, region)]
+    people += chiefs(db, fault, section)
+    if section == "Systems Automation":
+        people += _people(db, "systems_automation")
+    return people
+
+
 def _reported(db, fault, actor, payload):
     if fault.safety_hazard:
         return  # the safety rule tells more people, more urgently
-    notify(db, _people(db, "systems_automation"), "fault", f"New fault: {fault.reference} · {_where(fault)}",
-           f"{fault.symptom}. {fault.operational_impact}".strip(), _link(fault), actor)
+    notify(db, responders(db, fault), "fault", f"New fault: {fault.reference} · {_where(fault)}",
+           f"{fault.symptom}. {fault.operational_impact}. Anyone free can take it.".strip(), _link(fault), actor)
 
 
 def _safety(db, fault, actor, payload):
-    notify(db, [*_people(db, "systems_automation"), *chiefs(db, fault)], "safety",
+    notify(db, [*responders(db, fault), *_people(db, "systems_automation"), *chiefs(db, fault)], "safety",
            f"SAFETY: {fault.reference} · {_where(fault)}",
            f"{fault.symptom}. The reporter says someone or something is at risk.", _link(fault), actor)
 
@@ -141,18 +153,42 @@ def _handed_over(db, fault, actor, payload):
 
 
 def _acknowledged(db, fault, actor, payload):
+    """The Chief Technician is told who took it; nobody waits for them."""
     person = db.get(User, actor)
-    assignment = current_assignment(fault)
-    if person and role_key(person) in ("technician_st", "technician_pt") and assignment:
-        notify(db, chiefs(db, fault, assignment.section), "work", f"{person.display_name} took {fault.reference}",
+    section = payload.get("section") or (current_assignment(fault).section if current_assignment(fault) else None)
+    if person and role_key(person) != "technician_ct" and section:
+        notify(db, chiefs(db, fault, section), "work", f"{person.display_name} took {fault.reference}",
                _where(fault), _link(fault), actor)
 
 
+def _taken_across(db, fault, actor, payload):
+    person = db.get(User, actor)
+    name = person.display_name if person else "Someone"
+    notify(db, chiefs(db, fault, payload.get("from_section")), "work",
+           f"{name} ({payload.get('to_section')}) took {fault.reference}",
+           f"{_where(fault)}: sent to {payload.get('from_section')}, taken by someone free in another section.", _link(fault), actor)
+
+
 def _waiting_signoff(db, fault, actor, payload):
-    assignment = current_assignment(fault)
+    """Working again: Operations is asked to confirm now; the Chief Technician checks the write-up when they can."""
+    assignment = db.get(FaultAssignment, payload["assignment_id"]) if payload.get("assignment_id") else None
     section = assignment.section if assignment else _owner_section(fault)
-    notify(db, chiefs(db, fault, section), "review", f"Waiting for your sign-off: {fault.reference}",
-           f"{_where(fault)}: the technician says it is back in service.", _link(fault), actor)
+    notify(db, [fault.reporter], "fault", f"Back in service: please confirm {fault.reference}",
+           f"{_where(fault)}. Check it is working and confirm, or say it is not fixed.", _link(fault), actor)
+    notify(db, chiefs(db, fault, section), "review", f"Write-up to check: {fault.reference}",
+           f"{_where(fault)} is working again. Check the write-up when you can.", _link(fault), actor)
+
+
+def _helper_added(db, fault, actor, payload):
+    lead = db.get(User, actor)
+    notify(db, [db.get(User, payload.get("helper_id"))], "work",
+           f"{lead.display_name if lead else 'A colleague'} asked you to help: {fault.reference}",
+           payload.get("note") or _where(fault), _link(fault), actor)
+
+
+def _write_up_added(db, fault, actor, payload):
+    notify(db, chiefs(db, fault, payload.get("section")), "review", f"Write-up updated: {fault.reference}",
+           payload.get("note") or _where(fault), _link(fault), actor)
 
 
 def _waiting_handover(db, fault, actor, payload):
@@ -167,11 +203,14 @@ def _returned(db, fault, actor, payload):
            payload.get("comments") or "Your Chief Technician has asked for more work.", _link(fault), actor)
 
 
+def _write_up_returned(db, fault, actor, payload):
+    notify(db, [_assigned(db, fault, payload)], "work", f"Add to your write-up: {fault.reference}",
+           payload.get("comments") or "Your Chief Technician asked for more detail.", _link(fault), actor)
+
+
 def _signed_off(db, fault, actor, payload):
-    notify(db, [fault.reporter], "fault", f"Back in service: please confirm {fault.reference}",
-           f"{_where(fault)}. Check it is working and confirm, or say it is not fixed.", _link(fault), actor)
-    notify(db, [_assigned(db, fault, payload)], "work", f"Signed off: {fault.reference}",
-           "Your Chief Technician approved the work. Consider writing it up as a procedure.", f"/jobs/{fault.id}/procedure", actor)
+    notify(db, [_assigned(db, fault, payload)], "work", f"Write-up approved: {fault.reference}",
+           "Your Chief Technician checked your write-up. Consider turning it into a procedure.", f"/jobs/{fault.id}/procedure", actor)
 
 
 def _not_fixed(db, fault, actor, payload):
@@ -227,7 +266,10 @@ RULES = {
     "FAULT_ACKNOWLEDGE": _acknowledged,
     "TECHNICAL_COMPLETION_SUBMITTED_FOR_REVIEW": _waiting_signoff,
     "SECTION_ESCALATION_SUBMITTED_FOR_REVIEW": _waiting_handover,
-    "TECHNICAL_COMPLETION_RETURNED": _returned,
+    "TECHNICAL_COMPLETION_RETURNED": _write_up_returned,
+    "TAKEN_FROM_OTHER_SECTION": _taken_across,
+    "HELPER_ADDED": _helper_added,
+    "WRITE_UP_ADDED": _write_up_added,
     "SECTION_ESCALATION_RETURNED": _returned,
     "TECHNICAL_COMPLETION_APPROVED": _signed_off,
     "FAULT_OPERATOR_REJECTED_RESTORATION": _not_fixed,

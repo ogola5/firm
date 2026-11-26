@@ -72,7 +72,7 @@ test("form fields use 16px text so phones do not zoom in", async ({ page }) => {
   await expect(page.getByText("Take a photo")).toHaveCount(0);
 });
 
-test("a product leak on a phone: follow-up taps, hazard prompt, SAFETY at the top for Systems Automation", async ({ page }) => {
+test("a product leak on a phone: follow-up taps, hazard prompt, SAFETY at the top for the section", async ({ page }) => {
   await signIn(page, "operations");
   await page.getByRole("navigation", { name: "Quick" }).getByRole("link", { name: "Report", exact: true }).click();
   await page.getByLabel("1. Which equipment?").fill("tank 601 inlet valve");
@@ -91,8 +91,9 @@ test("a product leak on a phone: follow-up taps, hazard prompt, SAFETY at the to
   await expect(page.getByText(/Priority Critical \(safety\)/)).toBeVisible();
   await expectNoSidewaysScroll(page, "report confirmation");
 
-  await signIn(page, "automation");
-  const firstJob = page.getByRole("region", { name: /New for Systems Automation/ }).getByRole("article").first();
+  // Straight to Electrical, who look after the valve: safety first in their "nobody has taken it yet" list.
+  await signIn(page, "st-electrical");
+  const firstJob = page.getByRole("region", { name: "New: nobody has taken it yet" }).getByRole("article").first();
   await expect(firstJob.getByText("SAFETY", { exact: true })).toBeVisible();
   await expect(firstJob).toContainText("Leaking");
 });

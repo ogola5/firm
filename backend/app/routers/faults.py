@@ -9,7 +9,7 @@ from fastapi import APIRouter
 
 from app.db import db_dep
 from app.deps import current_user
-from app.models import Diagnosis, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, KnowledgeEntry, KnowledgeReuse, KnowledgeReuseOutcome, ProcedureReview, ProcedureUpdate, User, utc_datetime, utcnow
+from app.models import Diagnosis, Equipment, Fault, FaultAssignment, FaultEvent, FaultHelper, Intervention, KnowledgeEntry, KnowledgeReuse, KnowledgeReuseOutcome, ProcedureReview, ProcedureUpdate, User, utc_datetime, utcnow
 from app.schemas import FaultCreate
 from pydantic import BaseModel, Field
 from app.services.access import ACTIVE_ASSIGNMENT_STATUSES, current_assignment, region_filter, require_fault_scope, require_roles, role_key
@@ -129,11 +129,20 @@ def fault_list(
     query = select(Fault).join(Equipment, Fault.equipment_id == Equipment.id).order_by(open_hazard_first, Fault.created_at.desc())
     if status_filter:
         query = query.where(Fault.status == status_filter)
+    untaken = select(FaultAssignment.fault_id).where(
+        FaultAssignment.status.in_(ACTIVE_ASSIGNMENT_STATUSES), FaultAssignment.assigned_user_id.is_(None))
+    mine_or_helping = (
+        select(FaultAssignment.fault_id).where(FaultAssignment.assigned_user_id == user.id)
+        .union(select(FaultHelper.fault_id).where(FaultHelper.user_id == user.id))
+    )
     if role_key(user) in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
+        # Their section's faults, plus anything nobody has taken yet (open pickup) and jobs they took or helped on.
         query = query.where(
             (Fault.assigned_section == user.section)
             | (Equipment.section == user.section)
             | Fault.id.in_(select(FaultAssignment.fault_id).where(FaultAssignment.section == user.section))
+            | Fault.id.in_(untaken)
+            | Fault.id.in_(mine_or_helping)
         )
     in_region = region_filter(user)
     if in_region is not None:
@@ -147,6 +156,8 @@ def fault_list(
                     FaultAssignment.assigned_user_id == user.id,
                     FaultAssignment.status.in_(ACTIVE_ASSIGNMENT_STATUSES),
                 ))
+                | Fault.id.in_(select(FaultHelper.fault_id).join(FaultAssignment, FaultAssignment.id == FaultHelper.assignment_id)
+                               .where(FaultHelper.user_id == user.id, FaultAssignment.status.in_(ACTIVE_ASSIGNMENT_STATUSES)))
             )
         elif role_key(user) in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
             query = query.where(
@@ -154,6 +165,7 @@ def fault_list(
                     FaultAssignment.section == user.section,
                     FaultAssignment.status.in_(ACTIVE_ASSIGNMENT_STATUSES),
                 ))
+                | Fault.id.in_(untaken)
                 | (
                     Fault.id.notin_(select(FaultAssignment.fault_id))
                     & ((Fault.assigned_section == user.section) | (Equipment.section == user.section))
@@ -165,6 +177,7 @@ def fault_list(
                     FaultAssignment.section == "Systems Automation",
                     FaultAssignment.status.in_(ACTIVE_ASSIGNMENT_STATUSES),
                 ))
+                | Fault.id.in_(untaken)
                 | (
                     Fault.id.notin_(select(FaultAssignment.fault_id))
                     & ((Fault.assigned_section == "Systems Automation") | (Equipment.section == "Systems Automation"))
@@ -491,7 +504,7 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             "callback": fault.callback,
             "reported_on_behalf_of": fault.raised_by_text,
             "closure_remarks": fault.closure_remarks,
-            "suggested_section": equipment.section if fault.equipment_confirmed and equipment else "Systems Automation",
+            "suggested_section": equipment.section if fault.equipment_confirmed and equipment else (fault.assigned_section or "Systems Automation"),
             **escalation_payload(fault),
             "escalation_actions": escalation.allowed_actions(user, fault),
             "region": escalation.fault_region(fault),
@@ -505,6 +518,8 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             "assigned_user_name": item.assigned_user.display_name if item.assigned_user else "",
             "adviser_id": item.adviser_id,
             "adviser_name": name_of(db, item.adviser_id),
+            "helpers": [{"user_id": helper.user_id, "name": helper.user.display_name if helper.user else "",
+                         "section": helper.user.section if helper.user else "", "note": helper.note} for helper in item.helpers],
             "previous_assignment_id": item.previous_assignment_id,
             "reason": item.reason,
             "findings": item.findings,
@@ -584,7 +599,7 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
         "repeat_routing": {
             "seen_before": bool(fault.equipment_confirmed and history),
             "repeat_count": len(history),
-            "triage_action": "SA_FIRST_WITH_REPEAT_CONTEXT" if fault.equipment_confirmed and history else "SA_FIRST",
+            "triage_action": "TO_SECTION_WITH_REPEAT_CONTEXT" if fault.equipment_confirmed and history else "TO_SECTION",
             "suggested_section": equipment.section if fault.equipment_confirmed and equipment else fault.assigned_section,
         },
         "approved_procedures": approved_procedures,

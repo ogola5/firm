@@ -90,6 +90,17 @@ class FaultCreate(BaseModel):
     # Answers to the follow-up questions (problem details, state now, actions taken), kept as given.
     report_details: dict = Field(default_factory=dict)
     callback: str = Field(default="", max_length=80)
+    # Who should come: a section, straight away. Empty: the equipment's own section (Systems Automation if unknown).
+    send_to: str = ""
+
+
+class HelperAdd(BaseModel):
+    user_id: str
+    note: str = Field(default="", max_length=300)
+
+
+class WriteUpNote(BaseModel):
+    note: str = Field(max_length=4000)
 
 
 class VisitAttempt(BaseModel):

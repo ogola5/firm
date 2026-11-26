@@ -18,6 +18,7 @@ test("a fault shows where it is and the one next step; tabs hold the rest", asyn
   const valve = (await apiGet<Row[]>(request, operations, "/api/v1/equipment?search=11-MOV-602")).find((row) => row.tag === "11-MOV-602")!;
   const fault = await apiPost<{ id: string; reference: string }>(request, operations, "/api/v1/faults", {
     equipment_id: valve.id, symptom: "Won't open / close", operational_impact: "Running reduced: Working, but limited",
+    send_to: "Systems Automation",
   });
 
   const page = await phone(browser);
@@ -43,6 +44,40 @@ test("a fault shows where it is and the one next step; tabs hold the rest", asyn
   await expect(page.getByRole("region", { name: "Similar earlier faults" })).toBeVisible();
   await showTab(page, "History");
   await expect(page.getByRole("heading", { name: "What happened, in order" })).toBeVisible();
+});
+
+test("anyone free takes another section's job and calls a colleague in to help", async ({ page, request }) => {
+  const operations = await apiToken(request, "operations");
+  const strainer = (await apiGet<Row[]>(request, operations, "/api/v1/equipment?search=11-STR-601")).find((row) => row.tag === "11-STR-601")!;
+  const fault = await apiPost<{ id: string; assigned_section: string }>(request, operations, "/api/v1/faults", {
+    equipment_id: strainer.id, symptom: "Blocked / no flow", operational_impact: "Running reduced: Working, but limited",
+  });
+  expect(fault.assigned_section).toBe("Mechanical"); // straight to the section that looks after it
+
+  await signIn(page, "st-electrical");
+  await page.goto(`/faults?mode=history&fault=${fault.id}`);
+  const next = page.getByRole("region", { name: "Next step" });
+  await expect(next.getByText("Sent to Mechanical. If you are free, you can take it.")).toBeVisible();
+  await next.getByRole("button", { name: "Take this job" }).click();
+  await expect(page.getByText("You have taken this job.")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Progress" }).locator('[aria-current="step"]')).toContainText("Taken");
+
+  await next.getByRole("button", { name: "Call someone to help" }).click();
+  const helpers = page.getByRole("region", { name: "Helping on this job" });
+  await helpers.getByRole("button", { name: "Call someone to help" }).click();
+  const who = helpers.getByLabel("Who");
+  await expect(who.locator("option", { hasText: "(Mechanical, Nairobi)" }).first()).toBeAttached();
+  const options = await who.locator("option").allTextContents();
+  await who.selectOption({ label: options.find((text) => text.includes("Senior Technician") && text.includes("(Mechanical, Nairobi)"))! });
+  await helpers.getByLabel(/What you need/).fill("Second pair of hands on the strainer cover");
+  await helpers.getByRole("button", { name: "Call in" }).click();
+  await expect(page.getByText(/has been asked to help/)).toBeVisible();
+  await expect(helpers.getByText(/Mechanical · Second pair of hands/)).toBeVisible();
+  await page.screenshot({ path: `${dir}/6-call-someone-in.png` });
+
+  // The helper sees it in My jobs.
+  await signIn(page, "st-mechanical");
+  await expect(page.getByRole("region", { name: "Helping a colleague" }).locator(`a[href="/jobs/${fault.id}/card"]`)).toBeVisible();
 });
 
 test("search from the header goes to the equipment's own page; reporting from there starts with it", async ({ page }) => {

@@ -31,17 +31,25 @@ export type Job = {
   response_due_at: string | null;
   instructions: string;
   waiting_for?: string;
+  /** Open pickup: whether a job nobody has taken is for the person's own section. */
+  own_section?: boolean;
+  /** Called in to help: the name of the person leading the job. */
+  helping?: string;
+  /** The Chief Technician asked for more detail in the write-up. */
+  review_comments?: string;
 };
 
 export type Jobs = {
   to_write_up: Job[];
   assigned: Job[];
   available: Job[];
+  helping: Job[];
+  returned: Job[];
   waiting: Job[];
   procedure_ready: Job[];
 };
 
-export const EMPTY_JOBS: Jobs = { to_write_up: [], assigned: [], available: [], waiting: [], procedure_ready: [] };
+export const EMPTY_JOBS: Jobs = { to_write_up: [], assigned: [], available: [], helping: [], returned: [], waiting: [], procedure_ready: [] };
 
 const cacheKey = (userId: string) => `jobs:${userId}`;
 

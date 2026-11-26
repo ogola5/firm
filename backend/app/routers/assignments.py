@@ -9,9 +9,15 @@ from fastapi import APIRouter
 
 from app.db import db_dep
 from app.deps import current_user
-from app.models import Equipment, Fault, FaultAssignment, Intervention, User, utc_datetime, utcnow
-from app.schemas import AssignmentAllocationRequest, AssignmentReviewRequest, OperatorConfirmationCreate, OperatorUpdateCreate, SectionEscalationCreate, TriageRequest
-from app.services.access import ASSIGNABLE_TECHNICIAN_ROLES, INVESTIGATION_ROLES, SECTIONS, current_assignment, require_current_assignment, require_equipment_scope, require_fault_scope, require_roles, role_key, user_region
+from app.models import Equipment, Fault, FaultAssignment, FaultHelper, User, utc_datetime, utcnow
+from app.schemas import (
+    AssignmentAllocationRequest, AssignmentReviewRequest, HelperAdd, OperatorConfirmationCreate, OperatorUpdateCreate,
+    SectionEscalationCreate, TriageRequest, WriteUpNote,
+)
+from app.services.access import (
+    ASSIGNABLE_TECHNICIAN_ROLES, INVESTIGATION_ROLES, SECTIONS, TECHNICAL_ROLES, current_assignment, is_helper,
+    require_current_assignment, require_equipment_scope, require_fault_scope, require_roles, role_key, user_region,
+)
 from app.services.audit import add_event
 from app.services import fault_operations
 
@@ -32,18 +38,21 @@ def add_operator_update(
 
 @router.post("/api/v1/faults/{fault_id}/triage")
 def triage_fault(fault_id: str, req: TriageRequest, user: User = Depends(current_user), db: Session = Depends(db_dep)):
-    require_roles(user, "systems_automation", "technician_ct", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
+    require_roles(user, *INVESTIGATION_ROLES, "technician_ct", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
     f = db.get(Fault, fault_id)
     if not f:
         raise HTTPException(status_code=404, detail="Fault not found")
     require_fault_scope(user, f)
-    if role_key(user) in ("technician_ct", "chief_engineer") and req.assigned_section != user.section and not (
-        not f.equipment_confirmed
-        and not req.confirmed_equipment_id
-        and req.assigned_section == "Systems Automation"
-    ):
-        raise HTTPException(status_code=403, detail="Section leads may only assign work within their section")
     active_assignment = current_assignment(f)
+    if role_key(user) in ("technician_ct", "chief_engineer") and req.assigned_section != user.section and not (
+        active_assignment and req.assigned_section == active_assignment.section
+    ) and not (not f.equipment_confirmed and not req.confirmed_equipment_id and req.assigned_section == "Systems Automation"):
+        raise HTTPException(status_code=403, detail="Section leads may only assign work within their section")
+    if role_key(user) in INVESTIGATION_ROLES and role_key(user) not in ("systems_automation", "chief_engineer") and not (
+        active_assignment and req.assigned_section == active_assignment.section
+    ):
+        # Whoever takes the job can confirm the equipment; moving it is a handoff.
+        raise HTTPException(status_code=403, detail="Confirm the equipment here; use the section handoff to move the job")
     if active_assignment:
         require_current_assignment(user, f)
         if req.assigned_section != active_assignment.section:
@@ -60,7 +69,7 @@ def triage_fault(fault_id: str, req: TriageRequest, user: User = Depends(current
         require_equipment_scope(user, confirmed_equipment)
         if not active_assignment and req.assigned_section != confirmed_equipment.section:
             raise HTTPException(status_code=422, detail="Route the breakdown to the confirmed equipment section")
-    elif not f.equipment_confirmed and req.assigned_section != "Systems Automation":
+    elif not f.equipment_confirmed and req.assigned_section != (active_assignment.section if active_assignment else "Systems Automation"):
         raise HTTPException(status_code=422, detail="Confirm the asset before routing to an equipment section")
     if confirmed_equipment:
         f.equipment_id = confirmed_equipment.id
@@ -83,7 +92,8 @@ def triage_fault(fault_id: str, req: TriageRequest, user: User = Depends(current
             assigned_by_id=user.id,
             reason="Initial triage assignment",
         ))
-    f.status = "ASSIGNED"
+    if f.status in ("REPORTED", "TRIAGED", "ASSIGNED"):
+        f.status = "ASSIGNED"  # confirming the equipment does not undo "taken" or "on site"
     add_event(db, fault_id, "FAULT_ASSIGNED", user.id, {
         **req.model_dump(),
         "suggested_section": f.equipment.section if f.equipment else "",
@@ -112,7 +122,7 @@ def allocate_section_assignment(
     require_fault_scope(user, fault)
     if assignment.section != user.section or current_assignment(fault) != assignment:
         raise HTTPException(status_code=404, detail="Active assignment not found in your section")
-    if assignment.escalation_status == "PENDING" or assignment.completion_review_status == "PENDING":
+    if assignment.escalation_status == "PENDING":
         raise HTTPException(status_code=409, detail="Resolve the pending technical review before changing this assignment")
     if req.severity not in ("Low", "Medium", "High", "Critical"):
         raise HTTPException(status_code=422, detail="Priority must be Low, Medium, High or Critical")
@@ -175,7 +185,9 @@ def review_section_assignment(
     if not fault or not assignment or assignment.fault_id != fault_id:
         raise HTTPException(status_code=404, detail="Section assignment not found")
     require_fault_scope(user, fault)
-    if assignment.section != user.section or current_assignment(fault) != assignment:
+    completion = req.decision in ("APPROVE_COMPLETION", "RETURN_COMPLETION")
+    # A write-up is checked after the fix, so its assignment is usually finished; a handoff is checked while active.
+    if assignment.section != user.section or (not completion and current_assignment(fault) != assignment):
         raise HTTPException(status_code=404, detail="Active assignment not found in your section")
     if req.decision not in (
         "APPROVE_ESCALATION", "RETURN_ESCALATION",
@@ -236,41 +248,24 @@ def review_section_assignment(
             })
             result_assignment_id = next_assignment.id
     else:
+        # The equipment is already working again (Operations confirm that). This checks the write-up:
+        # approve it, or ask for more detail. Neither changes the fault's status.
         if assignment.completion_review_status != "PENDING":
-            raise HTTPException(status_code=409, detail="This assignment has no technical completion awaiting review")
+            raise HTTPException(status_code=409, detail="There is no write-up waiting for your check")
         if req.decision == "RETURN_COMPLETION":
             assignment.completion_review_status = "RETURNED"
             assignment.completion_review_comments = comments
-            fault.status = assignment.review_previous_fault_status or "DIAGNOSED"
             add_event(db, fault.id, "TECHNICAL_COMPLETION_RETURNED", user.id, {
                 "assignment_id": assignment.id,
                 "comments": comments,
             })
         else:
-            successful_intervention = db.scalar(
-                select(Intervention.id).where(
-                    Intervention.assignment_id == assignment.id,
-                    Intervention.outcome == "SUCCESS",
-                ).limit(1)
-            )
-            if not successful_intervention:
-                raise HTTPException(status_code=409, detail="Record a successful corrective intervention before approving technical completion")
             assignment.completion_review_status = "APPROVED"
             assignment.completion_review_comments = comments
-            assignment.status = "RESTORED"
-            assignment.completed_at = now
-            fault.status = "RESTORED"
-            # Restoration is when the equipment worked again (technician's notes), not when it was signed off.
-            restored_at = utc_datetime(assignment.back_in_service_at) if assignment.back_in_service_at else now
-            fault.restored_at = restored_at
-            add_event(db, fault.id, "FAULT_RESTORE", assignment.assigned_user_id or user.id, {
-                "assignment_id": assignment.id,
-                "technical_reviewed_by": user.id,
-                "signed_off_at": now.isoformat(),
-            }, created_at=restored_at)
             add_event(db, fault.id, "TECHNICAL_COMPLETION_APPROVED", user.id, {
                 "assignment_id": assignment.id,
                 "comments": comments,
+                "checked_at": now.isoformat(),
             })
     db.commit()
     return {
@@ -300,7 +295,7 @@ def escalate_assignment(
     require_current_assignment(user, fault)
     if not fault.equipment_confirmed:
         raise HTTPException(status_code=409, detail="Confirm the physical equipment before handing off technical work")
-    if assignment.escalation_status == "PENDING" or assignment.completion_review_status == "PENDING":
+    if assignment.escalation_status == "PENDING":
         raise HTTPException(status_code=409, detail="This assignment already has a technical review pending")
     if req.next_section not in SECTIONS or req.next_section == assignment.section:
         raise HTTPException(status_code=422, detail="Choose a different, valid maintenance section")
@@ -328,6 +323,88 @@ def escalate_assignment(
         "escalation_status": assignment.escalation_status,
         "status": fault.status,
     }
+
+
+def _job_lead(user: User, fault: Fault) -> FaultAssignment:
+    """The active job, for the person on it, a helper, or the section's Chief Technician."""
+    assignment = current_assignment(fault)
+    if not assignment or not assignment.assigned_user_id:
+        raise HTTPException(status_code=409, detail="Someone must take the job first")
+    if not (assignment.assigned_user_id == user.id or is_helper(assignment, user.id)
+            or (role_key(user) == "technician_ct" and assignment.section == user.section)):
+        raise HTTPException(status_code=403, detail="Only the people on this job can call someone in")
+    return assignment
+
+
+@router.get("/api/v1/faults/{fault_id}/helper-candidates")
+def helper_candidates(fault_id: str, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """Anyone technical in the workshop (any section) who could come and help."""
+    fault = fault_operations.get_fault_in_scope(db, user, fault_id)
+    assignment = _job_lead(user, fault)
+    taken = {assignment.assigned_user_id, *(item.user_id for item in assignment.helpers)}
+    region = user_region(user) or (fault.equipment.region if fault.equipment else "")
+    people = db.scalars(select(User).where(User.active == 1, User.role.in_(TECHNICAL_ROLES)).order_by(User.display_name)).all()
+    rows = [person for person in people if person.id not in taken and (not region or not person.region or person.region == region)]
+    rows.sort(key=lambda person: (person.availability_status != "AVAILABLE", person.section != assignment.section, person.display_name))
+    return [{"id": person.id, "name": person.display_name, "section": person.section, "role": role_key(person),
+             "available": person.availability_status == "AVAILABLE"} for person in rows]
+
+
+@router.post("/api/v1/faults/{fault_id}/helpers")
+def add_helper(fault_id: str, req: HelperAdd, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """Call a colleague in to help: they see the job, can add to the write-up, and are credited with it."""
+    fault = fault_operations.get_fault_in_scope(db, user, fault_id)
+    assignment = _job_lead(user, fault)
+    person = db.get(User, req.user_id)
+    if not person or not person.active or role_key(person) not in TECHNICAL_ROLES:
+        raise HTTPException(status_code=422, detail="Choose an active technician or engineer")
+    if person.id == assignment.assigned_user_id or is_helper(assignment, person.id):
+        raise HTTPException(status_code=409, detail=f"{person.display_name} is already on this job")
+    helper = FaultHelper(id=str(uuid.uuid4()), assignment_id=assignment.id, fault_id=fault.id, user_id=person.id,
+                         added_by_id=user.id, note=req.note.strip(), created_at=utcnow())
+    db.add(helper)
+    add_event(db, fault.id, "HELPER_ADDED", user.id, {
+        "assignment_id": assignment.id, "helper_id": person.id, "helper_name": person.display_name,
+        "helper_section": person.section, "note": helper.note,
+    })
+    db.commit()
+    return {"id": helper.id, "user_id": person.id, "name": person.display_name, "section": person.section}
+
+
+@router.delete("/api/v1/faults/{fault_id}/helpers/{helper_user_id}")
+def remove_helper(fault_id: str, helper_user_id: str, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    fault = fault_operations.get_fault_in_scope(db, user, fault_id)
+    assignment = _job_lead(user, fault)
+    helper = next((item for item in assignment.helpers if item.user_id == helper_user_id), None)
+    if not helper:
+        raise HTTPException(status_code=404, detail="Not helping on this job")
+    name = helper.user.display_name if helper.user else helper_user_id
+    db.delete(helper)
+    add_event(db, fault.id, "HELPER_REMOVED", user.id, {"assignment_id": assignment.id, "helper_id": helper_user_id, "helper_name": name})
+    db.commit()
+    return {"removed": helper_user_id}
+
+
+@router.post("/api/v1/faults/{fault_id}/assignments/{assignment_id}/write-up-note")
+def add_to_write_up(fault_id: str, assignment_id: str, req: WriteUpNote, user: User = Depends(current_user),
+                    db: Session = Depends(db_dep)):
+    """The Chief Technician asked for more detail: the person on the job (or a helper) adds it, and it goes back to be checked."""
+    fault = fault_operations.get_fault_in_scope(db, user, fault_id)
+    assignment = db.get(FaultAssignment, assignment_id)
+    if not assignment or assignment.fault_id != fault.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not (assignment.assigned_user_id == user.id or is_helper(assignment, user.id)):
+        raise HTTPException(status_code=403, detail="Only the people on this job can add to its write-up")
+    if assignment.completion_review_status != "RETURNED":
+        raise HTTPException(status_code=409, detail="Your Chief Technician has not asked for more on this write-up")
+    note = req.note.strip()
+    if not note:
+        raise HTTPException(status_code=422, detail="Write what you are adding")
+    assignment.completion_review_status = "PENDING"
+    add_event(db, fault.id, "WRITE_UP_ADDED", user.id, {"assignment_id": assignment.id, "note": note,
+                                                         "section": assignment.section})
+    db.commit()
+    return {"assignment_id": assignment.id, "completion_review_status": assignment.completion_review_status}
 
 
 @router.post("/api/v1/faults/{fault_id}/operator-confirmation")

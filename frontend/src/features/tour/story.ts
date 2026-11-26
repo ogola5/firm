@@ -12,20 +12,20 @@ export const STORY: Chapter[] = [
       "Safety is one tap and goes to the top of every list."],
   },
   {
-    title: "Systems Automation hears about it", who: "Systems Automation", username: "automation", path: "/dashboard",
-    notice: ["The bell and “Needs you now”: one list, safety first.", "Nobody has to phone around to find out it was reported."],
+    title: "The workshop hears about it", who: "Senior Technician, Mechanical", username: "st-mechanical", path: "/dashboard",
+    notice: ["Sent straight to Mechanical, who look after the pump: no Systems Automation step.", "The bell and “Needs you now”: safety first. Nobody phones around."],
   },
   {
-    title: "The Chief Technician gives it to a technician", who: "Chief Technician", username: "ct-systems-automation", path: "/dashboard",
-    notice: ["Only technicians in the same section and region, and who are available, can be chosen.", "The technician is told at once."],
+    title: "Anyone free takes it", who: "Principal Technician (on a phone)", username: "pt-mechanical", path: "/dashboard",
+    notice: ["“Take this job”: the first to take it gets it. No waiting for the Chief Technician to allocate.", "Print the job card and go: no phone at the equipment."],
   },
   {
-    title: "The technician takes it and writes up the visit", who: "Principal Technician (on a phone)", username: "pt-systems-automation", path: "/dashboard",
-    notice: ["“Take this job”, print the job card, go: no phone at the equipment.", "Afterwards: what was found, each step tried, and whether it worked."],
+    title: "Call someone in, and it is working again at once", who: "Principal Technician", username: "pt-mechanical", path: "/faults?mode=history&q=11-P-401",
+    notice: ["Need an electrician? “Call someone to help”: any section, credited with the job.", "“It's working again” puts it back in service straight away: no sign-off to wait for."],
   },
   {
-    title: "Sign-off: every attempt, including what failed", who: "Chief Technician", username: "ct-systems-automation", path: "/faults?mode=history&q=11-P-401",
-    notice: ["The next step says exactly what to do: “Review and sign off”.", "Failed attempts are kept: they save the next person time."],
+    title: "The Chief Technician checks the write-up afterwards", who: "Chief Technician", username: "ct-mechanical", path: "/dashboard",
+    notice: ["Sees who took what. Steps in only when nobody has taken something.", "Checks the write-up after the fix: approve, or ask for more. Failed attempts are kept."],
   },
   {
     title: "Operations confirms it works", who: "Control room operator", username: "operations", path: "/dashboard",

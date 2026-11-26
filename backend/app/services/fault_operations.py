@@ -23,7 +23,7 @@ from app.services.report_answers import clean_details
 from app.services.catalogue import ACTION_TYPES, CAUSE_CATEGORIES, check_choice
 from app.services.drawings import find_drawing_id
 from app.services.access import (
-    INVESTIGATION_ROLES, current_assignment, require_current_assignment,
+    INVESTIGATION_ROLES, SECTIONS, current_assignment, is_helper, require_current_assignment,
     require_equipment_scope, require_fault_scope, require_roles, role_key,
 )
 from app.services.audit import add_event
@@ -41,7 +41,7 @@ FAULT_ACTION_ROLES = {
     "acknowledge": (*INVESTIGATION_ROLES, "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
     "on_site": (*INVESTIGATION_ROLES, "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
     "diagnose": (*INVESTIGATION_ROLES, "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
-    "restore": ("systems_automation", "technician_st", "technician_pt", "senior_engineer", "chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
+    "restore": (*INVESTIGATION_ROLES, "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
     "close": ("chief_engineer", "maintenance_manager", "general_manager_om", "supervisor", "system_administrator"),
 }
 
@@ -106,16 +106,32 @@ def report_fault(db: Session, user: User, req: FaultCreate, fault_id: str | None
         raise HTTPException(status_code=422, detail="Provide an equipment description or a known location")
 
     unconfirmed = confirmed_equipment is None
+    # Straight to the section that should come: the one the reporter chose, else the equipment's own
+    # section. Systems Automation only when nobody knows which equipment or section it is.
+    send_to = req.send_to.strip()
+    if send_to and send_to not in SECTIONS:
+        raise HTTPException(status_code=422, detail="Choose who should come: " + ", ".join(SECTIONS))
+    if confirmed_equipment:
+        default_section = confirmed_equipment.section
+    elif role_key(user) in SECTION_TECHNICAL_ROLES and user.section in SECTIONS:
+        default_section = user.section
+    else:
+        default_section = "Systems Automation"
+    assigned_section = send_to or default_section
+    if send_to and send_to != default_section:
+        routing = "REPORTER_CHOSE"
+    elif not confirmed_equipment and assigned_section == "Systems Automation":
+        routing = "SYSTEMS_AUTOMATION_FIRST"
+    else:
+        routing = "DIRECT_TO_SECTION"
     if confirmed_equipment:
         selected_equipment = confirmed_equipment
         equipment_id = confirmed_equipment.id
     else:
-        placeholder_section = user.section if role_key(user) in SECTION_TECHNICAL_ROLES else "Systems Automation"
-        equipment_id = f"EQ-UNCONFIRMED-{placeholder_section.lower().replace(' ', '-')}"
+        equipment_id = f"EQ-UNCONFIRMED-{assigned_section.lower().replace(' ', '-')}"
         selected_equipment = db.get(Equipment, equipment_id)
         if not selected_equipment:
             raise HTTPException(status_code=500, detail="Unconfirmed-asset routing is not configured")
-    assigned_section = "Systems Automation"
     observed_at = (
         check_past_time(req.observed_at, earliest=utcnow() - timedelta(days=7), label="The time you saw it")
         if req.observed_at else None
@@ -182,8 +198,8 @@ def report_fault(db: Session, user: User, req: FaultCreate, fault_id: str | None
     add_event(db, fault.id, "FAULT_ASSIGNED", user.id, {
         "assignment_id": initial_assignment.id,
         "assigned_section": assigned_section,
-        "suggested_section": selected_equipment.section if confirmed_equipment else "Systems Automation",
-        "routing_strategy": "SYSTEMS_AUTOMATION_FIRST",
+        "suggested_section": selected_equipment.section if confirmed_equipment else assigned_section,
+        "routing_strategy": routing,
         "reason": initial_assignment.reason,
     })
     if repeat_count:
@@ -217,14 +233,14 @@ def report_fault(db: Session, user: User, req: FaultCreate, fault_id: str | None
         "triage_skipped": False,
         "seen_before_message": (
             f"SEEN BEFORE: Same fault {repeat_count} time(s) in 90 days."
-            f" Sent to Systems Automation first; prior findings remain linked to this report."
+            f" Sent to {assigned_section}; prior findings remain linked to this report."
             if repeat_count else ""
         ),
         "active_assignment_id": initial_assignment.id,
         "equipment_confirmed": not unconfirmed,
         "asset_confirmation_required": unconfirmed,
         "asset_confirmation_message": (
-            "Asset identification is unconfirmed. Systems Automation must confirm the equipment before normal routing."
+            "The equipment is not confirmed yet. Whoever takes the job confirms it first."
             if unconfirmed else ""
         ),
     }
@@ -254,50 +270,75 @@ def fault_action(db: Session, user: User, fault_id: str, action: str) -> dict:
         )
         db.add(assignment)
         fault.assigned_section = section
-    if assignment.escalation_status == "PENDING" or assignment.completion_review_status == "PENDING":
+    if assignment.escalation_status == "PENDING":
         raise HTTPException(status_code=409, detail="This assignment is awaiting Chief Technician review")
     if action == "restore":
-        db.flush()
-        successful_intervention = db.scalar(
-            select(Intervention.id).where(
-                Intervention.assignment_id == assignment.id,
-                Intervention.outcome == "SUCCESS",
-            ).limit(1)
-        )
-        if not successful_intervention:
-            raise HTTPException(status_code=409, detail="Record a successful corrective intervention before requesting technical completion")
-        assignment.completion_review_status = "PENDING"
-        assignment.review_previous_fault_status = fault.status
-        fault.status = "AWAITING_CHIEF_REVIEW"
-        add_event(db, fault.id, "TECHNICAL_COMPLETION_SUBMITTED_FOR_REVIEW", user.id, {
-            "assignment_id": assignment.id,
-            "section": assignment.section,
-        })
-        return {
-            "reference": fault.reference,
-            "status": fault.status,
-            "completion_review_status": assignment.completion_review_status,
-        }
+        if not assignment.assigned_user_id:
+            raise HTTPException(status_code=409, detail="Take the job first")
+        return _working_again(db, user, fault, assignment)
     if action == "acknowledge":
         if assignment.assigned_user_id and assignment.assigned_user_id != user.id:
-            raise HTTPException(status_code=409, detail="This breakdown is already assigned to another employee")
-        assignment.assigned_user_id = user.id
-        assignment.status = "ACKNOWLEDGED"
-        assignment.acknowledged_at = utcnow()
-        fault.assigned_user_id = user.id
-        if assignment.section == "Systems Automation" and not db.scalar(
-            select(FaultEvent.id).where(FaultEvent.fault_id == fault.id, FaultEvent.event_type == "FAULT_TRIAGED").limit(1)
-        ):
-            add_event(db, fault.id, "FAULT_TRIAGED", user.id, {
-                "assignment_id": assignment.id,
-                "triage_method": "Systems Automation accepted the initial response",
-            })
-    transitions = {"acknowledge": "ACKNOWLEDGED", "on_site": "ON_SITE", "diagnose": "DIAGNOSED"}
+            raise HTTPException(status_code=409, detail="Already taken")
+        take_job(db, user, fault, assignment)
+        return {"reference": fault.reference, "status": fault.status, "assigned_section": assignment.section}
+    if not assignment.assigned_user_id:
+        take_job(db, user, fault, assignment)  # on site, or found the cause, means they took it
+    transitions = {"on_site": "ON_SITE", "diagnose": "DIAGNOSED"}
     fault.status = transitions[action]
-    if action in ("on_site", "diagnose"):
-        assignment.status = "IN_PROGRESS"
+    assignment.status = "IN_PROGRESS"
     add_event(db, fault.id, f"FAULT_{action.upper()}", user.id, {"assignment_id": assignment.id})
     return {"reference": fault.reference, "status": fault.status}
+
+
+def take_job(db: Session, user: User, fault: Fault, assignment: FaultAssignment, *, at: datetime | None = None,
+             implied: bool = False) -> None:
+    """Open pickup: the first person free takes it, from any section. The job moves to their section,
+    so their own Chief Technician checks the write-up."""
+    if role_key(user) == "technician_ct":
+        raise HTTPException(status_code=403, detail="Chief Technicians give jobs to people; use Allocate")
+    moment = at or utcnow()
+    if user.section in SECTIONS and assignment.section != user.section:
+        add_event(db, fault.id, "TAKEN_FROM_OTHER_SECTION", user.id, {
+            "assignment_id": assignment.id, "from_section": assignment.section, "to_section": user.section,
+        }, created_at=moment)
+        assignment.section = user.section
+        fault.assigned_section = user.section
+    assignment.assigned_user_id = user.id
+    assignment.status = "ACKNOWLEDGED"
+    assignment.acknowledged_at = moment
+    fault.assigned_user_id = user.id
+    fault.status = "ACKNOWLEDGED"
+    if not db.scalar(select(FaultEvent.id).where(FaultEvent.fault_id == fault.id, FaultEvent.event_type == "FAULT_TRIAGED").limit(1)):
+        add_event(db, fault.id, "FAULT_TRIAGED", user.id, {
+            "assignment_id": assignment.id, "triage_method": "Taken straight from the workshop list",
+        }, created_at=moment)
+    payload = {"assignment_id": assignment.id, "section": assignment.section}
+    if implied:
+        payload.update(implied_by_visit=True, recorded_at=utcnow().isoformat())
+    add_event(db, fault.id, "FAULT_ACKNOWLEDGE", user.id, payload, created_at=moment)
+
+
+def _working_again(db: Session, user: User, fault: Fault, assignment: FaultAssignment) -> dict:
+    """It works: the fault is restored now. Operations confirms it; the Chief Technician checks the
+    write-up afterwards, without holding up the restoration."""
+    db.flush()
+    successful_intervention = db.scalar(
+        select(Intervention.id).where(Intervention.assignment_id == assignment.id, Intervention.outcome == "SUCCESS").limit(1)
+    )
+    if not successful_intervention:
+        raise HTTPException(status_code=409, detail="Record what worked before saying it is working again")
+    now = utcnow()
+    restored_at = utc_datetime(assignment.back_in_service_at) if assignment.back_in_service_at else now
+    assignment.status = "RESTORED"
+    assignment.completed_at = now
+    assignment.completion_review_status = "PENDING"
+    fault.status = "RESTORED"
+    fault.restored_at = restored_at
+    add_event(db, fault.id, "FAULT_RESTORE", user.id, {"assignment_id": assignment.id, "review": "after"}, created_at=restored_at)
+    add_event(db, fault.id, "TECHNICAL_COMPLETION_SUBMITTED_FOR_REVIEW", user.id, {
+        "assignment_id": assignment.id, "section": assignment.section,
+    })
+    return {"reference": fault.reference, "status": fault.status, "completion_review_status": "PENDING"}
 
 
 def _active_investigation_assignment(db: Session, user: User, fault_id: str) -> tuple[Fault, FaultAssignment]:
@@ -307,7 +348,7 @@ def _active_investigation_assignment(db: Session, user: User, fault_id: str) -> 
     if not assignment:
         raise HTTPException(status_code=409, detail="There is no active section assignment for this breakdown")
     require_current_assignment(user, fault)
-    if assignment.escalation_status == "PENDING" or assignment.completion_review_status == "PENDING":
+    if assignment.escalation_status == "PENDING":
         raise HTTPException(status_code=409, detail="This assignment is awaiting Chief Technician review")
     return fault, assignment
 
@@ -402,10 +443,8 @@ def record_visit(db: Session, user: User, fault_id: str, req: VisitCreate) -> di
     restoration measures reflect the work rather than the paperwork.
     """
     fault, assignment = _active_investigation_assignment(db, user, fault_id)
-    if assignment.assigned_user_id and assignment.assigned_user_id != user.id:
+    if assignment.assigned_user_id and assignment.assigned_user_id != user.id and not is_helper(assignment, user.id):
         raise HTTPException(status_code=409, detail="This job is allocated to someone else")
-    if not assignment.assigned_user_id and assignment.status == "OPEN":
-        raise HTTPException(status_code=409, detail="Take the job before writing up a visit")
     found = req.found.strip()
     attempts = [item for item in req.attempts if item.action.strip()]
     if not found:
@@ -433,14 +472,9 @@ def record_visit(db: Session, user: User, fault_id: str, req: VisitCreate) -> di
 
     recorded_at = utcnow()
     if assignment.status == "OPEN":
-        # Allocated to this person who went straight out without clicking "I'm taking this job".
-        # Arriving on site is the latest they can have taken it; record it as implied.
-        assignment.status = "ACKNOWLEDGED"
-        assignment.acknowledged_at = on_site_at
-        fault.assigned_user_id = user.id
-        add_event(db, fault.id, "FAULT_ACKNOWLEDGE", user.id, {
-            "assignment_id": assignment.id, "implied_by_visit": True, "recorded_at": recorded_at.isoformat(),
-        }, created_at=on_site_at)
+        # Went straight out (the phone rang) without pressing "Take this job". Arriving on site is
+        # the latest they can have taken it; record it as implied.
+        take_job(db, user, fault, assignment, at=on_site_at, implied=True)
     already_on_site = db.scalar(
         select(FaultEvent.id).where(FaultEvent.fault_id == fault.id, FaultEvent.event_type == "FAULT_ON_SITE").limit(1)
     )

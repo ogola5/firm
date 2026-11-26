@@ -37,7 +37,7 @@ export function statusVariant(status: string): BadgeProps["variant"] {
 /** Status in the words people use (fault, section work and procedure statuses). Unknown codes are tidied, not hidden. */
 const STATUS_WORDS: Record<string, string> = {
   REPORTED: "Reported", TRIAGED: "Being sorted", ASSIGNED: "Waiting to be taken", ACKNOWLEDGED: "Taken", ON_SITE: "On site",
-  DIAGNOSED: "Cause found", AWAITING_CHIEF_REVIEW: "Waiting for sign-off", RESTORED: "Fixed: confirm it works", CLOSED: "Closed",
+  DIAGNOSED: "Cause found", AWAITING_CHIEF_REVIEW: "Hand-over waiting", RESTORED: "Working again: confirm it", CLOSED: "Closed",
   OPEN: "Open", ESCALATED: "Handed over", SUBMITTED: "Waiting for review", CHIEF_APPROVED: "Waiting to be published",
   CLARIFICATION_REQUESTED: "Question asked", APPROVED: "Published", SUPERSEDED: "Replaced by a newer version", WITHDRAWN: "Withdrawn",
   REJECTED: "Not accepted", PENDING: "Waiting", CONFIRMED: "Confirmed",

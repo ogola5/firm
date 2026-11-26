@@ -71,22 +71,16 @@ def test_report_records_how_and_when_it_was_seen():
 
 
 def allocated_electrical_job(seen_hours_ago: float = 3) -> str:
-    """Report on an Electrical valve and route it to st-electrical, ready for a visit."""
+    """Report straight to Electrical (no Systems Automation step); its Chief Technician gives it to st-electrical."""
     operations = headers("operations")
     valve = equipment_by_tag("11-MOV-501")
-    fault = client.post("/api/v1/faults", headers=operations, json={
+    report = client.post("/api/v1/faults", headers=operations, json={
         "equipment_id": valve["id"], "symptom": "Won't open / close", "operational_impact": "Stopped",
         "seen_via": "SCADA", "observed_at": iso(datetime.now(timezone.utc) - timedelta(hours=seen_hours_ago)),
-    }).json()["id"]
-    automation = headers("automation")
-    assert client.post(f"/api/v1/faults/{fault}/action?action=acknowledge", headers=automation).status_code == 200
-    escalation = client.post(f"/api/v1/faults/{fault}/assignments/escalate", headers=automation, json={
-        "next_section": "Electrical", "findings": "No actuator response.", "recommendation": "Check supply.",
+        "send_to": "Electrical",
     }).json()
-    assert client.post(
-        f"/api/v1/faults/{fault}/assignments/{escalation['assignment_id']}/review",
-        headers=headers("ct-systems-automation"), json={"decision": "APPROVE_ESCALATION"},
-    ).status_code == 200
+    assert report["assigned_section"] == "Electrical"
+    fault = report["id"]
     chief = headers("ct-electrical")
     active = next(item for item in client.get(f"/api/v1/faults/{fault}/context", headers=chief).json()["assignments"] if item["is_active"])
     assert client.post(f"/api/v1/faults/{fault}/assignments/{active['id']}/allocate", headers=chief, json={
@@ -120,7 +114,7 @@ def test_visit_write_up_uses_the_technicians_times_through_to_restoration():
         "request_signoff": True,
     })
     assert visit.status_code == 200, visit.text
-    assert visit.json()["status"] == "AWAITING_CHIEF_REVIEW"
+    assert visit.json()["status"] == "RESTORED"  # working again now; the Chief Technician checks the write-up later
     assert any(item["fault_id"] == fault for item in client.get("/api/v1/me/jobs", headers=technician).json()["waiting"])
 
     timeline = client.get(f"/api/v1/faults/{fault}/timeline", headers=technician).json()
@@ -131,8 +125,9 @@ def test_visit_write_up_uses_the_technicians_times_through_to_restoration():
     ]
 
     chief = headers("ct-electrical")
-    active = next(item for item in client.get(f"/api/v1/faults/{fault}/context", headers=chief).json()["assignments"] if item["is_active"])
-    assert client.post(f"/api/v1/faults/{fault}/assignments/{active['id']}/review", headers=chief, json={
+    checked = next(item for item in client.get(f"/api/v1/faults/{fault}/context", headers=chief).json()["assignments"]
+                   if item["completion_review_status"] == "PENDING")
+    assert client.post(f"/api/v1/faults/{fault}/assignments/{checked['id']}/review", headers=chief, json={
         "decision": "APPROVE_COMPLETION",
     }).status_code == 200
     timeline = client.get(f"/api/v1/faults/{fault}/timeline", headers=technician).json()
@@ -205,4 +200,4 @@ def test_a_visit_written_up_offline_syncs_through_the_same_rules():
         },
     }]).json()["results"][0]
     assert result["status"] == "APPLIED", result
-    assert result["result"]["status"] == "AWAITING_CHIEF_REVIEW"
+    assert result["result"]["status"] == "RESTORED"

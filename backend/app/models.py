@@ -412,6 +412,21 @@ class FaultAssignment(Base):
     fault = relationship("Fault", back_populates="assignments")
     assigned_by = relationship("User", foreign_keys=[assigned_by_id])
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])
+    helpers = relationship("FaultHelper", back_populates="assignment", order_by="FaultHelper.created_at")
+
+
+class FaultHelper(Base):
+    """A colleague the person on the job called in to help, from any section. Credited with the job."""
+    __tablename__ = "fault_helpers"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    assignment_id: Mapped[str] = mapped_column(ForeignKey("fault_assignments.id"), index=True)
+    fault_id: Mapped[str] = mapped_column(ForeignKey("faults.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    added_by_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    assignment = relationship("FaultAssignment", back_populates="helpers")
+    user = relationship("User", foreign_keys=[user_id])
 
 
 class FaultAttachment(Base):

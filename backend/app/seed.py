@@ -15,7 +15,7 @@ from app.services.access import REGIONAL_ROLES, ROLE_DEFINITIONS, SECTIONS, STAT
 from app.services.audit import add_event
 
 # (tag, name, aliases, station, location). Index % 4 gives the owning section:
-# 0 Systems Automation, 1 Mechanical, 2 Electrical, 3 Instrumentation.
+# 0 and 3 Systems Automation (it now includes Instrumentation and Control), 1 Mechanical, 2 Electrical.
 ILLUSTRATIVE_EQUIPMENT = [
     ("11-PLC-101", "Tank farm control PLC", "plc tank farm controller", "PS02", "Control room"),
     ("PUMP-101", "Booster pump A", "booster pump a p101", "PS01", "Pump house"),
@@ -89,7 +89,6 @@ def _seed_database():
             ("operations", "Operations"),
             ("automation", "Systems Automation"),
             ("electrical", "Electrical"),
-            ("instrumentation", "Instrumentation"),
             ("mechanical", "Mechanical"),
             ("supervisor", "Supervisor"),
             ("management", "Management"),
@@ -102,12 +101,12 @@ def _seed_database():
                 email=demo_email(username),
                 display_name=f"Demo {role} User",
                 role=role,
-                section=role if role in ("Electrical", "Instrumentation", "Mechanical") else "",
+                section=role if role in ("Electrical", "Mechanical") else "",
                 password_hash=bcrypt.hashpw(b"demo123", bcrypt.gensalt()).decode(),
             ))
 
-        categories = ["Automation", "Mechanical", "Electrical", "Instrumentation"]
-        sections = ["Systems Automation", "Mechanical", "Electrical", "Instrumentation"]
+        categories = ["Automation", "Mechanical", "Electrical", "Automation"]
+        sections = ["Systems Automation", "Mechanical", "Electrical", "Systems Automation"]
         # Illustrative registry: tags plus the plain names people use in the control room.
         # The section pattern (index % 4) is kept so seeded faults stay consistent.
         for i, (tag, name, aliases, station, location) in enumerate(ILLUSTRATIVE_EQUIPMENT):
@@ -208,7 +207,7 @@ def _seed_database():
                 corrective_action="Restore connections or replace the affected approved component.",
                 safety="Follow applicable work permits, isolation and lockout procedures.",
                 status="APPROVED" if i < 24 else ("SUBMITTED" if i < 28 else "REJECTED"),
-                author_id="USER-electrical" if i % 2 else "USER-instrumentation",
+                author_id="USER-electrical" if i % 2 else "USER-automation",
                 version=1,
                 source_type="LEGACY_PROCEDURE" if i < 24 else "FAULT_DERIVED",
                 instruction_type="Legacy operating work instruction" if i < 24 else "Fault-derived work procedure",
@@ -229,7 +228,6 @@ def _seed_database():
         "operations": ("operations", "Operations"),
         "automation": ("systems_automation", "Systems Automation"),
         "electrical": ("technician_st", "Electrical"),
-        "instrumentation": ("technician_st", "Instrumentation"),
         "mechanical": ("technician_st", "Mechanical"),
         "supervisor": ("supervisor", ""),
         "management": ("general_manager_om", ""),
@@ -521,7 +519,7 @@ EXTRA_EQUIPMENT = [
     ("11-LOP-401", "Line 4 pump A lube oil pumps panel", "lop panel line 4 lube oil pumps lop pump 401 panel 4", "PS04",
      "Line 4 MCC room", "Electrical", "Electrical", "High"),
     ("11-VMS-401", "Line 4 pump A vibration monitor (Bentley Nevada)", "bentley nevada bn hmi vibration monitor pump 401 line 4", "PS04",
-     "Line 4 control room", "Instrumentation", "Instrumentation", "High"),
+     "Line 4 control room", "Systems Automation", "Automation", "High"),
     ("11-RTU-401", "Line 4 station RTU and local workstation", "line 4 workstation local scada station 4 rtu", "PS04",
      "Line 4 control room", "Systems Automation", "Automation", "High"),
 ]
@@ -551,7 +549,7 @@ def seed_knowledge_capture(db) -> None:
     now = utcnow()
     by_tag = {item.tag: item for item in db.scalars(select(Equipment))}
     # HR has recorded two people retiring soon (illustrative).
-    for user_id, retires in (("USER-pt-systems-automation", date(2026, 12, 31)), ("USER-senior-engineer-instrumentation", date(2027, 3, 31)),
+    for user_id, retires in (("USER-pt-systems-automation", date(2026, 12, 31)), ("USER-senior-engineer-systems-automation", date(2027, 3, 31)),
                              ("USER-engineer-electrical", date(2028, 6, 30))):
         person = db.get(User, user_id)
         if person:
@@ -564,11 +562,11 @@ def seed_knowledge_capture(db) -> None:
         ("ILL-PS02-E-0388", "Tank 501 inlet valve: actuator control wiring", "D", "Electrical", ["11-MOV-501"]),
         ("ILL-PS02-C-0101", "Pump station 2 RTU: I/O and communications", "F", "Control", ["RTU-201", "11-RAD-201"]),
         ("ILL-PS02-C-0102", "Pump station 2 PLC: panel layout and I/O", "E", "Control", ["11-PLC-201"]),
-        ("ILL-PS02-I-0207", "Tank 501 instruments: loop diagrams", "B", "Instrumentation", ["11-LT-501"]),
-        ("ILL-PS02-I-0208", "Tank 601 instruments: loop diagrams", "C", "Instrumentation", ["11-LT-601", "11-TT-601", "11-PT-601"]),
+        ("ILL-PS02-I-0207", "Tank 501 instruments: loop diagrams", "B", "Systems Automation", ["11-LT-501"]),
+        ("ILL-PS02-I-0208", "Tank 601 instruments: loop diagrams", "C", "Systems Automation", ["11-LT-601", "11-TT-601", "11-PT-601"]),
         ("ILL-PS02-M-0310", "Tank 501 transfer pump: general arrangement", "A", "Mechanical", ["11-P-501"]),
         ("ILL-PS01-E-0120", "Booster pumps: drive power and control", "G", "Electrical", ["VFD-101", "VFD-102"]),
-        ("ILL-PS01-I-0150", "Line 1 metering: instrument loops", "D", "Instrumentation", ["FT-101", "PT-102"]),
+        ("ILL-PS01-I-0150", "Line 1 metering: instrument loops", "D", "Systems Automation", ["FT-101", "PT-102"]),
         ("ILL-PS02-E-0001", "Pump station 2: single-line diagram", "H", "Electrical", ["TX-201"]),
     ]
     numbers = {}
@@ -637,7 +635,7 @@ def seed_knowledge_capture(db) -> None:
     # One past award, so the awards wall is not empty (illustrative).
     month = (now.replace(day=1) - timedelta(days=1)).replace(day=1) - timedelta(days=1)
     db.add(Award(id="AWARD-DEMO-001", award_type="MONTH", period_key=month.strftime("%Y-%m"), scope="Overall",
-                 user_id="USER-senior-engineer-instrumentation",
+                 user_id="USER-senior-engineer-systems-automation",
                  citation="Wrote the level transmitter procedures that colleagues used to fix four repeat faults first time.",
                  prize="Certificate and voucher (illustrative)", decided_by_id="USER-hr", created_at=now - timedelta(days=20)))
     db.commit()

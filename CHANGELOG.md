@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-12-03 — Open pickup: anyone free takes it, call someone in, working again at once; Instrumentation is now Systems Automation
+
+Why: a breakdown is often phoned through to the workshop. Waiting for the Chief Technician to allocate, and then to sign off before it counts as restored, only added delay. Everyone in the workshop is competent, and anyone who needs help calls a colleague.
+
+- **Straight to the section:** the report form asks **Who should come?** (Systems Automation, Electrical or Mechanical), set by default to the section that looks after the equipment (`send_to`). Operations no longer goes through Systems Automation for Mechanical or Electrical faults. Systems Automation is the default only when nobody knows which equipment it is.
+- **Open pickup:**
+  - Anyone technical in the region (ST, PT, AE, Engineer, SE, CE, Systems Automation) can take a job nobody has taken, from any section. The first to take it gets it; anyone after that is told who took it.
+  - Taking another section's job moves it to the taker's section (`TAKEN_FROM_OTHER_SECTION`). The original Chief Technician is told.
+  - My jobs: *New: nobody has taken it yet* (own section) and *Other sections: not taken yet*. "Needs you now" shows another section's job once it has waited 15 minutes, or at once if it is a safety hazard.
+  - Whoever takes an unidentified fault confirms the equipment.
+  - Anyone in the region can look up any equipment, so whoever answers the workshop phone can log the fault.
+- **Call someone to help:**
+  - On the fault, the person on the job calls a colleague in, from any section (`fault_helpers`, migration 0013).
+  - The helper is notified, sees the job under *Helping a colleague*, can write up visits on it, and is credited.
+- **Working again at once:**
+  - "It's working again" (or **Save: it's working again** on the write-up) makes the fault restored immediately, with the technician's back-in-service time. Operations is asked to confirm straight away.
+  - Engineers and Assistant Engineers can mark it working again too.
+- **The Chief Technician checks the write-up afterwards:**
+  - **Write-up is good**, or **Ask for more detail**. The person on the job adds to it (`write-up-note`) and it goes back to be checked. Neither changes the fault's status, even if it is already closed.
+  - Allocation is still there, but optional ("Give it to someone"). The Chief Technician is shown anything nobody has taken for 15 minutes.
+  - A hand-over between sections still waits for the Chief Technician.
+- **Progress line:** Reported → With section → Taken → On site → Working again → Confirmed.
+- **Instrumentation and Control is now Systems Automation:**
+  - Sections are Systems Automation, Electrical and Mechanical.
+  - Migration 0013 moves every Instrumentation record (equipment, faults, assignments, procedures, expert sessions, drawings, awards and people) to Systems Automation.
+  - It closes the duplicate demonstration Instrumentation accounts and passes their knowledge-owner roles to the Systems Automation counterparts.
+- **Existing work:** jobs that were waiting for the old sign-off become working again from the technician's back-in-service time, with the check still pending.
+
 ## 2026-12-02 — UI/UX: next step, plain language, "Needs you now", search, night and sunlight modes, guided demo
 
 - **Fault page:**

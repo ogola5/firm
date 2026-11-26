@@ -10,7 +10,7 @@ import { apiGet, apiPost, apiToken, equipmentIn, openFault, setSimulatedNetwork,
 test("Scenario 5: a stale offline change is held for reconciliation, not applied", async ({ page, request }) => {
   test.setTimeout(180_000);
   const operations = await apiToken(request, "operations");
-  const equipment = await equipmentIn(request, "Instrumentation");
+  const equipment = await equipmentIn(request, "Systems Automation");
   const symptom = `E2E concurrent edit ${Date.now()}`;
   const fault = await apiPost<{ id: string }>(request, operations, "/api/v1/faults", {
     equipment_id: equipment.id, equipment_confirmed: true, symptom, operational_impact: "Reading unstable (synthetic)",

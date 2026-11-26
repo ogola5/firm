@@ -91,7 +91,19 @@ export function MyJobs({ user, before, after }: { user: User; before?: ReactNode
     }
   }
 
-  const nothing = !jobs.to_write_up.length && !jobs.assigned.length && !jobs.available.length && !jobs.waiting.length && !procedureReady.length;
+  // Older copies saved offline may not have the newer lists.
+  const helping = jobs.helping ?? [];
+  const returned = jobs.returned ?? [];
+  const ownNew = jobs.available.filter((job) => job.own_section !== false);
+  const otherNew = jobs.available.filter((job) => job.own_section === false);
+  const nothing = !jobs.to_write_up.length && !jobs.assigned.length && !jobs.available.length && !jobs.waiting.length
+    && !procedureReady.length && !helping.length && !returned.length;
+  const newJob = (job: Job) => (
+    <JobRow key={job.fault_id} job={job} meta={<>For {job.section} · reported {spokenTime(job.reported_at)}{job.seen_via === "SCADA" ? " · seen on SCADA" : job.seen_via === "SITE_WALK" ? " · seen on a site walk" : ""}</>}>
+      <Button disabled={busy === job.fault_id} onClick={() => take(job)}>Take this job</Button>
+      <PrintCardLink faultId={job.fault_id} />
+    </JobRow>
+  );
 
   return (
     <Page>
@@ -107,7 +119,7 @@ export function MyJobs({ user, before, after }: { user: User; before?: ReactNode
         {message && <Alert variant="success">{message}</Alert>}
         {error && <Alert variant="destructive">{error}</Alert>}
         {jobsQuery.isLoading && <p className="text-muted-foreground">Loading your jobs…</p>}
-        {jobsQuery.isSuccess && nothing && <EmptyState>Nothing is waiting for you. New jobs appear here when they are assigned to you.</EmptyState>}
+        {jobsQuery.isSuccess && nothing && <EmptyState>Nothing is waiting for you. New faults appear here as soon as they are reported.</EmptyState>}
 
         {jobs.to_write_up.length > 0 && (
           <Section title="To write up" count={jobs.to_write_up.length} tone="warning" hint="The times you enter are the times things happened, not when you type them.">
@@ -135,19 +147,41 @@ export function MyJobs({ user, before, after }: { user: User; before?: ReactNode
           </Section>
         )}
 
-        {jobs.available.length > 0 && (
-          <Section title="New for Systems Automation" count={jobs.available.length} hint="Breakdowns nobody has taken yet. Systems Automation responds first.">
-            {jobs.available.map((job) => (
-              <JobRow key={job.fault_id} job={job} meta={<>Reported {spokenTime(job.reported_at)}{job.seen_via === "SCADA" ? " · seen on SCADA" : job.seen_via === "SITE_WALK" ? " · seen on a site walk" : ""}</>}>
-                <Button disabled={busy === job.fault_id} onClick={() => take(job)}>Take this job</Button>
+        {returned.length > 0 && (
+          <Section title="Add to your write-up" count={returned.length} tone="warning" hint="Your Chief Technician asked for more detail. The equipment is already working.">
+            {returned.map((job) => (
+              <JobRow key={`returned-${job.fault_id}`} job={job} meta={<>“{job.review_comments || "More detail, please."}”</>}>
+                <Button asChild><Link to={`/faults?mode=history&fault=${encodeURIComponent(job.fault_id)}`}>Add to it</Link></Button>
+              </JobRow>
+            ))}
+          </Section>
+        )}
+
+        {helping.length > 0 && (
+          <Section title="Helping a colleague" count={helping.length} hint="You were called in. You can write up what you did, and you are credited with the job.">
+            {helping.map((job) => (
+              <JobRow key={`helping-${job.fault_id}`} job={job} meta={<>With {job.helping || "a colleague"} · {job.section}</>}>
+                <Button asChild><Link to={`/faults?mode=history&fault=${encodeURIComponent(job.fault_id)}`}>Open</Link></Button>
                 <PrintCardLink faultId={job.fault_id} />
               </JobRow>
             ))}
           </Section>
         )}
 
+        {ownNew.length > 0 && (
+          <Section title="New: nobody has taken it yet" count={ownNew.length} hint="Anyone free can take one. The first to take it gets it; your Chief Technician is told.">
+            {ownNew.map(newJob)}
+          </Section>
+        )}
+
+        {otherNew.length > 0 && (
+          <Section title="Other sections: not taken yet" count={otherNew.length} hint="Free? You can take these too. Call someone in if you need a hand.">
+            {otherNew.map(newJob)}
+          </Section>
+        )}
+
         {procedureReady.length > 0 && (
-          <Section title="Turn your fix into a procedure" count={procedureReady.length} hint="Signed off and working. We drafted it from your write-up; check it and send it.">
+          <Section title="Turn your fix into a procedure" count={procedureReady.length} hint="Working again. We drafted it from your write-up; check it and send it.">
             {procedureReady.map((job) => (
               <JobRow key={job.fault_id} job={job} meta={<>Fixed · {job.reference}</>}>
                 <Button asChild><Link to={`/jobs/${encodeURIComponent(job.fault_id)}/procedure`}><FileText /> Check the draft</Link></Button>

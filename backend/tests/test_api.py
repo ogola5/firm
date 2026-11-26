@@ -56,7 +56,12 @@ def review_current_assignment(fault_id, section, decision, comments=""):
     chief = auth_headers(login(f"ct-{section.lower().replace(' ', '-')}"))
     context = client.get(f"/api/v1/faults/{fault_id}/context", headers=chief)
     assert context.status_code == 200
-    assignment = next(item for item in context.json()["assignments"] if item["is_active"])
+    rows = context.json()["assignments"]
+    if decision.endswith("_COMPLETION"):
+        # The write-up is checked after the fix, when the job itself is finished.
+        assignment = next(item for item in rows if item["completion_review_status"] == "PENDING")
+    else:
+        assignment = next(item for item in rows if item["is_active"])
     return review_section_assignment(fault_id, section, assignment["id"], decision, comments)
 
 
@@ -173,24 +178,24 @@ def test_descriptive_asset_search_and_unknown_asset_confirmation():
     assert handed_off.json()["assigned_section"] == candidate["section"]
 
 
-def test_technician_can_claim_section_job():
+def test_technician_takes_a_new_job_without_waiting_for_allocation():
     technician = auth_headers(login("st-electrical"))
-    equipment = client.get("/api/v1/equipment", headers=technician).json()[0]
-    report = client.post("/api/v1/faults", headers=technician, json={
+    equipment = next(item for item in client.get("/api/v1/equipment", headers=technician).json() if item["section"] == "Electrical")
+    report = client.post("/api/v1/faults", headers=auth_headers(login("operations")), json={
         "equipment_id": equipment["id"],
         "equipment_confirmed": True,
         "symptom": "Test technician ownership",
         "operational_impact": "Test impact",
     })
     assert report.status_code == 200
+    assert report.json()["assigned_section"] == "Electrical"  # straight to the section, not via Systems Automation
     fault_id = report.json()["id"]
 
-    handoff = handoff_from_automation(fault_id, "Electrical")
-    assert handoff.status_code == 200
-    assert client.post(f"/api/v1/faults/{fault_id}/action?action=acknowledge", headers=technician).status_code == 409
-    assert allocate_current_assignment(fault_id, "Electrical", "st-electrical").status_code == 200
+    # Open pickup: the first person free takes it; nobody waits for the Chief Technician.
     claim = client.post(f"/api/v1/faults/{fault_id}/action?action=acknowledge", headers=technician)
     assert claim.status_code == 200
+    second = client.post(f"/api/v1/faults/{fault_id}/action?action=acknowledge", headers=auth_headers(login("pt-electrical")))
+    assert second.status_code == 409 and "Already taken by" in second.json()["detail"]
     mine = client.get("/api/v1/faults?queue=mine", headers=technician).json()
     section_open = client.get("/api/v1/faults?queue=section_open", headers=technician).json()
     assert any(item["id"] == fault_id for item in mine)
@@ -388,13 +393,17 @@ def test_section_roles_are_scoped_and_admin_manages_users():
     equipment = client.get("/api/v1/equipment", headers=electrical)
     assert equipment.status_code == 200
     assert equipment.json()
-    assert all(item["section"] == "Electrical" for item in equipment.json())
+    # Any equipment in their region (whoever answers the phone can log it), not other regions.
+    assert all(item["region"] in ("Nairobi", "") for item in equipment.json())
+    assert {"Electrical", "Mechanical"} <= {item["section"] for item in equipment.json()}
 
     scoped_faults = client.get("/api/v1/faults", headers=electrical)
     assert scoped_faults.status_code == 200
-    equipment_by_id = {item["id"]: item for item in equipment.json()}
+    equipment_by_id = {item["id"]: item for item in equipment.json() if item["section"] == "Electrical"}
     for fault in scoped_faults.json():
-        assert fault["assigned_section"] == "Electrical" or fault["equipment_id"] in equipment_by_id
+        # Their section's faults, plus anything nobody has taken yet (open pickup).
+        open_to_all = fault["active_assignment_id"] and fault["active_assignment_status"] == "OPEN" and not fault["assigned_user_id"]
+        assert fault["assigned_section"] == "Electrical" or fault["equipment_id"] in equipment_by_id or open_to_all
     section_fault_id = next(
         item["id"] for item in scoped_faults.json()
         if item["active_assignment_id"]
@@ -428,12 +437,12 @@ def test_section_roles_are_scoped_and_admin_manages_users():
         "email": f"test.user.{uuid.uuid4().hex[:8]}@kpc.co.ke",
         "display_name": "Synthetic Test Engineer",
         "role": "assistant_engineer",
-        "section": "Instrumentation",
+        "section": "Systems Automation",
         "region": "Western",
         "password": "prototype123",
     })
     assert created.status_code == 201
-    assert created.json()["section"] == "Instrumentation"
+    assert created.json()["section"] == "Systems Automation"
     audit = client.get("/api/v1/users/audit", headers=admin)
     assert audit.status_code == 200
     assert any(item["action"] == "USER_CREATED" and item["target_user_id"] == created.json()["id"] for item in audit.json())
@@ -464,8 +473,9 @@ def test_seniority_grants_progressively_higher_fault_actions():
     handoff = handoff_from_automation(fault_id, "Electrical")
     assert handoff.status_code == 200
     engineer = auth_headers(login("engineer-electrical"))
-    denied_restore = client.post(f"/api/v1/faults/{fault_id}/action?action=restore", headers=engineer)
-    assert denied_restore.status_code == 403
+    not_taken = client.post(f"/api/v1/faults/{fault_id}/action?action=restore", headers=engineer)
+    assert not_taken.status_code == 409  # someone has to take the job before saying it works again
+    assert client.post(f"/api/v1/faults/{fault_id}/action?action=restore", headers=operations).status_code == 403
 
     senior_engineer = auth_headers(login("senior-engineer-electrical"))
     assert client.post(f"/api/v1/faults/{fault_id}/action?action=acknowledge", headers=senior_engineer).status_code == 200
@@ -475,7 +485,7 @@ def test_seniority_grants_progressively_higher_fault_actions():
     }).status_code == 200
     restored = client.post(f"/api/v1/faults/{fault_id}/action?action=restore", headers=senior_engineer)
     assert restored.status_code == 200
-    assert restored.json()["status"] == "AWAITING_CHIEF_REVIEW"
+    assert restored.json()["status"] == "RESTORED"  # working again at once; the write-up is checked afterwards
     approved_completion = review_current_assignment(fault_id, "Electrical", "APPROVE_COMPLETION")
     assert approved_completion.status_code == 200
     assert approved_completion.json()["status"] == "RESTORED"
@@ -536,7 +546,7 @@ def test_investigation_review_revision_reuse_and_appraisal_cycle():
     assert successful.status_code == 200
     requested_completion = client.post(f"/api/v1/faults/{fault_id}/action?action=restore", headers=principal)
     assert requested_completion.status_code == 200
-    assert requested_completion.json()["status"] == "AWAITING_CHIEF_REVIEW"
+    assert requested_completion.json()["status"] == "RESTORED"
     assert review_current_assignment(fault_id, "Electrical", "APPROVE_COMPLETION").status_code == 200
     assert client.post(f"/api/v1/faults/{fault_id}/operator-confirmation", headers=operations, json={
         "confirmed": True,
@@ -642,7 +652,7 @@ def test_investigation_review_revision_reuse_and_appraisal_cycle():
 
 def test_technical_review_is_section_scoped_and_publication_requires_chief_review():
     principal = auth_headers(login("pt-electrical"))
-    equipment = client.get("/api/v1/equipment", headers=principal).json()[0]
+    equipment = next(item for item in client.get("/api/v1/equipment", headers=principal).json() if item["section"] == "Electrical")
     fault = client.post("/api/v1/faults", headers=principal, json={
         "equipment_id": equipment["id"],
         "category": equipment["category"],
@@ -693,11 +703,11 @@ def test_sa_to_electrical_to_mechanical_handoffs_operator_confirmation_and_evide
         "symptom": "Valve does not open on SCADA command",
         "operating_conditions": "Pumpover transfer requested",
         "operational_impact": "Transfer is delayed",
+        "send_to": "Systems Automation",  # the reporter thinks it is a control problem
     })
     assert reported.status_code == 200
     fault_id = reported.json()["id"]
     assert reported.json()["assigned_section"] == "Systems Automation"
-    assert client.post(f"/api/v1/faults/{fault_id}/action?action=acknowledge", headers=auth_headers(login("st-electrical"))).status_code == 404
 
     automation = auth_headers(login("automation"))
     first_evidence = client.post(
@@ -730,7 +740,7 @@ def test_sa_to_electrical_to_mechanical_handoffs_operator_confirmation_and_evide
         },
     )
     assert electrical_handoff.status_code == 200
-    assert electrical_handoff.json()["status"] == "AWAITING_CHIEF_REVIEW"
+    assert electrical_handoff.json()["status"] == "AWAITING_CHIEF_REVIEW"  # a handover between sections is still approved
     assert electrical_handoff.json()["requested_section"] == "Electrical"
     assert review_section_assignment(
         fault_id,
@@ -779,12 +789,9 @@ def test_sa_to_electrical_to_mechanical_handoffs_operator_confirmation_and_evide
         "outcome": "SUCCESS",
     })
     assert intervention.status_code == 200
-    assert client.post(f"/api/v1/faults/{fault_id}/action?action=restore", headers=mechanical).status_code == 200
-    premature_confirmation = client.post(f"/api/v1/faults/{fault_id}/operator-confirmation", headers=operations, json={
-        "confirmed": False,
-        "comments": "Operations cannot confirm before technical review.",
-    })
-    assert premature_confirmation.status_code == 409
+    working = client.post(f"/api/v1/faults/{fault_id}/action?action=restore", headers=mechanical)
+    assert working.status_code == 200 and working.json()["status"] == "RESTORED"  # no wait for the Chief Technician
+    # The Chief Technician asks for more in the write-up; the equipment stays in service.
     returned_completion = review_current_assignment(
         fault_id,
         "Mechanical",
@@ -792,11 +799,13 @@ def test_sa_to_electrical_to_mechanical_handoffs_operator_confirmation_and_evide
         "Record the functional test under operating conditions.",
     )
     assert returned_completion.status_code == 200
-    assert client.post(f"/api/v1/faults/{fault_id}/interventions", headers=mechanical, json={
-        "corrective_action": "Functional test repeated and valve response verified",
-        "outcome": "SUCCESS",
-    }).status_code == 200
-    assert client.post(f"/api/v1/faults/{fault_id}/action?action=restore", headers=mechanical).status_code == 200
+    assert returned_completion.json()["status"] == "RESTORED"
+    returned_job = next(item for item in client.get("/api/v1/me/jobs", headers=mechanical).json()["returned"] if item["fault_id"] == fault_id)
+    added = client.post(f"/api/v1/faults/{fault_id}/assignments/{returned_job['assignment_id']}/write-up-note", headers=mechanical,
+                        json={"note": "Functional test repeated under transfer conditions; valve opened fully in 42 s."})
+    assert added.status_code == 200 and added.json()["completion_review_status"] == "PENDING"
+    assert client.post(f"/api/v1/faults/{fault_id}/assignments/{returned_job['assignment_id']}/write-up-note", headers=electrical,
+                       json={"note": "Not my job"}).status_code == 403
     assert review_current_assignment(fault_id, "Mechanical", "APPROVE_COMPLETION").status_code == 200
 
     assert client.post(f"/api/v1/faults/{fault_id}/operator-updates", headers=operations, json={
@@ -933,14 +942,14 @@ def test_repeat_fault_ranking_recognition_and_sap_status():
     assert repeat.status_code == 200
     assert repeat.json()["repeat_fault"] is True
     assert repeat.json()["triage_skipped"] is False
-    assert repeat.json()["assigned_section"] == "Systems Automation"
+    assert repeat.json()["assigned_section"] == "Electrical"  # straight to the section that looks after it
     assert repeat.json()["seen_before_message"]
 
     context = client.get(f"/api/v1/faults/{repeat.json()['id']}/context", headers=principal)
     assert context.status_code == 200
     repeat_context = context.json()
     assert repeat_context["repeat_routing"]["seen_before"] is True
-    assert repeat_context["repeat_routing"]["triage_action"] == "SA_FIRST_WITH_REPEAT_CONTEXT"
+    assert repeat_context["repeat_routing"]["triage_action"] == "TO_SECTION_WITH_REPEAT_CONTEXT"
     assert any(cause["possible_cause"] == "Loose cable or terminal" for cause in repeat_context["ranked_causes"])
 
     gm = auth_headers(login("gm-om"))

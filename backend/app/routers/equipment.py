@@ -9,7 +9,7 @@ from fastapi import APIRouter
 from app.db import db_dep
 from app.deps import current_user
 from app.models import Equipment, Fault, User
-from app.services.access import region_filter, require_equipment_scope, require_roles, role_key
+from app.services.access import region_filter, require_equipment_scope, require_roles
 from app.services.equipment_search import rank_equipment
 
 router = APIRouter()
@@ -20,8 +20,7 @@ def equipment_list(search: str = "", station: str = "", user: User = Depends(cur
     query = select(Equipment).where(~Equipment.tag.like("UNCONFIRMED-%"))
     if station:
         query = query.where(Equipment.station == station)
-    if role_key(user) in ("technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"):
-        query = query.where(Equipment.section == user.section)
+    # Every section can find every piece of equipment in its region: whoever answers the workshop phone logs it.
     in_region = region_filter(user)
     if in_region is not None:
         query = query.where(in_region)

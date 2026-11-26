@@ -85,7 +85,7 @@ def recurring_intelligence(equipment_id: str, user: User = Depends(current_user)
             "assigned_section": last.assigned_section or last.equipment.section,
         } if last else None,
         "suggested_section": equipment.section,
-        "triage_action": "SA_FIRST_WITH_REPEAT_CONTEXT" if len(recent) > 0 else "SA_FIRST",
+        "triage_action": "TO_SECTION_WITH_REPEAT_CONTEXT" if len(recent) > 0 else "TO_SECTION",
         "ranked_causes": ranked_causes,
         "previous_occurrences": [{"reference": f.reference, "symptom": f.symptom, "category": f.category, "status": f.status, "date": f.created_at.isoformat()} for f in recent[:10]],
         "ranking_note": "Deterministic history-based indication; not a confirmed root cause.",

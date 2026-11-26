@@ -4,7 +4,7 @@ Illustrative model for the demonstration. Regions, stations and people are synth
 
 ## Regions
 
-Each maintenance section (Systems Automation, Electrical, Instrumentation, Mechanical) works in three regions: **Western, Nairobi and Coast**. Each region has its own pump stations.
+Each maintenance section (Systems Automation, which now includes Instrumentation and Control; Electrical; Mechanical) works in three regions: **Western, Nairobi and Coast**. Each region has its own pump stations.
 
 | Demo station | Region |
 |---|---|
@@ -14,12 +14,12 @@ Each maintenance section (Systems Automation, Electrical, Instrumentation, Mecha
 
 **Who sees what:**
 
-- **Regional staff (ST, PT, CT, AE, E, SE)** belong to one region. They see their section's equipment and faults in that region only. Equipment that has not been identified yet has no region, so the whole section sees it until it is identified.
+- **Regional staff (ST, PT, CT, AE, E, SE)** belong to one region. They see their section's faults in that region, any equipment in that region, and any fault in the region that nobody has taken yet (open pickup: anyone free can take it). Equipment that has not been identified yet has no region, so everyone sees it until it is identified.
 - **The Chief Engineer (CE)** covers the whole section, in every region.
 - **Managers and Operations** see everything, as before.
 - **Procedures, the knowledge library, expert knowledge and drawings** stay section-wide. A fix learnt at the Coast helps Nairobi.
 
-The CT allocates work only to STs and PTs in their own section and region.
+Nobody waits for the CT to allocate: anyone free takes the job. The CT can still give a job to a particular ST or PT in their own section and region, and is shown any job nobody has taken for 15 minutes.
 
 **Accounts:** the region is part of the account, like the section.
 

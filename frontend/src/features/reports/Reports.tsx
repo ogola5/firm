@@ -20,7 +20,7 @@ const KINDS: Array<Choice<Kind>> = [
   { value: "month", label: "Monthly" },
   { value: "year", label: "Financial year", hint: "July to June" },
 ];
-const SECTIONS = ["Systems Automation", "Electrical", "Instrumentation", "Mechanical"];
+const SECTIONS = ["Systems Automation", "Electrical", "Mechanical"];
 // The report is laid out as an A4 sheet on screen too (760 px card, 32 px padding): charts fit both.
 const REPORT_CHART_WIDTH = 690;
 

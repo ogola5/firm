@@ -90,7 +90,10 @@ def chief_workspace(user: User = Depends(current_user), db: Session = Depends(db
     records = []
     now = utcnow()
     for fault in scoped_faults:
-        if fault.status == "CLOSED":
+        # The write-up is checked after the fix, so a working (even closed) fault can still be waiting for it.
+        to_check = next((item for item in fault.assignments
+                         if item.section == user.section and item.completion_review_status == "PENDING"), None)
+        if fault.status == "CLOSED" and not to_check:
             continue
         assignment = current_assignment(fault)
         section_history = any(item.section == user.section for item in fault.assignments)
@@ -102,13 +105,11 @@ def chief_workspace(user: User = Depends(current_user), db: Session = Depends(db
         awaiting_assignment = bool(
             is_current_section and assignment and not assignment.assigned_user_id
             and assignment.escalation_status != "PENDING"
-            and assignment.completion_review_status != "PENDING"
         )
-        awaiting_review = bool(
-            is_current_section and assignment and (
-                assignment.escalation_status == "PENDING"
-                or assignment.completion_review_status == "PENDING"
-            )
+        handover_review = bool(is_current_section and assignment and assignment.escalation_status == "PENDING")
+        awaiting_review = handover_review or bool(to_check)
+        untaken_minutes = (
+            max(0, int((now - utc_datetime(assignment.created_at)).total_seconds() // 60)) if awaiting_assignment else 0
         )
         overdue = bool(
             is_current_section and assignment and due_at
@@ -130,7 +131,11 @@ def chief_workspace(user: User = Depends(current_user), db: Session = Depends(db
             "assignment_status": assignment.status if assignment else "",
             "response_due_at": due_at.isoformat() if due_at else None,
             "awaiting_assignment": awaiting_assignment,
+            "untaken_minutes": untaken_minutes,
             "awaiting_review": awaiting_review,
+            "handover_review": handover_review,
+            "write_up_to_check": bool(to_check),
+            "review_assignment_id": to_check.id if to_check else None,
             "escalated": escalated,
             "overdue": overdue,
             "created_at": fault.created_at.isoformat(),
@@ -144,7 +149,7 @@ def chief_workspace(user: User = Depends(current_user), db: Session = Depends(db
             "active_section": len(active_section),
             "investigating": sum(item["assignment_status"] in ("ACKNOWLEDGED", "IN_PROGRESS") for item in active_section),
             "escalated": sum(bool(item["escalated"]) for item in records),
-            "awaiting_review": sum(bool(item["awaiting_review"]) for item in active_section),
+            "awaiting_review": sum(bool(item["awaiting_review"]) for item in records),
             "overdue": sum(bool(item["overdue"]) for item in active_section),
             "critical": sum(item["severity"].casefold() == "critical" and item["status"] not in ("RESTORED", "CLOSED") for item in records),
         },

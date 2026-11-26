@@ -7,7 +7,7 @@ import { apiGet, apiPost, apiToken, signIn, type Row } from "./helpers";
 const nav = (page: import("@playwright/test").Page) => page.getByRole("navigation", { name: "Main" });
 
 test("a technician sees what is likely to fail, with reasons and how often the list has been right", async ({ page }) => {
-  await signIn(page, "st-instrumentation");
+  await signIn(page, "st-systems-automation");
   await expect(page.getByText(/Likely to need attention in/)).toBeVisible();
   await nav(page).getByRole("link", { name: "Likely to fail" }).click();
   await expect(page.getByRole("heading", { name: "Likely to fail" })).toBeVisible();
@@ -37,16 +37,16 @@ test("a chief verifies a drawing difference; it reaches the job card and earns t
 
 test("an expert session goes from write-up to the library after the chief approves it", async ({ page }) => {
   const title = `Level transmitters: night drift ${Date.now() % 10000}`;
-  await signIn(page, "st-instrumentation");
+  await signIn(page, "st-systems-automation");
   await nav(page).getByRole("link", { name: "Expert knowledge" }).click();
-  await expect(page.getByRole("article", { name: /in (Instrumentation|Systems Automation|Electrical|Mechanical)/ }).first()).toBeVisible();
+  await expect(page.getByRole("article", { name: /in (Systems Automation|Electrical|Mechanical)/ }).first()).toBeVisible();
   await page.getByRole("button", { name: "Expert sessions" }).click();
   await page.getByText("Write up an expert session").click();
   const expert = page.getByLabel("Expert", { exact: true });
-  await expect(expert.locator("option", { hasText: "Senior Engineer (Instrumentation, Nairobi)" })).toHaveCount(1);
+  await expect(expert.locator("option", { hasText: "Senior Engineer (Systems Automation, Nairobi)" })).toHaveCount(1);
   const options = await expert.locator("option").allTextContents();
-  await expert.selectOption({ label: options.find((text) => text.includes("Senior Engineer (Instrumentation, Nairobi)"))! });
-  await page.getByLabel("Section", { exact: true }).selectOption("Instrumentation");
+  await expert.selectOption({ label: options.find((text) => text.includes("Senior Engineer (Systems Automation, Nairobi)"))! });
+  await page.getByLabel("Section", { exact: true }).selectOption("Systems Automation");
   await page.getByLabel("Equipment type", { exact: true }).selectOption("LT");
   await page.getByLabel("Title", { exact: true }).fill(title);
   await page.getByLabel("How it usually fails").fill("Condensation in the housing on cold nights.");
@@ -54,7 +54,7 @@ test("an expert session goes from write-up to the library after the chief approv
   await page.getByRole("button", { name: "Send to the section chief" }).click();
   await expect(page.getByText("Sent to the section chief.")).toBeVisible();
 
-  await signIn(page, "ct-instrumentation");
+  await signIn(page, "ct-systems-automation");
   await page.goto("/expertise?tab=sessions");
   await page.getByRole("article", { name: title }).getByRole("button", { name: "Approve into the library" }).click();
   await expect(page.getByText("Decision saved.")).toBeVisible();

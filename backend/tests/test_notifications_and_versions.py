@@ -29,19 +29,22 @@ def test_demo_history_does_not_fill_anyones_bell():
     assert bell("pt-electrical-western") == {"unread": 0, "items": []}
 
 
-def test_a_new_fault_reaches_systems_automation_and_a_safety_one_the_chief_technician_too():
+def test_a_new_fault_reaches_its_section_and_a_safety_one_systems_automation_and_the_chief_technician_too():
     operations = headers("operations")
     ordinary = client.post("/api/v1/faults", headers=operations, json={
         "equipment_id": asset("11-MOV-602")["id"], "symptom": "Won't open / close", "operational_impact": "No effect yet: Needs attention, not urgent",
     }).json()
-    assert any(ordinary["reference"] in title and title.startswith("New fault") for title in titles("automation"))
+    section = asset("11-MOV-602")["section"].lower().replace(" ", "-")
+    # Straight to the section that looks after it (no Systems Automation step), technicians and their Chief Technician.
+    for username in (f"st-{section}", f"ct-{section}"):
+        assert any(ordinary["reference"] in title and title.startswith("New fault") for title in titles(username)), username
+    assert not any(ordinary["reference"] in title for title in titles("automation"))
     assert not any(ordinary["reference"] in title for title in titles("operations"))  # never told about your own action
 
     hazard = client.post("/api/v1/faults", headers=operations, json={
         "equipment_id": asset("11-MOV-602")["id"], "symptom": "Leaking", "operational_impact": "Running reduced: Working, but limited",
         "safety_hazard": True,
     }).json()
-    section = asset("11-MOV-602")["section"].lower().replace(" ", "-")
     for username in ("automation", f"ct-{section}"):
         assert any(title.startswith(f"SAFETY: {hazard['reference']}") for title in titles(username)), username
 

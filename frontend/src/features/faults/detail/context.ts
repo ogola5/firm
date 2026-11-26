@@ -5,7 +5,7 @@ import { type DataRow, type FaultContext } from "../../../lib/types";
 import { ApiError, api, isOfflineError } from "../../../offline/api";
 import { cacheFaultContext, cachedFaultContext } from "../../../offline/cache";
 
-export const ALL_SECTIONS = ["Systems Automation", "Electrical", "Instrumentation", "Mechanical"];
+export const ALL_SECTIONS = ["Systems Automation", "Electrical", "Mechanical"];
 const INVESTIGATION_ROLES = ["systems_automation", "technician_st", "technician_pt", "assistant_engineer", "engineer", "senior_engineer", "chief_engineer"];
 
 export type LoadedFault = { context: FaultContext; offline: boolean };
@@ -45,14 +45,16 @@ export function faultPermissions(user: User, context: FaultContext) {
   const activeAssignment = context.assignments.find((item) => Boolean(item.is_active));
   const isSectionChief = user.role === "technician_ct";
   const canInvestigate = INVESTIGATION_ROLES.includes(user.role);
-  const canWorkAssignment = !isSectionChief && Boolean(activeAssignment) && (
-    user.role === "systems_automation"
-      ? activeAssignment?.section === "Systems Automation"
-      : canInvestigate ? activeAssignment?.section === user.section : true
-  );
-  const awaitingChiefReview = status === "AWAITING_CHIEF_REVIEW"
-    || activeAssignment?.escalation_status === "PENDING"
-    || activeAssignment?.completion_review_status === "PENDING";
+  const helpers = (activeAssignment?.helpers ?? []) as Array<{ user_id: string }>;
+  const untaken = Boolean(activeAssignment) && !activeAssignment?.assigned_user_id;
+  const onTheJob = Boolean(activeAssignment) && (activeAssignment?.assigned_user_id === user.id || helpers.some((item) => item.user_id === user.id));
+  // Open pickup: anyone technical can take a job nobody has taken, from any section; then it is theirs and their helpers'.
+  const canWorkAssignment = !isSectionChief && Boolean(activeAssignment) && (canInvestigate ? untaken || onTheJob : true);
+  // Only a hand-over between sections waits for the Chief Technician now; write-ups are checked after the fix.
+  const awaitingChiefReview = status === "AWAITING_CHIEF_REVIEW" || activeAssignment?.escalation_status === "PENDING";
+  const reviewAssignment = context.assignments.find((item) => item.section === user.section && item.completion_review_status === "PENDING");
+  const returnedAssignment = context.assignments.find((item) => item.completion_review_status === "RETURNED" && (
+    item.assigned_user_id === user.id || ((item.helpers ?? []) as Array<{ user_id: string }>).some((helper) => helper.user_id === user.id)));
   const canTriage = permissions.includes("faults.triage") || permissions.includes("faults.triage.section");
   const closedOrRestored = ["RESTORED", "CLOSED"].includes(status);
   const assetConfirmed = fault.equipment_confirmed !== false;
@@ -69,11 +71,20 @@ export function faultPermissions(user: User, context: FaultContext) {
     canRestore: permissions.includes("faults.restore"),
     canContribute: permissions.includes("knowledge.contribute"),
     canReviewSection: isSectionChief && activeAssignment?.section === user.section,
+    // The Chief Technician's check of a finished write-up (the equipment is already working).
+    canCheckWriteUp: isSectionChief && Boolean(reviewAssignment),
+    reviewAssignment,
+    returnedAssignment,
+    untaken,
+    onTheJob,
+    otherSection: Boolean(activeAssignment) && canInvestigate && Boolean(user.section) && activeAssignment?.section !== user.section,
     isSectionChief,
-    canTriageCurrent: canTriage && (!activeAssignment || (
+    canTriageCurrent: (canTriage && (!activeAssignment || (
       activeAssignment.section === "Systems Automation"
       && ["systems_automation", "maintenance_manager", "supervisor", "system_administrator"].includes(user.role)
-    )),
+    )))
+      // Whoever takes a job can confirm which equipment it is.
+      || (canInvestigate && fault.equipment_confirmed === false && (untaken || onTheJob)),
     restrictedTriage: ["technician_ct", "chief_engineer"].includes(user.role),
     canConfirmRestoration: user.role === "operations" && permissions.includes("faults.confirm"),
     canAttachEvidence: user.role === "operations" || canWorkAssignment

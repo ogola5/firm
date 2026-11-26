@@ -13,7 +13,7 @@ import { errorMessage } from "../../lib/query";
 import { api } from "../../offline/api";
 import { formatValue, SummaryTile, type SummaryMeasure } from "./SummaryTile";
 
-const SECTIONS = ["Systems Automation", "Electrical", "Instrumentation", "Mechanical"];
+const SECTIONS = ["Systems Automation", "Electrical", "Mechanical"];
 
 type Range = "4w" | "12w" | "12m";
 const RANGES: Array<Choice<Range> & { days: number; granularity: "week" | "month"; words: string }> = [

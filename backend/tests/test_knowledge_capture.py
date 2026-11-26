@@ -30,7 +30,7 @@ def test_points_come_from_verified_work_once_and_keep_their_value():
     with SessionLocal() as db:
         points.sync(db)
         assert points.sync(db) == 0  # each piece of work is credited once
-    mine =client.get("/api/v1/points/me", headers=headers("senior-engineer-instrumentation")).json()
+    mine =client.get("/api/v1/points/me", headers=headers("senior-engineer-systems-automation")).json()
     kinds = {entry["kind"] for entry in mine["entries"]}
     assert kinds & {"PROCEDURE_APPROVED", "REUSE_CONFIRMED", "ANSWER_ACCEPTED"}
     assert all(entry["reason"] and entry["points"] >= 0 for entry in mine["entries"])
@@ -44,7 +44,7 @@ def test_points_come_from_verified_work_once_and_keep_their_value():
     assert client.put("/api/v1/points/rules", headers=headers("maintenance-manager"), json={"rules": []}).status_code == 403
     changed = client.put("/api/v1/points/rules", headers=hr, json={"rules": [{"kind": "PROCEDURE_APPROVED", "points": 20, "active": True}]})
     assert changed.status_code == 200
-    after = {entry["id"]: entry["points"] for entry in client.get("/api/v1/points/me", headers=headers("senior-engineer-instrumentation")).json()["entries"]}
+    after = {entry["id"]: entry["points"] for entry in client.get("/api/v1/points/me", headers=headers("senior-engineer-systems-automation")).json()["entries"]}
     assert all(after[key] == value for key, value in before.items())
     original = next(rule["points"] for rule in rules if rule["kind"] == "PROCEDURE_APPROVED")
     client.put("/api/v1/points/rules", headers=hr, json={"rules": [{"kind": "PROCEDURE_APPROVED", "points": original, "active": True}]})
@@ -197,16 +197,16 @@ def test_knowledge_at_risk_names_retiring_experts():
 
 
 def test_expert_session_and_answer_earn_credit_after_review():
-    scribe = headers("st-instrumentation")
-    expert_id = me("senior-engineer-instrumentation")["id"]
+    scribe = headers("st-systems-automation")
+    expert_id = me("senior-engineer-systems-automation")["id"]
     created = client.post("/api/v1/expertise/sessions", headers=scribe, json={
-        "expert_id": expert_id, "equipment_type": "LT", "section": "Instrumentation", "title": "Level transmitters at night",
+        "expert_id": expert_id, "equipment_type": "LT", "section": "Systems Automation", "title": "Level transmitters at night",
         "how_it_fails": "Condensation in the housing.", "first_checks": "Compare with a manual dip.",
     })
     assert created.status_code == 201
     session = created.json()
     assert client.post(f"/api/v1/expertise/sessions/{session['id']}/review", headers=headers("ct-electrical"), json={"decision": "APPROVE"}).status_code == 404
-    approved = client.post(f"/api/v1/expertise/sessions/{session['id']}/review", headers=headers("ct-instrumentation"), json={"decision": "APPROVE"})
+    approved = client.post(f"/api/v1/expertise/sessions/{session['id']}/review", headers=headers("ct-systems-automation"), json={"decision": "APPROVE"})
     assert approved.json()["status"] == "APPROVED"
     shared = client.get("/api/v1/expertise/sessions?equipment_type=LT", headers=headers("st-mechanical")).json()
     assert any(item["id"] == session["id"] for item in shared)  # approved knowledge is shared across sections

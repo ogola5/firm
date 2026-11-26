@@ -12,7 +12,7 @@ import { spokenTime } from "../../lib/format";
 import { errorMessage } from "../../lib/query";
 import { api } from "../../offline/api";
 
-const SECTIONS = ["Systems Automation", "Electrical", "Instrumentation", "Mechanical"];
+const SECTIONS = ["Systems Automation", "Electrical", "Mechanical"];
 
 type WatchRow = {
   equipment_id: string; equipment_tag: string; equipment_name: string; section: string; score: number; level: "HIGH" | "WATCH";

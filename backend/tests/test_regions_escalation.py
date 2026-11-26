@@ -134,5 +134,5 @@ def test_the_same_equipment_failing_again_within_30_days_of_a_fix_goes_to_the_ch
     again = report("11-VMS-401")
     detail = client.get(f"/api/v1/faults/{again}", headers=headers("operations")).json()
     assert detail["escalation_level"] == 2 and "Came back within 30 days" in detail["escalation_reason"]
-    ce = client.get("/api/v1/escalations", headers=headers("chief-engineer-instrumentation")).json()
+    ce = client.get("/api/v1/escalations", headers=headers("chief-engineer-systems-automation")).json()
     assert again in {row["id"] for row in ce["faults"]}

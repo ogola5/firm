@@ -38,7 +38,7 @@ const shots: Array<{ user: string; pages: Array<[string, string]> }> = [
   { user: "maintenance-manager", pages: [["dashboard", "/dashboard"], ["analytics", "/analytics"]] },
   { user: "ceo", pages: [["home", "/dashboard"], ["analytics", "/analytics"]] },
   { user: "chief-engineer-electrical", pages: [["home", "/dashboard"]] },
-  { user: "st-instrumentation", pages: [["home", "/dashboard"], ["watch", "/watch"], ["expertise", "/expertise?tab=sessions"]] },
+  { user: "st-systems-automation", pages: [["home", "/dashboard"], ["watch", "/watch"], ["expertise", "/expertise?tab=sessions"]] },
   { user: "hr", pages: [["recognition", "/recognition"], ["at-risk", "/expertise"]] },
   { user: "admin", pages: [["home", "/dashboard"], ["people", "/people"]] },
 ];

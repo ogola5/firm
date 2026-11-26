@@ -6,8 +6,8 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Fault, FaultAssignment, Intervention, ProcedureUpdate, User, utc_datetime, utcnow
-from app.services.access import ACTIVE_ASSIGNMENT_STATUSES, INVESTIGATION_ROLES, require_roles, role_key
+from app.models import Fault, FaultAssignment, FaultHelper, Intervention, ProcedureUpdate, User, utc_datetime, utcnow
+from app.services.access import ACTIVE_ASSIGNMENT_STATUSES, INVESTIGATION_ROLES, region_allows, require_roles
 
 PROCEDURE_WINDOW = timedelta(days=60)
 
@@ -61,16 +61,19 @@ def _job(db: Session, fault: Fault, assignment: FaultAssignment | None, **extra)
 
 def my_jobs(db: Session, user: User) -> dict:
     require_roles(user, *INVESTIGATION_ROLES)
-    to_write_up, assigned, waiting, available, procedure_ready = [], [], [], [], []
+    to_write_up, assigned, waiting, available, procedure_ready, helping, returned = [], [], [], [], [], [], []
 
     mine = db.scalars(
         select(FaultAssignment).where(FaultAssignment.assigned_user_id == user.id).order_by(FaultAssignment.created_at)
     ).all()
     for assignment in mine:
         fault = assignment.fault
+        if assignment.completion_review_status == "RETURNED":
+            # The Chief Technician asked for more in the write-up (the equipment is already working).
+            returned.append(_job(db, fault, assignment, review_comments=assignment.completion_review_comments))
         if assignment.status in ACTIVE_ASSIGNMENT_STATUSES:
-            if "PENDING" in (assignment.completion_review_status, assignment.escalation_status):
-                waiting.append(_job(db, fault, assignment, waiting_for="Chief Technician sign-off"))
+            if assignment.escalation_status == "PENDING":
+                waiting.append(_job(db, fault, assignment, waiting_for="Chief Technician to approve the handover"))
             elif assignment.status == "OPEN":
                 assigned.append(_job(db, fault, assignment))
             else:
@@ -78,16 +81,27 @@ def my_jobs(db: Session, user: User) -> dict:
         elif assignment.status == "RESTORED" and fault.status == "RESTORED":
             waiting.append(_job(db, fault, assignment, waiting_for="Operations to confirm it is back in service"))
 
-    # Systems Automation responds first: new breakdowns nobody has taken yet.
-    if role_key(user) == "systems_automation":
-        open_first_response = db.scalars(
-            select(FaultAssignment).where(
-                FaultAssignment.section == "Systems Automation",
-                FaultAssignment.status == "OPEN",
-                FaultAssignment.assigned_user_id.is_(None),
-            ).order_by(FaultAssignment.created_at)
-        ).all()
-        available = [_job(db, item.fault, item) for item in open_first_response if item.fault.equipment_confirmed]
+    # Called in to help on someone else's job.
+    for helper in db.scalars(select(FaultHelper).where(FaultHelper.user_id == user.id).order_by(FaultHelper.created_at)).all():
+        assignment = helper.assignment
+        if assignment and assignment.status in ACTIVE_ASSIGNMENT_STATUSES:
+            lead = assignment.assigned_user.display_name if assignment.assigned_user else ""
+            helping.append(_job(db, assignment.fault, assignment, helping=lead))
+
+    # Open pickup: anything nobody has taken yet, own section first. The first person free takes it.
+    untaken = db.scalars(
+        select(FaultAssignment).where(
+            FaultAssignment.status == "OPEN", FaultAssignment.assigned_user_id.is_(None),
+        ).order_by(FaultAssignment.created_at)
+    ).all()
+    for item in untaken:
+        fault = item.fault
+        if fault.status not in ("REPORTED", "TRIAGED", "ASSIGNED"):
+            continue  # older records where work had started before jobs were tracked per person
+        if not region_allows(user, fault.equipment.region if fault.equipment else ""):
+            continue
+        available.append(_job(db, fault, item, own_section=item.section == user.section))
+    available.sort(key=lambda job: (not job["safety_hazard"], not job["own_section"], job["assigned_at"] or ""))
 
     # Fixed and confirmed recently, but not yet turned into a procedure by this person.
     since = utcnow() - PROCEDURE_WINDOW
@@ -113,7 +127,9 @@ def my_jobs(db: Session, user: User) -> dict:
     return {
         "to_write_up": safety_first(to_write_up),
         "assigned": sorted(assigned, key=by_due),
-        "available": safety_first(available),
+        "available": available,
+        "helping": helping,
+        "returned": returned,
         "waiting": waiting,
         "procedure_ready": procedure_ready,
     }

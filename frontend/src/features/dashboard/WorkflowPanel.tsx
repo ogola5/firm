@@ -6,9 +6,9 @@ import { type WorkflowReport } from "../../lib/types";
 
 const FLOW = [
   ["Operations reports", "reported"],
-  ["Systems Automation triages", "triaged"],
-  ["Section assigned", "assigned"],
-  ["Section acknowledges", "acknowledged"],
+  ["Sorted", "triaged"],
+  ["Sent to a section", "assigned"],
+  ["Someone took it", "acknowledged"],
   ["Fault restored", "restored"],
 ] as const;
 

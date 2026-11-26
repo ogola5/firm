@@ -176,13 +176,13 @@ export function WriteUpVisit({ user }: { user: User }) {
                 <CardContent className="grid gap-3 pt-6" aria-live="polite">
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="size-8 text-success" aria-hidden />
-                    <h2 className="m-0 text-2xl">{saved.signoff ? "Sent to your Chief Technician for sign-off" : "Visit saved"}</h2>
+                    <h2 className="m-0 text-2xl">{saved.signoff ? "Working again: Operations will confirm" : "Visit saved"}</h2>
                   </div>
                   {saved.offline && <p className="m-0 font-semibold text-warning">Saved on this computer; it is sent when you reconnect.</p>}
                   <p className="m-0">
                     {filled.length} step(s) recorded, including what didn't work.{" "}
                     {saved.signoff
-                      ? "Once it is signed off, a procedure draft will be waiting for you in My jobs."
+                      ? "It is back in service now. Your Chief Technician checks the write-up later, and a procedure draft is waiting for you in My jobs."
                       : "The job stays in My jobs until it is fixed or handed on."}
                   </p>
                   <p className="m-0 text-muted-foreground">
@@ -344,13 +344,13 @@ export function WriteUpVisit({ user }: { user: User }) {
                     <div className="flex flex-wrap items-center gap-4 border-t border-border pt-5">
                       <Button type="submit" size="lg" disabled={!ready || saving}>
                         {saving ? "Saving…"
-                          : willSignOff ? "Save and ask Chief to sign off"
+                          : willSignOff ? "Save: it's working again"
                             : fixed || !filled.some((item) => item.result) ? "Save visit" : "Save visit (not fixed yet)"}
                       </Button>
                       <span className={cn("text-sm", ready ? "text-muted-foreground" : "text-foreground")}>
                         {ready
-                          ? willSignOff ? "Your Chief Technician checks it next, then Operations confirms."
-                            : fixed ? "A Senior or Principal Technician asks for sign-off on this job."
+                          ? willSignOff ? "Back in service now. Operations confirm it; your Chief Technician checks the write-up later."
+                            : fixed ? "The person who took the job marks it as working again."
                               : "The job stays with you. Hand it to another section from the full job page if needed."
                           : `Still needed: ${missing.join(", ")}.`}
                       </span>

@@ -20,6 +20,7 @@ test("a new fault rings Systems Automation's bell; opening it goes to the fault 
   const valve = (await apiGet<Row[]>(request, operations, "/api/v1/equipment?search=11-MOV-602")).find((row) => row.tag === "11-MOV-602")!;
   const fault = await apiPost<{ id: string; reference: string }>(request, operations, "/api/v1/faults", {
     equipment_id: valve.id, symptom: "Won't open / close", operational_impact: "Running reduced: Working, but limited",
+    send_to: "Systems Automation", // the operator thinks it is the control signal, not the valve
   });
 
   const page = await phone(browser);
@@ -40,7 +41,7 @@ test("a new fault rings Systems Automation's bell; opening it goes to the fault 
 });
 
 test("anyone can compare versions of a procedure from the library", async ({ page }) => {
-  await signIn(page, "st-instrumentation");
+  await signIn(page, "st-systems-automation");
   await page.goto("/library/LT");
   await page.getByRole("link", { name: /compare 2 versions/ }).first().click();
   await expect(page.getByRole("heading", { name: /cable gland/ })).toBeVisible();

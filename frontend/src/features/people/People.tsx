@@ -17,7 +17,7 @@ import { type DataRow } from "../../lib/types";
 import { errorMessage } from "../../lib/query";
 import { api } from "../../offline/api";
 
-const SECTIONS = ["Systems Automation", "Electrical", "Instrumentation", "Mechanical"];
+const SECTIONS = ["Systems Automation", "Electrical", "Mechanical"];
 const REGIONS = ["Western", "Nairobi", "Coast"];
 // Staff who work in one region of their section (ST to SE); the Chief Engineer covers every region.
 const REGIONAL_ROLES = ["technician_st", "technician_pt", "technician_ct", "assistant_engineer", "engineer", "senior_engineer"];

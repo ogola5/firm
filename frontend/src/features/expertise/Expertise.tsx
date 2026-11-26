@@ -13,7 +13,7 @@ import { spokenTime } from "../../lib/format";
 import { errorMessage } from "../../lib/query";
 import { api } from "../../offline/api";
 
-const SECTIONS = ["Systems Automation", "Electrical", "Instrumentation", "Mechanical"];
+const SECTIONS = ["Systems Automation", "Electrical", "Mechanical"];
 
 type RiskRow = {
   section: string; equipment_type: string; equipment_type_name: string; level: "HIGH" | "MEDIUM" | "LOW"; share_retiring: number;

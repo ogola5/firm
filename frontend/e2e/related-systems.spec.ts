@@ -33,10 +33,12 @@ test("a fault shows its system and related equipment; the legacy system page hol
   await expect(page.getByRole("heading", { name: "Line 4 pump A unit" })).toBeVisible();
   await expect(page.getByLabel("How it connects").getByText(/run-permit/)).toBeVisible();
   const changes = page.getByLabel("Changes over the years");
-  await changes.getByLabel("Record a change").fill("Drive panel 4 cooling fan replaced with a higher-flow model");
+  // Unique per run, so repeated runs against the same database do not collide.
+  const change = `Drive panel 4 cooling fan replaced with a higher-flow model (${Date.now()})`;
+  await changes.getByLabel("Record a change").fill(change);
   await changes.getByRole("button", { name: "Record change" }).click();
   await expect(page.getByText("Change recorded. The next person will know.")).toBeVisible();
-  await expect(changes.getByText("Drive panel 4 cooling fan replaced with a higher-flow model")).toBeVisible();
+  await expect(changes.getByText(change)).toBeVisible();
   await page.screenshot({ path: `${dir}/2-system-page.png`, fullPage: true });
 });
 

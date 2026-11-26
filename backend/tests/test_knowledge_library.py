@@ -47,7 +47,7 @@ def test_old_unconfirmed_procedures_fade_and_improvements_supersede():
     cards = [card for group in mov["symptoms"] for card in group["procedures"]]
     assert any(card["evidence"]["fading"] for card in cards)
 
-    lt = client.get("/api/v1/library/types/LT", headers=headers("st-instrumentation")).json()
+    lt = client.get("/api/v1/library/types/LT", headers=headers("st-systems-automation")).json()
     cards = [card for group in lt["symptoms"] for card in group["procedures"] if card["reference"].startswith("PU-LIB")]
     assert len(cards) == 1 and cards[0]["version"] == 2  # only the newest version is current guidance
     assert [row["status"] for row in cards[0]["history"]] == ["SUPERSEDED", "APPROVED"]
@@ -91,7 +91,7 @@ def test_appraisal_shows_knowledge_contribution_as_proposed():
     body = client.get("/api/v1/hr/appraisal", headers=headers("hr")).json()
     assert body["knowledge_in_appraisal"]["status"] == "PROPOSED"
     assert "management approval" in body["knowledge_in_appraisal"]["note"]
-    row = next(item for item in body["rows"] if item["employee_name"].startswith("Demo Engineer (Instrumentation"))
+    row = next(item for item in body["rows"] if item["employee_name"].startswith("Demo Engineer (Systems Automation"))
     assert row["improved_colleagues_procedures"] >= 1
 
 
