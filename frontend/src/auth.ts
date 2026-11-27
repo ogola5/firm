@@ -23,6 +23,8 @@ export type User = {
   role_label: string;
   section: string;
   region?: string | null;
+  /** The developer / owner of the standalone system: a System Administrator with developer tools. */
+  developer?: boolean;
   active: boolean;
   availability_status: "AVAILABLE" | "UNAVAILABLE";
   competencies: string[];
@@ -121,6 +123,8 @@ export function normalizeUser(value: unknown): User | null {
     role,
     role_label: typeof raw.role_label === "string" ? raw.role_label : labels[role] ?? storedRole,
     section,
+    region: typeof raw.region === "string" ? raw.region : "",
+    developer: raw.developer === true,
     active: typeof raw.active === "boolean" ? raw.active : true,
     availability_status: raw.availability_status === "UNAVAILABLE" ? "UNAVAILABLE" : "AVAILABLE",
     competencies: Array.isArray(raw.competencies) && raw.competencies.every((item) => typeof item === "string")

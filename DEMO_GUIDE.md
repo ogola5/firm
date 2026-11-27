@@ -20,7 +20,8 @@ Sign in with a KPC email address. Each seeded account below is `demo.<name>@kpc.
 | General Manager, Operations & Maintenance | gm-om | demo123 |
 | Managing Director / CEO | ceo | demo123 |
 | Supervisor | supervisor | demo123 |
-| System Administrator | admin | demo123 |
+| System Administrator (ICT) | admin | demo123 |
+| Developer / Owner (admin console with developer tools) | developer | demo123 |
 
 Technician and engineer accounts are seeded for each section: Systems Automation (which now includes the former Instrumentation and Control section), Electrical and Mechanical. In the login selector, select the section and level. The usernames above are Electrical examples.
 

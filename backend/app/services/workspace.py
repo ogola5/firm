@@ -43,10 +43,10 @@ SECTION_TECHNICAL = ("systems_automation", "technician_st", "technician_pt", "te
 # Home page per level: (home key, title, one line on what it is for).
 HOMES = {
     "operations": ("my_reports", "My reports", "Faults you reported and where each one is."),
-    "systems_automation": ("my_jobs", "My jobs", "New faults to sort first, then your own jobs."),
-    "technician_st": ("my_jobs", "My jobs", "Jobs given to you: print the card, go, write it up."),
-    "technician_pt": ("my_jobs", "My jobs", "Jobs given to you: print the card, go, write it up."),
-    "technician_ct": ("section_oversight", "Section oversight", "Allocate your section's work, review it and sign it off."),
+    "systems_automation": ("my_jobs", "My jobs", "New faults nobody has taken yet, then your own jobs."),
+    "technician_st": ("my_jobs", "My jobs", "Take a new job, print the card, go, write it up."),
+    "technician_pt": ("my_jobs", "My jobs", "Take a new job, print the card, go, write it up."),
+    "technician_ct": ("section_oversight", "Section oversight", "Who took what, write-ups to check, and anything nobody has taken."),
     "assistant_engineer": ("my_jobs", "My jobs", "Jobs in your section that need an engineer."),
     "engineer": ("my_jobs", "My jobs", "Jobs in your section that need an engineer."),
     "senior_engineer": ("my_jobs", "My jobs", "Faults escalated to you from your region first, then your section's jobs."),
@@ -56,7 +56,7 @@ HOMES = {
     "hr_officer": ("workforce", "Workforce overview", "Staff, roles and contribution evidence. No fault details."),
     "managing_director": ("executive", "Executive summary", "Headline figures and trends only."),
     "supervisor": ("supervision", "Supervision", "Procedures waiting for publication and the overall picture."),
-    "system_administrator": ("administration", "Administration", "Account requests, accounts and access."),
+    "system_administrator": ("administration", "Administration", "Accounts and access, reference data, rules, system health and the audit trail."),
 }
 
 
@@ -84,7 +84,7 @@ def capabilities(key: str, permissions: list[str]) -> list[str]:
     if key == "hr_officer":
         can.add("people.evidence")
     if key == "system_administrator":
-        can.add("network.simulator")
+        can.update({"network.simulator", "admin.console"})
     if key in ("maintenance_manager", "general_manager_om", "system_administrator"):
         can.add("people.counts")
     if key in ("maintenance_manager", "general_manager_om", "supervisor", "system_administrator", "hr_officer"):
@@ -160,6 +160,8 @@ def menu(key: str, can: set[str]) -> list[dict]:
         items.append(("drawings", "Drawing differences"))
     if "procedures.review" in can:
         items.append(("approvals", "Procedure review"))
+    if "admin.console" in can:
+        items.append(("admin", "Admin console"))
     if "people.manage" in can:
         items.append(("people", "User management"))
     elif "people.read" in can:
@@ -174,6 +176,8 @@ def menu(key: str, can: set[str]) -> list[dict]:
 def access_version(user: User) -> str:
     """Changes when the role, section, region or status changes, so the old session stops and the new view loads."""
     basis = f"{role_key(user)}|{user.section}|{user.region or ''}|{user.account_status}|{user.active}"
+    if getattr(user, "developer", 0):
+        basis += "|developer"  # only for the developer, so nobody else's session changes
     return hashlib.sha256(basis.encode()).hexdigest()[:16]
 
 
@@ -181,6 +185,8 @@ def access_profile(user: User) -> dict:
     key = role_key(user)
     definition = role_definition(user)
     can = capabilities(key, definition["permissions"])
+    if key == "system_administrator" and user.developer:
+        can = sorted({*can, "dev.tools"})
     home, title, purpose = HOMES.get(key, ("none", "Home", "No access has been granted yet."))
     region = user_region(user)
     if region:
@@ -197,9 +203,10 @@ def access_profile(user: User) -> dict:
         scope = "All equipment (reporting); your own reports"
     else:
         scope = "All sections"
+    developer = key == "system_administrator" and bool(user.developer)
     return {
-        "level": LEVELS.get(key, "—"),
-        "level_label": definition["label"],
+        "level": "DEV" if developer else LEVELS.get(key, "—"),
+        "level_label": "Developer / Owner" if developer else definition["label"],
         "home": home,
         "home_title": title,
         "home_purpose": purpose,

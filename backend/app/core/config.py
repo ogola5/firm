@@ -92,6 +92,20 @@ class Settings(BaseSettings):
     # Where links in emails point.
     app_url: str = "http://localhost:5173"
 
+    # Rules the System Administrator can change in the admin console (services/system_settings.py).
+    # A job nobody has taken for this long is shown to other sections and to the Chief Technician.
+    untaken_alert_minutes: int = 15
+    # Response target set on each new fault by priority (minutes); "overdue" follows from it.
+    response_minutes_critical: int = 30
+    response_minutes_high: int = 60
+    response_minutes_medium: int = 240
+    response_minutes_low: int = 1440
+    # Shown at the top of every screen when set (planned maintenance, demo in progress...).
+    banner_text: str = ""
+    # Feature switches.
+    feature_guided_demo: bool = True
+    feature_network_simulator: bool = True
+
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")

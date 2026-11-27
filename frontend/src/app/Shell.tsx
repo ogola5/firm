@@ -1,5 +1,5 @@
 import {
-  Activity, AlertTriangle, ArrowUpCircle, Library as LibraryIcon, BookOpen, GraduationCap, Ruler, Trophy, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, UserCircle, Users, Wrench, X,
+  Activity, AlertTriangle, ArrowUpCircle, Library as LibraryIcon, BookOpen, GraduationCap, Ruler, Trophy, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, SlidersHorizontal, UserCircle, Users, Wrench, X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
@@ -14,6 +14,7 @@ import { NotificationBell } from "../features/notifications/Notifications";
 import { GlobalSearch } from "./GlobalSearch";
 import { ThemeSwitch } from "../components/ThemeSwitch";
 import { TourBar } from "../features/tour/Tour";
+import { stopViewAs, useSystemConfig, viewingAs, VIEW_AS_RETURN } from "../lib/systemConfig";
 
 // Route-level code splitting: each area loads only when first opened.
 const Dashboard = lazy(() => import("../features/dashboard/Dashboard").then((m) => ({ default: m.Dashboard })));
@@ -41,6 +42,26 @@ const SystemPage = lazy(() => import("../features/library/SystemPage").then((m) 
 const Notifications = lazy(() => import("../features/notifications/Notifications").then((m) => ({ default: m.Notifications })));
 const ProcedureVersions = lazy(() => import("../features/procedures/ProcedureVersions").then((m) => ({ default: m.ProcedureVersions })));
 const Escalations = lazy(() => import("../features/escalation/Escalation").then((m) => ({ default: m.Escalations })));
+const AdminConsole = lazy(() => import("../features/admin/AdminConsole").then((m) => ({ default: m.AdminConsole })));
+
+/** The developer's banner (planned maintenance, demo in progress) and the "view as" bar. */
+function TopNotices({ user }: { user: User }) {
+  const config = useSystemConfig();
+  const viewing = viewingAs();
+  return (
+    <>
+      {viewing && (
+        <div role="status" aria-label="Viewing as" className="flex flex-wrap items-center justify-between gap-2 border-b border-warning bg-warning/15 px-3 py-2 text-sm md:px-7 print:hidden">
+          <span><strong>Viewing as {user.display_name}</strong> (read-only). You are {viewing.viewer}; nothing can be changed from here.</span>
+          <Button size="sm" variant="outline" onClick={stopViewAs}>Back to my account</Button>
+        </div>
+      )}
+      {config.banner && (
+        <div role="note" aria-label="Notice" className="border-b border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold md:px-7 print:hidden">{config.banner}</div>
+      )}
+    </>
+  );
+}
 
 // Menu entries come from the account's access profile (server-defined per level); only icons and paths live here.
 const AREAS: Record<string, { path: string; icon: ReactNode }> = {
@@ -58,6 +79,7 @@ const AREAS: Record<string, { path: string; icon: ReactNode }> = {
   library: { path: "/library", icon: <LibraryIcon /> },
   knowledge: { path: "/knowledge", icon: <BookOpen /> },
   approvals: { path: "/approvals", icon: <ShieldCheck /> },
+  admin: { path: "/admin", icon: <SlidersHorizontal /> },
   people: { path: "/people", icon: <Users /> },
   sync: { path: "/sync", icon: <CloudOff /> },
   account: { path: "/account", icon: <UserCircle /> },
@@ -90,12 +112,12 @@ const BOTTOM_TABS: Record<string, string[]> = {
   supervision: ["home", "approvals", "analytics"],
   executive: ["home", "analytics", "reports"],
   workforce: ["home", "recognition", "people"],
-  administration: ["home", "people", "faults"],
+  administration: ["home", "admin", "people"],
 };
 const SHORT_LABELS: Record<string, string> = {
   report: "Report", faults: "History", watch: "Watch", analytics: "Analytics", reports: "Reports", approvals: "Reviews",
   people: "People", recognition: "Points", expertise: "Experts", knowledge: "Procedures", equipment: "Equipment",
-  drawings: "Drawings", sync: "Sync", account: "Account", escalations: "Escalated", library: "Library",
+  drawings: "Drawings", sync: "Sync", account: "Account", escalations: "Escalated", library: "Library", admin: "Console",
 };
 const HOME_SHORT: Record<string, string> = {
   my_jobs: "My jobs", my_reports: "My reports", section_oversight: "Section", section_engineering: "Section",
@@ -129,6 +151,8 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
   const offlineSession = localStorage.getItem("kpc-offline-session");
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  // Signing out while viewing as someone ends the view too.
+  const logout = () => { localStorage.removeItem(VIEW_AS_RETURN); onLogout(); };
 
   useEffect(() => {
     setSyncActor(user.id);
@@ -196,7 +220,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
             </span>
             {user.email && <span className="truncate text-sidebar-foreground/70">{user.email}</span>}
           </NavLink>
-          <button className="grid size-11 place-items-center rounded-md hover:bg-white/10 md:size-8" onClick={onLogout} aria-label="Log out"><LogOut className="size-5 md:size-4" /></button>
+          <button className="grid size-11 place-items-center rounded-md hover:bg-white/10 md:size-8" onClick={logout} aria-label="Log out"><LogOut className="size-5 md:size-4" /></button>
         </div>
       </aside>
 
@@ -226,11 +250,13 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
           </Button>
           </div>
         </header>
+        <TopNotices user={user} />
         <TourBar />
         <Suspense fallback={<PageLoading />}>
           <Routes>
+            {areas.has("admin") && <Route path="/admin" element={<AdminConsole user={user} />} />}
             <Route path="/dashboard" element={<Dashboard user={user} />} />
-            <Route path="/account" element={<MyAccount user={user} onSignOut={onLogout} />} />
+            <Route path="/account" element={<MyAccount user={user} onSignOut={logout} />} />
             <Route path="/notifications" element={<Notifications user={user} />} />
             {areas.has("analytics") && <Route path="/analytics" element={<Analytics user={user} />} />}
             {areas.has("reports") && <Route path="/reports" element={<Reports user={user} />} />}

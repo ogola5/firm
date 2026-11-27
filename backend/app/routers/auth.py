@@ -17,6 +17,7 @@ from app.models import User, utcnow
 from app.schemas import LoginRequest
 from app.services import accounts
 from app.services.access import role_definition, role_key, user_payload
+from app.services.audit import audit_user_change
 from app.services.workspace import LEVELS, access_version
 
 router = APIRouter()
@@ -24,9 +25,10 @@ router = APIRouter()
 INVALID = "Wrong email or password."
 
 
-def issue_token(user: User) -> str:
+def issue_token(user: User, extra: dict | None = None, hours: float | None = None) -> str:
     """Signed claims about this account. The server re-checks `av` and `pv` on every request:
-    a change of role, section or status (av) or of password (pv) ends the session."""
+    a change of role, section or status (av) or of password (pv) ends the session.
+    `view_as` in `extra` marks a read-only session the developer opened as someone else."""
     claims = {
         "sub": user.id,
         "email": user.email,
@@ -35,7 +37,8 @@ def issue_token(user: User) -> str:
         "section": user.section,
         "av": access_version(user),
         "pv": accounts.password_version(user),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=settings.jwt_lifetime_hours),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=hours or settings.jwt_lifetime_hours),
+        **(extra or {}),
     }
     return jwt.encode(claims, settings.jwt_secret, algorithm="HS256")
 
@@ -51,6 +54,8 @@ def login(req: LoginRequest, db: Session = Depends(db_dep)):
         raise HTTPException(status_code=429, detail=f"Too many wrong passwords. Try again in {settings.login_lock_minutes} minutes, or reset your password.")
     if not accounts.password_matches(user, req.password):
         accounts.record_failed_login(user)
+        if accounts.is_locked(user):
+            audit_user_change(db, user.id, "ACCOUNT_LOCKED", user, {"after_wrong_passwords": settings.login_attempts_before_lock})
         db.commit()
         raise HTTPException(status_code=401, detail=INVALID)
     user.failed_logins = 0
@@ -60,6 +65,7 @@ def login(req: LoginRequest, db: Session = Depends(db_dep)):
         db.commit()
         raise HTTPException(status_code=403, detail={"message": blocked, "account_status": user.account_status})
     user.last_login_at = utcnow()
+    audit_user_change(db, user.id, "SIGNED_IN", user, {})
     db.commit()
     return {"access_token": issue_token(user), "token_type": "Bearer", "user": user_payload(user)}
 

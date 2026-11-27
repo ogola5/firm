@@ -61,6 +61,18 @@ class User(Base):
     # Western, Nairobi or Coast for regional staff (ST/PT/CT/AE/E/SE); empty for CE and company-wide roles.
     region: Mapped[str] = mapped_column(String, default="")
     requested_region: Mapped[str] = mapped_column(String, default="")
+    # The developer / owner of the standalone system: a System Administrator who also has developer tools
+    # (view as, demo reset, banner, feature switches). Set only from the seed or the command line, never in the app.
+    developer: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AppSetting(Base):
+    """A rule or switch the System Administrator changed in the app; overrides the default in core/config.py."""
+    __tablename__ = "app_settings"
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_by_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class System(Base):

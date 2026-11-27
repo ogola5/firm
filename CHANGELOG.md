@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-12-04 — Admin console: two levels, health, rules, equipment register, audit trail, developer tools
+
+- **Two levels:**
+  - The **System Administrator** (ICT in real use) runs the system and never approves maintenance work.
+  - The **Developer / Owner** (`demo.developer@kpc.co.ke`) is a System Administrator with the `developer` flag, set only from the seed or the command line, never in the app. Only this account has the developer tools.
+  - After ICT takes over, remove that account or keep it as a logged break-glass account.
+- **Admin console** (`/admin`), with tabs:
+  - **Health:** version and build, database and migration, the background timer (escalation checks, points, reports), evidence files (with Render's "files are lost on restart" warning), email, offline changes waiting, and recent errors (messages only).
+  - **Rules:** set in the app, applied at once, and audited (`app_settings`, migration 0014):
+    - response target by priority (new faults now get a response time, so "overdue" works);
+    - when untaken jobs are flagged;
+    - escalation timings;
+    - when knowledge fades;
+    - sign-in lock rules.
+  - **Organisation:** sections, regions, stations, and people by section and region.
+  - **Equipment register:** search, add and edit demo equipment, and import a CSV. Rows are checked first, and nothing is saved while any row is wrong. It stays illustrative until ICT approves the real register.
+  - **Audit trail:** one searchable log of sign-ins, account locks, access changes, rule changes, equipment changes and developer actions.
+  - **Developer tools:**
+    - **View as** another person: read-only (the server refuses every change), with a banner, audited, ending after an hour.
+    - A message banner on every screen.
+    - Feature switches for the guided demo link and the network simulator.
+    - **Reset demo data:** type RESET; it runs in the background.
+- **Admin home:** a health summary and links into each part of the console.
+
 ## 2026-12-03 — Open pickup: anyone free takes it, call someone in, working again at once; Instrumentation is now Systems Automation
 
 Why: a breakdown is often phoned through to the workshop. Waiting for the Chief Technician to allocate, and then to sign off before it counts as restored, only added delay. Everyone in the workshop is competent, and anyone who needs help calls a colleague.

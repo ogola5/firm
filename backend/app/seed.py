@@ -245,6 +245,8 @@ def _seed_database():
     # Coast and Western have their own technicians, Chief Technician and Senior Engineer.
     # The Chief Engineer is one per section and covers every region.
     demo_accounts = [
+        # The developer / owner of the standalone system: a System Administrator with developer tools.
+        ("developer", "system_administrator", ""),
         ("hr", "hr_officer", ""),
         ("gm-om", "general_manager_om", ""),
         ("ceo", "managing_director", ""),
@@ -275,8 +277,10 @@ def _seed_database():
         if existing:
             if region and not existing.region:
                 existing.region = region
+            if username == "developer":
+                existing.developer = 1
             continue
-        label = ROLE_DEFINITIONS[role]['label']
+        label = "Developer / Owner" if username == "developer" else ROLE_DEFINITIONS[role]['label']
         where = ", ".join(item for item in (section, region) if item)
         db.add(User(
             id=f"USER-{username}",
@@ -286,6 +290,7 @@ def _seed_database():
             role=role,
             section=section,
             region=region,
+            developer=1 if username == "developer" else 0,
             password_hash=bcrypt.hashpw(b"demo123", bcrypt.gensalt()).decode(),
         ))
     for section in SECTIONS:

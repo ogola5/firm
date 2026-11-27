@@ -44,6 +44,14 @@ Equipment:
 - `GET /api/v1/equipment/{id}`
 - `GET /api/v1/equipment/{id}/history`
 
+Admin console (System Administrator; `developer` tools need the developer / owner account):
+- `GET /api/v1/system/config` (public: banner and feature switches)
+- `GET /api/v1/admin/health` (version, database and migration, background timer, files, mail, sync conflicts, recent errors, demo reset state)
+- `GET /api/v1/admin/settings`, `PATCH /api/v1/admin/settings/{key}` (`value` or `reset: true`; only listed rules; banner and feature switches are developer-only; every change audited)
+- `GET /api/v1/admin/organisation`; `GET|POST /api/v1/admin/equipment`, `PATCH /api/v1/admin/equipment/{id}`, `POST /api/v1/admin/equipment/import` (`csv`, `dry_run`; all rows checked first)
+- `GET /api/v1/admin/audit?kind=access|signin|settings|equipment|developer&search=`
+- Developer: `GET /api/v1/admin/people`, `POST /api/v1/admin/view-as/{user_id}` (a one-hour token with a `view_as` claim; the server refuses every non-GET request made with it), `POST /api/v1/admin/demo/reset` (`confirm: "RESET"`; runs in the background)
+
 Faults:
 - `POST /api/v1/faults` accepts `seen_via` (`SCADA` or `SITE_WALK`) and `observed_at` (when it was seen; not in the future, not older than 7 days), plus an optional equipment candidate, `equipment_confirmed`, the reporter's original equipment wording, known location, observed symptom, operating conditions and operational impact. Evidence is uploaded through the attachment endpoint. `send_to` (`Systems Automation`, `Electrical` or `Mechanical`) sends it straight to that section; empty means the section that looks after the confirmed equipment, or Systems Automation when the equipment is not identified. The `FAULT_ASSIGNED` event records `routing_strategy`: `DIRECT_TO_SECTION`, `REPORTER_CHOSE` or `SYSTEMS_AUTOMATION_FIRST`.
 - `GET /api/v1/me/jobs` (investigating roles: `to_write_up`, `assigned`, `available` (open pickup: anything in the region nobody has taken, with `own_section`; safety first, then own section, then oldest), `helping` (jobs you were called in to), `returned` (write-ups the Chief Technician asked more on), `waiting` and `procedure_ready`)

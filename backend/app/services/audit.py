@@ -42,11 +42,15 @@ def add_event(db: Session, fault_id: str, event_type: str, actor_id: str, payloa
     queue_event(db, fault_id, event_type, actor_id, payload)
 
 
-def audit_user_change(db: Session, actor_id: str, action: str, target: User, details: dict) -> None:
+def audit_user_change(db: Session, actor_id: str, action: str, target_user: User | None, details: dict,
+                      target: str | None = None) -> None:
+    """One audit line. `target_user` is the person affected; for other things (a setting, equipment,
+    the demo data) `target` names it, e.g. "setting:se_after_hours" or "equipment:EQ-031"."""
     db.add(UserAudit(
         id=str(uuid.uuid4()),
         actor_id=actor_id,
         action=action,
-        target_user_id=target.id,
-        details=json.dumps(details),
+        target_user_id=target_user.id if target_user else (target or ""),
+        details=json.dumps(details, default=str),
+        created_at=utcnow(),
     ))

@@ -10,13 +10,16 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import Fault, FaultEvent, ProcedureUpdate, User, utc_datetime, utcnow
 from app.services.access import INVESTIGATION_ROLES, role_key
 
 # Lower is more urgent.
 SAFETY, BLOCKING, YOURS, WRITE_UP, REVIEW, KNOWLEDGE = 0, 1, 2, 3, 4, 5
-# A fault nobody has taken for this long is shown to other sections and to the Chief Technician.
-OTHER_SECTION_AFTER = timedelta(minutes=15)
+def other_section_after() -> timedelta:
+    """A fault nobody has taken for this long is shown to other sections and to the Chief Technician
+    (Rules in the admin console)."""
+    return timedelta(minutes=settings.untaken_alert_minutes)
 
 
 def _where(item: dict) -> str:
@@ -45,7 +48,7 @@ def needs_you(db: Session, user: User) -> list[dict]:
             if job["own_section"]:
                 add(YOURS, "fault", f"New fault: {_where(job)}", "Nobody has taken it yet. First to take it gets it.",
                     _fault_link(job["fault_id"]), "Open", job["safety_hazard"], job["reference"])
-            elif waited >= OTHER_SECTION_AFTER or job["safety_hazard"]:
+            elif waited >= other_section_after() or job["safety_hazard"]:
                 add(WRITE_UP, "fault", f"Still not taken ({job['section']}): {_where(job)}",
                     f"Waiting {int(waited.total_seconds() // 60)} min. Take it if you are free.",
                     _fault_link(job["fault_id"]), "Open", job["safety_hazard"], job["reference"])
@@ -76,7 +79,7 @@ def needs_you(db: Session, user: User) -> list[dict]:
             elif record["write_up_to_check"]:
                 add(REVIEW, "review", f"Check the write-up: {_where(record)}", "It is already working again. Approve it, or ask for more detail.",
                     _fault_link(record["id"]), "Check", False, record["reference"])
-            elif record["awaiting_assignment"] and record["untaken_minutes"] >= OTHER_SECTION_AFTER.total_seconds() // 60:
+            elif record["awaiting_assignment"] and record["untaken_minutes"] >= other_section_after().total_seconds() // 60:
                 add(BLOCKING, "work", f"Nobody has taken it: {_where(record)}", f"Waiting {record['untaken_minutes']} min. Give it to someone.",
                     _fault_link(record["id"]), "Allocate", safety, record["reference"])
             elif record["overdue"]:

@@ -36,6 +36,7 @@ The approved role and section on the account decide what a person sees. The serv
 | SA, Systems Automation | My jobs | New faults to sort first, then own jobs | Systems Automation |
 | ST, Senior Technician | My jobs | Jobs given to you: print the card, go, write it up | Own section |
 | PT, Principal Technician | My jobs | As ST | Own section |
+| DEV, Developer / Owner | Administration + developer tools | Everything the System Administrator has, plus view as someone (read-only), banner, feature switches, demo reset. A System Administrator with the `developer` flag (seed or command line only) | Whole system |
 | CT, Chief Technician | Section oversight | See who took what; check write-ups after the fix; approve hand-overs; give a job to someone when nobody has taken it; procedure review; section analytics | Own section |
 | AE / E, Assistant Engineer / Engineer | My jobs | Section jobs that need an engineer | Own section |
 | SE, Senior Engineer | My jobs | As E, and can confirm equipment back in service | Own section |

@@ -9,6 +9,7 @@ import { Button } from "../components/ui/button";
 import { Field, Input } from "../components/ui/form-controls";
 import { AuthCard } from "../features/account/AuthCard";
 import { companyEmail } from "../lib/companyEmail";
+import { useSystemConfig } from "../lib/systemConfig";
 import { API_BASE as API, ApiError, api, isOfflineError } from "../offline/api";
 import { networkFetch } from "../offline/network";
 import { NetworkSimulator } from "../offline/NetworkSimulator";
@@ -29,6 +30,7 @@ type LoginValues = z.input<typeof loginSchema>;
 export function Login({ onLogin }: { onLogin: (user: User) => void }) {
   // Only to know whether the guided demo can run (its chapters use the seeded accounts).
   const [hasDemoData, setHasDemoData] = useState(false);
+  const config = useSystemConfig(); // switches set by the developer in the admin console
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(false);
   const [notice] = useState(() => {
@@ -106,18 +108,21 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
       </form>
 
       {/* No picking a role here: the account decides who you are (level, section, region) and where you land. */}
-      {hasDemoData && (
+      {hasDemoData && config.features.guided_demo && (
         <div className="mt-6 border-t border-border pt-4">
           <Link to="/tour" className="flex items-center justify-between rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5 font-bold no-underline">
             Guided demo: one fault, from report to knowledge <span aria-hidden>›</span>
           </Link>
         </div>
       )}
-      <div className="mt-4 grid gap-2 border-t border-border pt-4">
-        <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Demonstration network</p>
-        <NetworkSimulator compact />
-        <p className="m-0 text-xs text-muted-foreground">Accounts that have signed in here while connected can also sign in offline.</p>
-      </div>
+      {config.features.network_simulator && (
+        <div className="mt-4 grid gap-2 border-t border-border pt-4">
+          <p className="m-0 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">Demonstration network</p>
+          <NetworkSimulator compact />
+          <p className="m-0 text-xs text-muted-foreground">Accounts that have signed in here while connected can also sign in offline.</p>
+        </div>
+      )}
+      {config.banner && <Alert variant="warning" className="mt-4">{config.banner}</Alert>}
     </AuthCard>
   );
 }

@@ -18,6 +18,7 @@ from app.models import (
     Diagnosis, DrawingDifference, Equipment, Fault, FaultAssignment, FaultEvent, Intervention, User, utc_datetime, utcnow,
 )
 from app.schemas import DiagnosisCreate, FaultCreate, InterventionCreate, VisitCreate
+from app.core.config import settings
 from app.services import escalation
 from app.services.report_answers import clean_details
 from app.services.catalogue import ACTION_TYPES, CAUSE_CATEGORIES, check_choice
@@ -181,12 +182,18 @@ def report_fault(db: Session, user: User, req: FaultCreate, fault_id: str | None
     )
     db.add(fault)
     db.flush()
+    # Response target by priority, set in the admin console (Rules); "overdue" follows from it.
+    target_minutes = {
+        "Critical": settings.response_minutes_critical, "High": settings.response_minutes_high,
+        "Medium": settings.response_minutes_medium, "Low": settings.response_minutes_low,
+    }.get(fault.severity)
     initial_assignment = FaultAssignment(
         id=str(uuid.uuid4()),
         fault_id=fault.id,
         section=assigned_section,
         assigned_by_id=user.id,
         reason="Initial response to reported breakdown",
+        response_due_at=utcnow() + timedelta(minutes=target_minutes) if target_minutes else None,
     )
     db.add(initial_assignment)
     add_event(db, fault.id, "FAULT_REPORTED", user.id, req.model_dump())
