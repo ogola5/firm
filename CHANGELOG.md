@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-12-07 — Sign up and go; notes on the job; your current job first
+
+- **Sign up and go:**
+  - "New accounts work at once, without administrator approval" is now on by default for the demonstration. Someone who creates an account is signed in straight away with the job and section they chose.
+  - Approval is still there: switch it off in Admin console → Rules to approve each account again.
+- **Notes on this job:** a box at the top of every fault (`POST /api/v1/faults/{id}/notes`, event `JOB_NOTE`).
+  - It shows the Chief Technician's instructions and every note, newest first.
+  - Whoever takes the job, and their helpers, see the notes on the fault, on the printed job card and in My jobs. They are told of each new note, and when the Chief Technician changes the instructions.
+  - The next-step bar says "Read the note(s) on this job first".
+- **Ask the Chief Technician for help:** from the notes box, the person on the job ticks "Ask the Chief Technician for help". The section's Chief Technician is told, and it stays in their "Needs you now" until a Chief Technician answers. To call a specific person in, use **Call someone to help**, as before.
+- **Your current job first:**
+  - While you have a job, My jobs shows it first, with **Open the job**.
+  - Other breakdowns fold under "Other breakdowns waiting (n): finish your job first".
+  - "Needs you now" leaves other new faults out, except safety ones.
+
 ## 2026-12-06 — Simple sign-up for the demonstration
 
 - **One step, no emailed code:** **Create an account** asks for the details and a password together (`POST /api/v1/enrolment/register`). No mail service is connected yet. The emailed-code flow is still there behind a switch.

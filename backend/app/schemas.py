@@ -104,6 +104,12 @@ class HelperAdd(BaseModel):
     note: str = Field(default="", max_length=300)
 
 
+class JobNoteCreate(BaseModel):
+    note: str = Field(max_length=2000)
+    # From the person on the job: also ask the section's Chief Technician for help.
+    ask_chief: bool = False
+
+
 class WriteUpNote(BaseModel):
     note: str = Field(max_length=4000)
 

@@ -11,7 +11,7 @@ from app.db import db_dep
 from app.deps import current_user
 from app.models import Equipment, Fault, FaultAssignment, FaultHelper, User, utc_datetime, utcnow
 from app.schemas import (
-    AssignmentAllocationRequest, AssignmentReviewRequest, HelperAdd, OperatorConfirmationCreate, OperatorUpdateCreate,
+    AssignmentAllocationRequest, AssignmentReviewRequest, HelperAdd, JobNoteCreate, OperatorConfirmationCreate, OperatorUpdateCreate,
     SectionEscalationCreate, TriageRequest, WriteUpNote,
 )
 from app.services.access import (
@@ -142,6 +142,7 @@ def allocate_section_assignment(
         if assignee.availability_status != "AVAILABLE":
             raise HTTPException(status_code=409, detail="This technician is marked unavailable")
     previous_assignee_id = assignment.assigned_user_id
+    previous_instructions = assignment.instructions or ""
     assignment.assigned_user_id = assignee.id if assignee else None
     assignment.instructions = req.instructions.strip()
     assignment.response_due_at = utc_datetime(req.response_due_at) if req.response_due_at else None
@@ -160,6 +161,7 @@ def allocate_section_assignment(
         "priority": fault.severity,
         "response_due_at": assignment.response_due_at.isoformat() if assignment.response_due_at else None,
         "instructions": assignment.instructions,
+        "previous_instructions": previous_instructions,
     })
     db.commit()
     return {
@@ -383,6 +385,28 @@ def remove_helper(fault_id: str, helper_user_id: str, user: User = Depends(curre
     add_event(db, fault.id, "HELPER_REMOVED", user.id, {"assignment_id": assignment.id, "helper_id": helper_user_id, "helper_name": name})
     db.commit()
     return {"removed": helper_user_id}
+
+
+NOTE_ROLES = (*TECHNICAL_ROLES, "maintenance_manager", "general_manager_om", "supervisor", "system_administrator")
+
+
+@router.post("/api/v1/faults/{fault_id}/notes")
+def add_job_note(fault_id: str, req: JobNoteCreate, user: User = Depends(current_user), db: Session = Depends(db_dep)):
+    """A note on the job: the Chief Technician's instructions or a comment, a question, or (from the person on
+    the job) a request for help from the Chief Technician. Whoever is on the job, and their helpers, are told."""
+    require_roles(user, *NOTE_ROLES)
+    fault = fault_operations.get_fault_in_scope(db, user, fault_id)
+    note = req.note.strip()
+    if not note:
+        raise HTTPException(status_code=422, detail="Write the note")
+    assignment = current_assignment(fault)
+    add_event(db, fault.id, "JOB_NOTE", user.id, {
+        "note": note, "ask_chief": bool(req.ask_chief),
+        "section": assignment.section if assignment else (fault.assigned_section or ""),
+        "assignment_id": assignment.id if assignment else None,
+    })
+    db.commit()
+    return {"fault_id": fault.id, "note": note, "ask_chief": bool(req.ask_chief)}
 
 
 @router.post("/api/v1/faults/{fault_id}/assignments/{assignment_id}/write-up-note")

@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Clock } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
+import { normalizeUser, type User } from "../../auth";
+import { getSyncEngine } from "../../offline/sync";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Field, Input, NativeSelect } from "../../components/ui/form-controls";
@@ -65,7 +67,8 @@ function Steps({ step, withCode = true }: { step: 1 | 2 | 3; withCode?: boolean 
  * Create an account: company email, then the emailed code and a password, then
  * the System Administrator approves. The job and section are a request only.
  */
-export function Enrol() {
+export function Enrol({ onLogin }: { onLogin?: (user: User) => void }) {
+  const navigate = useNavigate();
   const options = useQuery({ queryKey: ["enrolment", "options"], queryFn: () => api<Options>("/api/v1/enrolment/options") });
   const [details, setDetails] = useState<Details | null>(null);
   const [done, setDone] = useState("");
@@ -104,7 +107,7 @@ export function Enrol() {
       }
       setPasswordErrors({});
       try {
-        const result = await api<{ message: string; account_status: string }>("/api/v1/enrolment/register", {
+        const result = await api<{ message: string; account_status: string; access_token?: string; user?: unknown }>("/api/v1/enrolment/register", {
           method: "POST",
           body: JSON.stringify({
             ...parsed,
@@ -114,6 +117,17 @@ export function Enrol() {
           }),
         });
         setDetails(parsed);
+        const signedIn = result.access_token ? normalizeUser(result.user) : null;
+        if (result.access_token && signedIn && onLogin) {
+          // Ready at once (demonstration): signed in straight away, like after "Sign in".
+          localStorage.setItem("kpc-token", result.access_token);
+          localStorage.setItem("kpc-user", JSON.stringify(result.user));
+          localStorage.removeItem("kpc-offline-session");
+          getSyncEngine().resumeAfterLogin();
+          onLogin(signedIn);
+          navigate("/dashboard");
+          return;
+        }
         setReady(result.account_status === "ACTIVE");
         setDone(result.message);
       } catch (reason) {
@@ -277,6 +291,9 @@ export function Enrol() {
         )}
         {options.isError && <Alert variant="destructive">Account creation is not available right now. Check your connection.</Alert>}
         {error && <Alert variant="destructive">{error}</Alert>}
+        {options.data?.auto_approve && !withCode && (
+          <p className="m-0 text-sm text-muted-foreground">Demonstration: your account works straight away and you are signed in.</p>
+        )}
         <Button type="submit" disabled={isSubmitting || !options.data}>
           {isSubmitting ? (withCode ? "Sending…" : "Creating…") : withCode ? "Email me a code" : "Create my account"}
         </Button>

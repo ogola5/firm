@@ -5,6 +5,7 @@ procedure reviews, Operations confirmations). Safety first, then what is blockin
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -42,7 +43,11 @@ def needs_you(db: Session, user: User) -> list[dict]:
         from app.services.jobs import my_jobs
         jobs = my_jobs(db, user)
         now = utcnow()
+        # On a job already: finish it first. Other new faults stay out of the way, except safety ones.
+        busy = bool(jobs["to_write_up"] or jobs["assigned"] or jobs["helping"])
         for job in jobs["available"]:
+            if busy and not job["safety_hazard"]:
+                continue
             # Open pickup. Your section's new faults; other sections' only once nobody has taken them for a while.
             waited = now - utc_datetime(datetime.fromisoformat(job["assigned_at"])) if job["assigned_at"] else timedelta(0)
             if job["own_section"]:
@@ -69,6 +74,26 @@ def needs_you(db: Session, user: User) -> list[dict]:
                 f"/jobs/{job['fault_id']}/procedure", "Write it", False, job["reference"])
 
     if key == "technician_ct":
+        # Someone on a job in this section asked for help, and no Chief Technician has answered yet.
+        since = utcnow() - timedelta(days=7)
+        notes = db.scalars(select(FaultEvent).where(FaultEvent.event_type == "JOB_NOTE", FaultEvent.created_at >= since)
+                           .order_by(FaultEvent.created_at)).all()
+        latest: dict[str, FaultEvent] = {}
+        for event in notes:
+            latest[event.fault_id] = event
+        chief_ids = set(db.scalars(select(User.id).where(User.role == "technician_ct")))
+        for fault_id, event in latest.items():
+            details = json.loads(event.payload or "{}")
+            if not details.get("ask_chief") or details.get("section") != user.section or event.actor_id in chief_ids:
+                continue
+            fault = db.get(Fault, fault_id)
+            if not fault or fault.status in ("RESTORED", "CLOSED"):
+                continue
+            who = db.get(User, event.actor_id)
+            tag = fault.equipment.tag if fault.equipment_confirmed and fault.equipment else fault.reported_equipment_text
+            add(BLOCKING, "work", f"Help asked by {who.display_name if who else 'a colleague'}: {tag} · {fault.symptom}",
+                details.get("note", "")[:160], _fault_link(fault.id), "Answer", bool(fault.safety_hazard), fault.reference)
+
         from app.routers.team import chief_workspace
         workspace = chief_workspace(user, db)
         for record in workspace["faults"]:

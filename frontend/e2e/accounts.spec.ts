@@ -5,12 +5,43 @@
  * dashboard that role gets and see it on My account.
  */
 import { expect, test } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, withRule } from "./helpers";
 
 const PASSWORD = "ab12"; // the demonstration rule: 4+ characters, letters and numbers
 
-test("a technician enrols with a KPC email, is approved, and lands on their own dashboard", async ({ page }) => {
+test("for the demonstration, a new account works at once and the person is signed in", async ({ page }) => {
+  const email = `visitor.${Date.now().toString(36)}@kpc.co.ke`;
+  await page.goto("/");
+  if (await page.getByRole("button", { name: "Log out" }).isVisible()) await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("link", { name: "Create an account" }).click();
+  await expect(page.getByText("Demonstration: your account works straight away and you are signed in.")).toBeVisible();
+  await page.getByLabel("KPC email").fill(email);
+  await page.getByLabel("Full name").fill("Demo Visitor");
+  await page.getByLabel("Staff number").fill("KPC-30001");
+  await page.getByLabel("Your job").selectOption({ label: "Principal Technician (PT)" });
+  await page.getByLabel("Your section").selectOption("Mechanical");
+  await page.getByLabel("Your region").selectOption("Nairobi");
+  await page.getByLabel("Choose a password").fill("abc1");
+  await page.getByLabel("Type the password again").fill("abc1");
+  await page.getByRole("button", { name: "Create my account" }).click();
+  // Straight in: their own home, no approval and no second sign-in.
+  await expect(page.getByRole("heading", { name: "My jobs" })).toBeVisible();
+  await expect(page.locator("aside").getByText("PT", { exact: true })).toBeVisible();
+});
+
+test("a technician enrols with a KPC email, is approved, and lands on their own dashboard", async ({ page, request }) => {
   const email = `amina.otieno.${Date.now().toString(36)}@kpc.co.ke`;
+  // The approval step (switched off for the demonstration by default).
+  const restore = await withRule(request, "enrolment_auto_approve", false);
+  test.info().attach("note", { body: "enrolment_auto_approve off for this test" });
+  try {
+    await enrolAndApprove(page, email);
+  } finally {
+    await restore();
+  }
+});
+
+async function enrolAndApprove(page: import("@playwright/test").Page, email: string) {
 
   await page.goto("/");
   if (await page.getByRole("button", { name: "Log out" }).isVisible()) await page.getByRole("button", { name: "Log out" }).click();
@@ -68,7 +99,7 @@ test("a technician enrols with a KPC email, is approved, and lands on their own 
   await expect(details.filter({ hasText: "Mechanical" })).toBeVisible();
   await expect(details.filter({ hasText: "KPC-20417" })).toBeVisible();
   await expect(page.getByText("Record visits, findings and what was tried")).toBeVisible();
-});
+}
 
 // Each level lands on its own home with its own menu, from the account's access profile.
 const LEVEL_VIEWS: Array<{ user: string; level: string; heading: string; menu: string[]; notMenu: string[] }> = [

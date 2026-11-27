@@ -51,7 +51,8 @@ RULES: tuple[Rule, ...] = (
     Rule("enrolment_email_code", "Sign-in", "Email a code to confirm the address when someone creates an account",
          "Turn on only when a real mail service is connected.", "bool"),
     Rule("enrolment_auto_approve", "Sign-in", "New accounts work at once, without administrator approval",
-         "For letting people try the demonstration. They get the job and section they asked for; you can still change it.", "bool"),
+         "On for the demonstration: people sign up and are signed in straight away with the job and section they chose "
+         "(you can still change it). Switch off to approve each account again.", "bool"),
     Rule("banner_text", "Developer", "Message at the top of every screen", "For example planned maintenance, or \"Demonstration in progress\". Empty hides it.",
          "text", 0, 200, developer_only=True),
     Rule("feature_guided_demo", "Developer", "Guided demo link on the sign-in page", "", "bool", developer_only=True),

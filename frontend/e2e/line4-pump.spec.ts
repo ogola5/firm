@@ -5,7 +5,7 @@
  * checks the write-up afterwards; the fix becomes a procedure draft. Screenshots go to screens/line4/.
  */
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { cardWithHeading, openFault, showTab, signIn } from "./helpers";
+import { cardWithHeading, openFault, showOtherBreakdowns, showTab, signIn } from "./helpers";
 
 const dir = "screens/line4";
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 };
@@ -68,6 +68,7 @@ test("Line 4 pump A will not start: report, anyone free takes it, write-up, conf
   const jobRow = (section: string) => pt.getByRole("region", { name: section }).locator("article")
     .filter({ has: pt.locator(`a[href="/jobs/${faultId}/card"]`) });
   await pt.screenshot({ path: `${dir}/3-pt-my-jobs.png`, fullPage: true });
+  await showOtherBreakdowns(pt); // folded while the PT is already on another job
   await jobRow("New: nobody has taken it yet").getByRole("button", { name: "Take this job" }).click();
   await expect(pt.getByText(/You have taken 11-P-401/)).toBeVisible();
   await jobRow("To write up").getByRole("link", { name: "Write up visit" }).click();

@@ -123,6 +123,40 @@ def test_call_someone_in_to_help_and_the_fix_counts_at_once():
     assert review.status_code == 200 and review.json()["status"] == "CLOSED"
 
 
+def test_the_chief_technicians_note_reaches_whoever_takes_the_job_and_help_reaches_the_chief():
+    fault = report("11-MOV-501")  # Electrical
+    chief = headers("ct-electrical")
+    # The Chief Technician comments before anyone has taken it.
+    assert client.post(f"/api/v1/faults/{fault['id']}/notes", headers=chief,
+                       json={"note": "Check the torque switch first; it tripped twice last week."}).status_code == 200
+    technician = headers("st-electrical")
+    assert client.post(f"/api/v1/faults/{fault['id']}/action?action=acknowledge", headers=technician).status_code == 200
+    context = client.get(f"/api/v1/faults/{fault['id']}/context", headers=technician).json()
+    assert context["job_notes"][0]["note"].startswith("Check the torque switch") and context["job_notes"][0]["by"]
+    job = next(item for item in client.get("/api/v1/me/jobs", headers=technician).json()["to_write_up"] if item["fault_id"] == fault["id"])
+    assert job["latest_note"]["note"].startswith("Check the torque switch")
+
+    # A later note is sent to the person on the job.
+    client.post(f"/api/v1/faults/{fault['id']}/notes", headers=chief, json={"note": "Spare actuator card is in store B."})
+    bell = [item["title"] for item in client.get("/api/v1/notifications", headers=technician).json()["items"]]
+    assert any(title.startswith("Note on your job") and fault["reference"] in title for title in bell)
+
+    # On a job: other new (non-safety) faults stay out of "Needs you now" until it is finished.
+    report("11-MOV-501")
+    needs = client.get("/api/v1/me/needs-you", headers=technician).json()["items"]
+    assert not any(item["title"].startswith("New fault") and not item["safety"] for item in needs)
+
+    # The technician asks the Chief Technician for help; it waits in their list until a Chief Technician answers.
+    assert client.post(f"/api/v1/faults/{fault['id']}/notes", headers=technician,
+                       json={"note": "Gearbox is seized; need a decision on replacing it.", "ask_chief": True}).status_code == 200
+    chief_needs = client.get("/api/v1/me/needs-you", headers=chief).json()["items"]
+    assert any(item["title"].startswith("Help asked by") and item["reference"] == fault["reference"] for item in chief_needs)
+    client.post(f"/api/v1/faults/{fault['id']}/notes", headers=chief, json={"note": "Replace it; I have ordered the part."})
+    chief_needs = client.get("/api/v1/me/needs-you", headers=chief).json()["items"]
+    assert not any(item["title"].startswith("Help asked by") and item["reference"] == fault["reference"] for item in chief_needs)
+    assert client.post(f"/api/v1/faults/{fault['id']}/notes", headers=headers("operations"), json={"note": "x"}).status_code == 403
+
+
 def test_whoever_takes_an_unidentified_fault_confirms_the_equipment():
     operations = headers("operations")
     created = client.post("/api/v1/faults", headers=operations, json={

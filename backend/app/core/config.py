@@ -77,8 +77,9 @@ class Settings(BaseSettings):
     password_min_length: int = 4
     # Demonstration: no emailed code when someone creates an account (no mail service is connected yet).
     enrolment_email_code: bool = False
-    # Demonstration: when true, a new account works at once with the job asked for (no administrator approval).
-    enrolment_auto_approve: bool = False
+    # Demonstration: a new account works at once with the job asked for, and the person is signed in.
+    # Approval is still there: switch this off in the admin console to require it again.
+    enrolment_auto_approve: bool = True
 
     # Periodic reports: financial year starts in this month (KPC: July to June).
     financial_year_start_month: int = 7

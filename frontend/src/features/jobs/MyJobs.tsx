@@ -30,6 +30,8 @@ function JobRow({ job, meta, children }: { job: Job; meta: ReactNode; children: 
         ) : null}
         <strong className="text-lg">{job.equipment_tag} · {job.equipment_name}</strong>
         {job.escalation_guidance && <span className="text-sm"><strong>Engineer's guidance:</strong> {job.escalation_guidance}</span>}
+        {job.instructions && <span className="rounded-md bg-primary/5 px-2 py-1 text-sm"><strong>Chief Technician's instructions:</strong> {job.instructions}</span>}
+        {job.latest_note && <span className="rounded-md bg-primary/5 px-2 py-1 text-sm"><strong>Note from {job.latest_note.by}:</strong> {job.latest_note.note}</span>}
         <span className="text-[15px] text-foreground/80">
           {job.symptom} · effect: {shortEffect(job.operational_impact).toLowerCase() || `${job.severity.toLowerCase()} priority`} · {job.reference}
         </span>
@@ -108,6 +110,21 @@ export function MyJobs({ user, before, after }: { user: User; before?: ReactNode
       <PrintCardLink faultId={job.fault_id} />
     </JobRow>
   );
+  const onAJob = jobs.to_write_up.length + jobs.assigned.length + helping.length > 0;
+  const newLists = (
+    <>
+      {ownNew.length > 0 && (
+        <Section title="New: nobody has taken it yet" count={ownNew.length} term="open-pickup" hint="Anyone free can take one. The first to take it gets it; your Chief Technician is told.">
+          {ownNew.map(newJob)}
+        </Section>
+      )}
+      {otherNew.length > 0 && (
+        <Section title="Other sections: not taken yet" count={otherNew.length} hint="Free? You can take these too. Call someone in if you need a hand.">
+          {otherNew.map(newJob)}
+        </Section>
+      )}
+    </>
+  );
 
   return (
     <Page>
@@ -126,10 +143,11 @@ export function MyJobs({ user, before, after }: { user: User; before?: ReactNode
         {jobsQuery.isSuccess && nothing && <EmptyState>Nothing is waiting for you. New faults appear here as soon as they are reported.</EmptyState>}
 
         {jobs.to_write_up.length > 0 && (
-          <Section title="To write up" count={jobs.to_write_up.length} tone="warning" hint="The times you enter are the times things happened, not when you type them.">
+          <Section title="To write up" count={jobs.to_write_up.length} tone="warning" hint="Your job now. Open it for the notes, to call someone in or to ask your Chief Technician for help. The times you enter are the times things happened.">
             {jobs.to_write_up.map((job) => (
               <JobRow key={job.fault_id} job={job} meta={<>You took it {spokenTime(job.acknowledged_at)}{job.seen_before ? ` · seen ${job.seen_before} time(s) before in 90 days` : ""}</>}>
                 <Button asChild><Link to={`/jobs/${encodeURIComponent(job.fault_id)}/write-up`}>Write up visit</Link></Button>
+                <Button variant="outline" asChild><Link to={`/faults?mode=history&fault=${encodeURIComponent(job.fault_id)}`}>Open the job</Link></Button>
                 <PrintCardLink faultId={job.fault_id} />
               </JobRow>
             ))}
@@ -172,17 +190,13 @@ export function MyJobs({ user, before, after }: { user: User; before?: ReactNode
           </Section>
         )}
 
-        {ownNew.length > 0 && (
-          <Section title="New: nobody has taken it yet" count={ownNew.length} term="open-pickup" hint="Anyone free can take one. The first to take it gets it; your Chief Technician is told.">
-            {ownNew.map(newJob)}
-          </Section>
-        )}
-
-        {otherNew.length > 0 && (
-          <Section title="Other sections: not taken yet" count={otherNew.length} hint="Free? You can take these too. Call someone in if you need a hand.">
-            {otherNew.map(newJob)}
-          </Section>
-        )}
+        {onAJob && jobs.available.length > 0 ? (
+          // On a job: finish it first. Other breakdowns stay folded (safety ones are still in "Needs you now").
+          <details className="rounded-xl border border-dashed border-border bg-card p-4">
+            <summary className="cursor-pointer font-bold">Other breakdowns waiting ({jobs.available.length}): finish your job first</summary>
+            <div className="mt-4 grid gap-8">{newLists}</div>
+          </details>
+        ) : newLists}
 
         {procedureReady.length > 0 && (
           <Section title="Turn your fix into a procedure" count={procedureReady.length} hint="Working again. We drafted it from your write-up; check it and send it.">

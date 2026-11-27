@@ -85,7 +85,10 @@ export function JobCard({ user }: { user: User }) {
             </div>
           )}
           {Boolean(fault.callback) && <div className="col-span-2"><strong>Reach the reporter on:</strong> {String(fault.callback)}</div>}
-          {Boolean(active?.instructions) && <div className="col-span-2"><strong>Chief Technician's note:</strong> {String(active?.instructions)}</div>}
+          {Boolean(active?.instructions) && <div className="col-span-2"><strong>Chief Technician's instructions:</strong> {String(active?.instructions)}</div>}
+          {(context.job_notes ?? []).slice(0, 4).reverse().map((item) => (
+            <div key={item.id} className="col-span-2"><strong>Note from {item.by}:</strong> {item.note}</div>
+          ))}
           {Boolean(active?.findings) && <div className="col-span-2"><strong>Found by the previous section:</strong> {String(active?.findings)}</div>}
         </div>
 

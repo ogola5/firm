@@ -37,6 +37,8 @@ export type Job = {
   helping?: string;
   /** The Chief Technician asked for more detail in the write-up. */
   review_comments?: string;
+  /** The newest note on the job (the Chief Technician's comment, a question, a request for help). */
+  latest_note?: { by: string; note: string; at: string | null } | null;
 };
 
 export type Jobs = {

@@ -70,6 +70,23 @@ export async function closedFaultViaApi(
   return { faultId: fault.id, equipment };
 }
 
+/** On a job already, new breakdowns are folded under "Other breakdowns waiting": open it when it is there. */
+export async function showOtherBreakdowns(page: Page) {
+  await expect(page.getByRole("heading", { name: "My jobs" })).toBeVisible();
+  const fold = page.getByText(/^Other breakdowns waiting/);
+  // Wait for the job lists to load: either the fold or the open list is there.
+  await expect(fold.or(page.getByRole("region", { name: "New: nobody has taken it yet" }))).toBeVisible();
+  if (await fold.isVisible()) await fold.click();
+}
+
+/** Sets an admin-console rule for a test (developer account), returning a function that puts it back. */
+export async function withRule(request: APIRequestContext, key: string, value: unknown): Promise<() => Promise<void>> {
+  const token = await apiToken(request, "developer");
+  const patch = (body: unknown) => request.patch(`/api/v1/admin/settings/${key}`, { headers: { Authorization: `Bearer ${token}` }, data: body });
+  expect((await patch({ value })).ok()).toBeTruthy();
+  return async () => { await patch({ reset: true }); };
+}
+
 /** A link in the side menu; the less-used ones are folded under "More". */
 export async function menuLink(page: Page, name: string) {
   const nav = page.getByRole("navigation", { name: "Main" });

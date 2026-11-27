@@ -551,6 +551,13 @@ def fault_context(fault_id: str, user: User = Depends(current_user), db: Session
             "download_url": f"/api/v1/faults/{fault.id}/attachments/{item.id}",
         } for item in attachments],
         "operator_updates": operator_updates,
+        # Notes on the job (Chief Technician's comments, questions, requests for help), newest first.
+        "job_notes": [{
+            "id": event.id, "by": actors.get(event.actor_id, event.actor_id), "by_id": event.actor_id,
+            "note": json.loads(event.payload or "{}").get("note", ""),
+            "ask_chief": bool(json.loads(event.payload or "{}").get("ask_chief")),
+            "created_at": event.created_at.isoformat(),
+        } for event in reversed(timeline) if event.event_type == "JOB_NOTE"],
         "timeline": [{
             "id": event.id,
             "event_type": event.event_type,

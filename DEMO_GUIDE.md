@@ -37,7 +37,7 @@ Each home page shows a short welcome until you press **Got it**. **Quick guide**
 
 1. On the sign-in page, choose **Create an account**. Enter a KPC address (for example `amina.otieno@kpc.co.ke`), your full name, staff number, the job and section you need, and a password. An address outside `@kpc.co.ke` is refused.
 2. For the demonstration there is no emailed code, and a password needs only 4 or more characters with letters and numbers (for example `abc1`). Both can be changed in Admin console → Rules. Turn the emailed code on only once a mail service is connected.
-3. Signing in now says the account is **waiting for approval**. To let people try the system without waiting, switch on Admin console → Rules → "New accounts work at once, without administrator approval".
+3. For the demonstration, the account works at once and the person is signed in straight away ("New accounts work at once, without administrator approval" is on). To approve each account again, switch that off in Admin console → Rules. New accounts then wait for approval.
 4. Sign in as `admin` and open **User management → Account requests**. Check the person, confirm or correct the job and section, and **Approve**, or **Reject** with a reason they will see.
 5. Sign in as the new person. They see the dashboard for the role they were given, and **My account** shows their details, what they can do, and lets them change their password.
 

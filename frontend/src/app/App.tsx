@@ -78,7 +78,7 @@ export function App() {
       {user
         ? <Route path="*" element={<Shell user={user} onLogout={logout} />} />
         : <>
-          <Route path="/enrol" element={<Enrol />} />
+          <Route path="/enrol" element={<Enrol onLogin={setUser} />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="*" element={<Login onLogin={setUser} />} />
         </>}

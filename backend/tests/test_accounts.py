@@ -104,6 +104,9 @@ def test_one_step_sign_up_without_a_code_then_approval_or_at_once():
     try:
         ready = register("visitor.two@kpc.co.ke")
         assert ready.status_code == 201 and ready.json()["account_status"] == "ACTIVE"
+        # Signed in straight away: the answer carries the session.
+        session = {"Authorization": f"Bearer {ready.json()['access_token']}"}
+        assert client.get("/api/v1/auth/me", headers=session).json()["email"] == "visitor.two@kpc.co.ke"
         signed_in = sign_in("visitor.two@kpc.co.ke", "abc1")
         assert signed_in.status_code == 200 and signed_in.json()["user"]["section"] == "Electrical"
     finally:

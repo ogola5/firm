@@ -28,7 +28,11 @@ test("a fault shows where it is and the one next step; tabs hold the rest", asyn
   await expect(needs.getByRole("link").first()).toBeVisible();
   const showAll = needs.getByRole("button", { name: /Show all/ });
   if (await showAll.isVisible()) await showAll.click(); // oldest first: the newest may be beyond the first five
-  await expect(needs.getByText(new RegExp(fault.reference)).first()).toBeVisible();
+  // Someone already on a job is not shown other new (non-safety) faults until it is done.
+  const jobs = await apiGet<Record<string, unknown[]>>(request, await apiToken(request, "automation"), "/api/v1/me/jobs");
+  const busy = jobs.to_write_up.length + jobs.assigned.length + jobs.helping.length > 0;
+  if (busy) await expect(needs.getByText(new RegExp(fault.reference))).toHaveCount(0);
+  else await expect(needs.getByText(new RegExp(fault.reference)).first()).toBeVisible();
   await page.screenshot({ path: `${dir}/1-needs-you-now-phone.png`, fullPage: true });
 
   await page.goto(`/faults?mode=history&fault=${fault.id}`);
@@ -78,6 +82,46 @@ test("anyone free takes another section's job and calls a colleague in to help",
   // The helper sees it in My jobs.
   await signIn(page, "st-mechanical");
   await expect(page.getByRole("region", { name: "Helping a colleague" }).locator(`a[href="/jobs/${fault.id}/card"]`)).toBeVisible();
+});
+
+test("the Chief Technician's note reaches whoever takes the job; asking for help reaches the Chief Technician", async ({ page, request }) => {
+  const operations = await apiToken(request, "operations");
+  const valve = (await apiGet<Row[]>(request, operations, "/api/v1/equipment?search=11-MOV-501")).find((row) => row.tag === "11-MOV-501")!;
+  const fault = await apiPost<{ id: string; reference: string }>(request, operations, "/api/v1/faults", {
+    equipment_id: valve.id, symptom: "Won't open / close", operational_impact: "Running reduced: Working, but limited",
+  });
+  const note = `Check the torque switch first ${Date.now()}`;
+
+  await signIn(page, "ct-electrical");
+  await page.goto(`/faults?mode=history&fault=${fault.id}`);
+  const notes = page.getByRole("region", { name: "Notes on this job" }).or(page.getByLabel("Notes on this job"));
+  await notes.getByLabel("Add a note").fill(note);
+  await notes.getByRole("button", { name: "Add note" }).click();
+  await expect(page.getByText("Note sent to whoever is on the job.")).toBeVisible();
+
+  await signIn(page, "pt-electrical");
+  await page.goto(`/faults?mode=history&fault=${fault.id}`);
+  await page.getByRole("region", { name: "Next step" }).getByRole("button", { name: "Take this job" }).click();
+  await expect(page.getByText("You have taken this job.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Next step" })).toContainText("Read the note on this job first");
+  await expect(notes).toContainText(note);
+  await notes.getByLabel("Add a note").fill("The gearbox is seized; can we replace it?");
+  await notes.getByLabel("Ask the Chief Technician for help").check();
+  await notes.getByRole("button", { name: "Send and ask" }).click();
+  await expect(page.getByText("Sent. Your Chief Technician has been asked.")).toBeVisible();
+  await page.screenshot({ path: `${dir}/7-notes-on-the-job.png` });
+
+  // Home: the job now comes first; its note is on it.
+  await page.goto("/dashboard");
+  const current = page.getByRole("region", { name: "To write up" }).locator("article").filter({ has: page.locator(`a[href="/jobs/${fault.id}/card"]`) });
+  await expect(current).toContainText("The gearbox is seized");
+
+  await signIn(page, "ct-electrical");
+  const needs = page.getByLabel("Needs you now");
+  await expect(needs.getByRole("link").first()).toBeVisible();
+  const showAll = needs.getByRole("button", { name: /Show all/ });
+  if (await showAll.isVisible()) await showAll.click();
+  await expect(needs.getByRole("link", { name: new RegExp(`Help asked by .*${fault.reference}`) })).toBeVisible();
 });
 
 test("search from the header goes to the equipment's own page; reporting from there starts with it", async ({ page }) => {

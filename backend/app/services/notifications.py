@@ -143,6 +143,28 @@ def _allocated(db, fault, actor, payload):
         notify(db, [person], "work", f"Job given to you: {fault.reference} · {_where(fault)}",
                f"Priority {payload.get('priority', fault.severity)}. {payload.get('instructions') or ''}".strip(),
                f"/jobs/{fault.id}/card", actor)
+    elif person and payload.get("instructions") and payload.get("instructions") != payload.get("previous_instructions"):
+        # The Chief Technician changed the instructions on a job someone already has.
+        notify(db, [person], "work", f"New instructions on your job: {fault.reference}", payload["instructions"], _link(fault), actor)
+
+
+def on_the_job(fault: Fault) -> list[User]:
+    """The person who took the job and the colleagues they called in."""
+    assignment = current_assignment(fault)
+    if not assignment:
+        return []
+    return [person for person in (assignment.assigned_user, *(helper.user for helper in assignment.helpers)) if person]
+
+
+def _job_note(db, fault, actor, payload):
+    """A note on the job reaches everyone on it; "ask the Chief Technician" also reaches the section's CT."""
+    author = db.get(User, actor)
+    name = author.display_name if author else "Someone"
+    note = payload.get("note") or ""
+    notify(db, on_the_job(fault), "work", f"Note on your job from {name}: {fault.reference}", note, _link(fault), actor)
+    if payload.get("ask_chief"):
+        notify(db, chiefs(db, fault, payload.get("section") or None), "work", f"Help asked by {name}: {fault.reference}",
+               f"{_where(fault)}: {note}", _link(fault), actor)
 
 
 def _handed_over(db, fault, actor, payload):
@@ -269,6 +291,7 @@ RULES = {
     "TECHNICAL_COMPLETION_RETURNED": _write_up_returned,
     "TAKEN_FROM_OTHER_SECTION": _taken_across,
     "HELPER_ADDED": _helper_added,
+    "JOB_NOTE": _job_note,
     "WRITE_UP_ADDED": _write_up_added,
     "SECTION_ESCALATION_RETURNED": _returned,
     "TECHNICAL_COMPLETION_APPROVED": _signed_off,

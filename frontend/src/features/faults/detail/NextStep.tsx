@@ -123,9 +123,12 @@ function useStep(): Step {
         secondary: writesUp ? [{ kind: "link", label: "Print the job card", to: `/jobs/${faultId}/card` }] : [] };
     }
     const lead = assignment?.assigned_user_id === user.id;
+    const noteCount = (context.job_notes ?? []).length + (assignment?.instructions ? 1 : 0);
     if (status === "ACKNOWLEDGED") {
       return { title: lead ? "You have taken it" : `You are helping ${String(assignment?.assigned_user_name || "a colleague")}`,
-        detail: "Print the job card before you go. Tell the system when you are on site.",
+        detail: noteCount
+          ? `Read the ${noteCount === 1 ? "note" : `${noteCount} notes`} on this job first (below). Print the job card before you go.`
+          : "Print the job card before you go. Tell the system when you are on site.",
         primary: { kind: "run", label: "I'm on site", action: "on_site", saidAs: "Recorded: you are on site." },
         secondary: [...(writesUp ? [{ kind: "link", label: "Print the job card", to: `/jobs/${faultId}/card` } as Action] : []), callHelp,
           { kind: "run", label: "Cause found", action: "diagnose", saidAs: "Recorded: cause found." }] };

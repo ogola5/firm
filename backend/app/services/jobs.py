@@ -1,12 +1,13 @@
 """A technician's work, grouped the way they think about it at their desk."""
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Fault, FaultAssignment, FaultHelper, Intervention, ProcedureUpdate, User, utc_datetime, utcnow
+from app.models import Fault, FaultAssignment, FaultEvent, FaultHelper, Intervention, ProcedureUpdate, User, utc_datetime, utcnow
 from app.services.access import ACTIVE_ASSIGNMENT_STATUSES, INVESTIGATION_ROLES, region_allows, require_roles
 
 PROCEDURE_WINDOW = timedelta(days=60)
@@ -55,8 +56,20 @@ def _job(db: Session, fault: Fault, assignment: FaultAssignment | None, **extra)
         "acknowledged_at": _iso(assignment.acknowledged_at) if assignment else None,
         "response_due_at": _iso(assignment.response_due_at) if assignment else None,
         "instructions": assignment.instructions if assignment else "",
+        "latest_note": _latest_note(db, fault.id),
         **extra,
     }
+
+
+def _latest_note(db: Session, fault_id: str) -> dict | None:
+    """The newest note on the job (Chief Technician's comment, a question, a request for help)."""
+    event = db.scalar(select(FaultEvent).where(FaultEvent.fault_id == fault_id, FaultEvent.event_type == "JOB_NOTE")
+                      .order_by(FaultEvent.created_at.desc()).limit(1))
+    if not event:
+        return None
+    author = db.get(User, event.actor_id)
+    return {"by": author.display_name if author else "", "note": json.loads(event.payload or "{}").get("note", ""),
+            "at": _iso(event.created_at)}
 
 
 def my_jobs(db: Session, user: User) -> dict:

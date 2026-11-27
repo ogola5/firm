@@ -20,6 +20,8 @@ export type FaultContext = {
   assignments: DataRow[];
   attachments: DataRow[];
   operator_updates: DataRow[];
+  /** Notes on the job: the Chief Technician's comments, questions, requests for help (newest first). */
+  job_notes?: Array<{ id: string; by: string; by_id: string; note: string; ask_chief: boolean; created_at: string }>;
   timeline: DataRow[];
   diagnoses: DataRow[];
   interventions: DataRow[];

@@ -4,7 +4,7 @@
  * history, and form fields that do not make iPhones zoom in.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { menuLink, signIn, signOut } from "./helpers";
+import { menuLink, showOtherBreakdowns, signIn, signOut } from "./helpers";
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
@@ -94,6 +94,7 @@ test("a product leak on a phone: follow-up taps, hazard prompt, SAFETY at the to
 
   // Straight to Electrical, who look after the valve: safety first in their "nobody has taken it yet" list.
   await signIn(page, "st-electrical");
+  await showOtherBreakdowns(page); // folded while the technician is already on another job
   const firstJob = page.getByRole("region", { name: "New: nobody has taken it yet" }).getByRole("article").first();
   await expect(firstJob.getByText("SAFETY", { exact: true })).toBeVisible();
   await expect(firstJob).toContainText("Leaking");

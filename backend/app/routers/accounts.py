@@ -138,7 +138,13 @@ def enrolment_register(req: EnrolmentRegister, db: Session = Depends(db_dep)):
         db.add(user)
     accounts.set_password(user, req.password)
     result = _submitted(db, user)
+    if user.account_status == accounts.ACTIVE:
+        # Ready at once (demonstration switch): sign the person in straight away.
+        user.last_login_at = utcnow()
+        audit_user_change(db, user.id, "SIGNED_IN", user, {"after_sign_up": True})
     db.commit()
+    if user.account_status == accounts.ACTIVE:
+        result.update(access_token=issue_token(user), token_type="Bearer", user=user_payload(user))
     return result
 
 

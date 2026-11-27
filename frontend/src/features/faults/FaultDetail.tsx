@@ -8,6 +8,7 @@ import { errorMessage } from "../../lib/query";
 import { toast } from "../../lib/toast";
 import { cn } from "../../lib/utils";
 import { AssignmentPanel } from "./detail/AssignmentPanel";
+import { JobNotes } from "./detail/JobNotes";
 import { DetailContext, faultPermissions, loadFaultContext, type DetailContextValue, type Revision } from "./detail/context";
 import { EvidencePanel } from "./detail/EvidencePanel";
 import { EquipmentHistory, InvestigationLog, RankedCauses } from "./detail/History";
@@ -108,6 +109,7 @@ export function FaultDetail({ user, faultId, onRefresh }: { user: User; faultId:
         </div>
         {tab === "now" && (
           <div role="tabpanel" aria-label="Now" className="grid gap-4">
+            <JobNotes />
             {!value.offline && (
               <div id="fault-escalation">
                 <EscalationCard faultId={faultId} fault={value.context.fault as unknown as EscalationFields}

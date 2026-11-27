@@ -19,6 +19,8 @@ os.environ["DATABASE_URL"] = os.environ.get(
 os.environ["REPORT_SCHEDULER"] = "false"
 # Tests use the full illustrative dataset (a live demo starts from the small sample).
 os.environ.setdefault("SEED_PROFILE", "full")
+# The approval steps are tested as such; the demonstration switch (accounts work at once) is tested on its own.
+os.environ.setdefault("ENROLMENT_AUTO_APPROVE", "false")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

@@ -9,7 +9,7 @@
  *      the supervisor sees the complete investigation before publishing.
  */
 import { expect, test } from "@playwright/test";
-import { apiGet, apiToken, cardWithHeading, equipmentIn, openFault, showTab, signIn, type Row } from "./helpers";
+import { apiGet, apiToken, cardWithHeading, equipmentIn, openFault, showOtherBreakdowns, showTab, signIn, type Row } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -63,6 +63,7 @@ test("Scenario 1 + 3: first-time fault to published knowledge, keeping the faile
   // This job's row, identified by its own links (other jobs may be on the same equipment).
   const jobRow = (section: string) => page.getByRole("region", { name: section }).locator("article")
     .filter({ has: page.locator(`a[href="/jobs/${faultId}/card"]`) });
+  await showOtherBreakdowns(page); // folded while the technician is already on another job
   await jobRow("New: nobody has taken it yet").getByRole("button", { name: "Take this job" }).click();
   await expect(page.getByText(`You have taken ${String(equipment.tag)}`)).toBeVisible();
   await jobRow("To write up").getByRole("link", { name: "Print job card" }).click();
