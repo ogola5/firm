@@ -2,14 +2,14 @@
  * Retiring expertise, drawing differences, points and awards, and the "likely to fail" list.
  */
 import { expect, test } from "@playwright/test";
-import { apiGet, apiPost, apiToken, signIn, type Row } from "./helpers";
+import { apiGet, apiPost, apiToken, menuLink, signIn, type Row } from "./helpers";
 
 const nav = (page: import("@playwright/test").Page) => page.getByRole("navigation", { name: "Main" });
 
 test("a technician sees what is likely to fail, with reasons and how often the list has been right", async ({ page }) => {
   await signIn(page, "st-systems-automation");
   await expect(page.getByText(/Likely to need attention in/)).toBeVisible();
-  await nav(page).getByRole("link", { name: "Likely to fail" }).click();
+  await (await menuLink(page, "Likely to fail")).click();
   await expect(page.getByRole("heading", { name: "Likely to fail" })).toBeVisible();
   // Every listed item says why.
   await expect(page.getByRole("article", { name: /likely to need attention/ }).first().getByRole("listitem").first()).toBeVisible();
@@ -25,20 +25,20 @@ test("a chief verifies a drawing difference; it reaches the job card and earns t
   });
 
   await signIn(page, "ct-electrical");
-  await nav(page).getByRole("link", { name: "Drawing differences" }).click();
+  await (await menuLink(page, "Drawing differences")).click();
   const row = page.getByRole("article").filter({ hasText: description });
   await row.getByRole("button", { name: "Verified: it differs" }).click();
   await expect(page.getByText(/Verified: it now shows on every job card/)).toBeVisible();
 
   await signIn(page, "st-electrical");
-  await nav(page).getByRole("link", { name: "My points & awards" }).click();
+  await (await menuLink(page, "My points & awards")).click();
   await expect(page.getByText(`Drawing difference verified: ${description}`)).toBeVisible();
 });
 
 test("an expert session goes from write-up to the library after the chief approves it", async ({ page }) => {
   const title = `Level transmitters: night drift ${Date.now() % 10000}`;
   await signIn(page, "st-systems-automation");
-  await nav(page).getByRole("link", { name: "Expert knowledge" }).click();
+  await (await menuLink(page, "Expert knowledge")).click();
   await expect(page.getByRole("article", { name: /in (Systems Automation|Electrical|Mechanical)/ }).first()).toBeVisible();
   await page.getByRole("button", { name: "Expert sessions" }).click();
   await page.getByText("Write up an expert session").click();
@@ -63,14 +63,14 @@ test("an expert session goes from write-up to the library after the chief approv
 
 test("HR sets a retirement date, redeems points and records an award the whole company can see", async ({ page }) => {
   await signIn(page, "hr");
-  await nav(page).getByRole("link", { name: "Expert knowledge" }).click();
+  await (await menuLink(page, "Expert knowledge")).click();
   await page.getByRole("button", { name: "Retirement dates" }).click();
   const dateField = page.getByLabel(/Retirement date for Demo Chief Engineer \(Mechanical\)/);
   await dateField.fill("2028-09-30");
   await dateField.locator("xpath=..").getByRole("button", { name: "Save" }).click();
   await expect(page.getByText(/Saved for Demo Chief Engineer \(Mechanical\)/)).toBeVisible();
 
-  await nav(page).getByRole("link", { name: "Recognition" }).click();
+  await (await menuLink(page, "Recognition")).click();
   const table = page.getByRole("table");
   const redeemable = table.getByRole("button", { name: "Redeem…" }).first();
   await redeemable.click();
@@ -92,7 +92,7 @@ test("HR sets a retirement date, redeems points and records an award the whole c
   }
 
   await signIn(page, "st-mechanical");
-  await nav(page).getByRole("link", { name: "My points & awards" }).click();
+  await (await menuLink(page, "My points & awards")).click();
   await expect(page.getByRole("heading", { name: /Awards/ })).toBeVisible();
   await expect(page.getByRole("article", { name: /Employee of the/ }).first()).toBeVisible();
 });

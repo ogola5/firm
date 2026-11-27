@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/form-controls";
 import { Page, PageHeader, Stat } from "../components/ui/page";
+import { Term } from "../features/help/Help";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { db, type PendingEvent, type SyncLogEntry } from "../db";
 import { errorMessage } from "../lib/query";
@@ -119,7 +120,7 @@ export function SyncCentre({ user }: { user: User }) {
       <PageHeader
         eyebrow="Offline work"
         title="Synchronisation"
-        description="Changes are saved on this device first and sent when the server is reachable. The server checks every change again."
+        description={<>Changes are saved on this device first and sent when the server is reachable. The server checks every change again. <Term name="sync" /></>}
         actions={(
           <Button onClick={() => void getSyncEngine().syncNow("manual")} disabled={sync.phase === "syncing"}>
             <RefreshCw /> {sync.phase === "syncing" ? "Synchronising…" : "Sync now"}

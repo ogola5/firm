@@ -1,5 +1,5 @@
 import {
-  Activity, AlertTriangle, ArrowUpCircle, Library as LibraryIcon, BookOpen, GraduationCap, Ruler, Trophy, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, SlidersHorizontal, UserCircle, Users, Wrench, X,
+  Activity, AlertTriangle, ArrowUpCircle, ChevronDown, HelpCircle, Library as LibraryIcon, BookOpen, GraduationCap, Ruler, Trophy, ClipboardList, FileText, LineChart, CloudOff, Gauge, LogOut, Menu, Plus, Radio, RefreshCw, Search, ShieldCheck, SlidersHorizontal, UserCircle, Users, Wrench, X,
 } from "lucide-react";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
@@ -42,6 +42,7 @@ const SystemPage = lazy(() => import("../features/library/SystemPage").then((m) 
 const Notifications = lazy(() => import("../features/notifications/Notifications").then((m) => ({ default: m.Notifications })));
 const ProcedureVersions = lazy(() => import("../features/procedures/ProcedureVersions").then((m) => ({ default: m.ProcedureVersions })));
 const Escalations = lazy(() => import("../features/escalation/Escalation").then((m) => ({ default: m.Escalations })));
+const QuickGuide = lazy(() => import("../features/help/QuickGuide").then((m) => ({ default: m.QuickGuide })));
 const AdminConsole = lazy(() => import("../features/admin/AdminConsole").then((m) => ({ default: m.AdminConsole })));
 
 /** The developer's banner (planned maintenance, demo in progress) and the "view as" bar. */
@@ -86,18 +87,46 @@ const AREAS: Record<string, { path: string; icon: ReactNode }> = {
 };
 const HOME_ICONS: Record<string, ReactNode> = { my_jobs: <ClipboardList />, my_reports: <ClipboardList /> };
 
-function NavItem({ to, icon, children }: { to: string; icon: ReactNode; children: ReactNode }) {
+function NavItem({ to, icon, children, hint, label }: { to: string; icon: ReactNode; children: ReactNode; hint?: string; label: string }) {
+  // The link's name is the item itself; the hint below it is a description, not part of the name.
   return (
     <NavLink
       to={to}
+      title={hint}
+      aria-label={label}
       className={({ isActive }) => cn(
-        "flex min-h-10 items-center gap-2.5 rounded-md px-3 text-sm font-semibold text-sidebar-foreground/80 no-underline hover:bg-white/10 hover:text-sidebar-foreground [&_svg]:size-[18px]",
+        "flex min-h-10 items-center gap-2.5 rounded-md px-3 py-1 text-sm font-semibold text-sidebar-foreground/80 no-underline hover:bg-white/10 hover:text-sidebar-foreground [&_svg]:size-[18px] [&_svg]:shrink-0",
         isActive && "bg-white/15 text-sidebar-foreground",
       )}
     >
       {icon}
-      {children}
+      <span className="grid min-w-0 leading-tight">
+        <span>{children}</span>
+        {hint && <span className="text-2xs font-medium text-sidebar-foreground/55">{hint}</span>}
+      </span>
     </NavLink>
+  );
+}
+
+const MORE_OPEN = "kpc-menu-more-open";
+
+/** Less-used areas, folded so the menu stays short. Opens by itself when one of them is the current page. */
+function MoreMenu({ items, children }: { items: string[]; children: ReactNode }) {
+  const location = useLocation();
+  const here = items.some((path) => location.pathname.startsWith(path));
+  const [open, setOpen] = useState(() => localStorage.getItem(MORE_OPEN) === "1");
+  if (!items.length) return null;
+  return (
+    <details open={open || here} onToggle={(event) => {
+      const next = (event.currentTarget as HTMLDetailsElement).open;
+      setOpen(next);
+      localStorage.setItem(MORE_OPEN, next ? "1" : "0");
+    }} className="mt-1 border-t border-white/10 pt-1">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2.5 rounded-md px-3 text-sm font-semibold text-sidebar-foreground/70 hover:bg-white/10 [&::-webkit-details-marker]:hidden">
+        <ChevronDown className="size-[18px]" aria-hidden /> More
+      </summary>
+      <div className="grid gap-1">{children}</div>
+    </details>
   );
 }
 
@@ -189,6 +218,13 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
   const iconFor = (key: string) => (key === "home" ? HOME_ICONS[access.home] ?? AREAS.home.icon : AREAS[key]?.icon);
   const tabs = (BOTTOM_TABS[access.home] ?? access.menu.map((item) => item.key)).filter((key) => areas.has(key) && AREAS[key]).slice(0, 3);
   const statusTone = !online ? "bg-amber-500" : connection.mode === "intermittent" ? "bg-amber-400" : "bg-emerald-500";
+  const navItem = (item: { key: string; label: string; hint?: string }) => (
+    <NavItem key={item.key} to={AREAS[item.key].path} hint={item.hint}
+      label={`${item.label}${item.key === "sync" && conflicts ? ` (${conflicts})` : ""}`}
+      icon={item.key === "home" ? HOME_ICONS[access.home] ?? AREAS.home.icon : AREAS[item.key].icon}>
+      {item.label}{item.key === "sync" && conflicts ? ` (${conflicts})` : ""}
+    </NavItem>
+  );
 
   return (
     <div className="min-h-screen md:grid md:grid-cols-[220px_1fr] print:block">
@@ -201,13 +237,15 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
           <button className="grid size-11 place-items-center rounded-md md:hidden" onClick={() => setMenuOpen(false)} aria-label="Close menu"><X className="size-6" /></button>
         </div>
         <nav className="grid gap-1 p-2.5 [&_a]:min-h-12 md:[&_a]:min-h-10" aria-label="Main">
-          {access.menu.filter((item) => AREAS[item.key]).map((item) => (
-            <NavItem key={item.key} to={AREAS[item.key].path} icon={item.key === "home" ? HOME_ICONS[access.home] ?? AREAS.home.icon : AREAS[item.key].icon}>
-              {item.label}{item.key === "sync" && conflicts ? ` (${conflicts})` : ""}
-            </NavItem>
-          ))}
+          {access.menu.filter((item) => AREAS[item.key] && !item.more).map(navItem)}
+          <MoreMenu items={access.menu.filter((item) => AREAS[item.key] && item.more).map((item) => AREAS[item.key].path)}>
+            {access.menu.filter((item) => AREAS[item.key] && item.more).map(navItem)}
+          </MoreMenu>
         </nav>
-        <div className="mt-auto px-3 pb-2" aria-label="Display mode">
+        <div className="mt-auto grid gap-2 px-3 pb-2" aria-label="Display mode">
+          <NavLink to="/guide" className="flex items-center gap-2 rounded-md px-1 text-sm font-semibold text-sidebar-foreground/80 no-underline hover:text-sidebar-foreground">
+            <HelpCircle className="size-4" aria-hidden /> Quick guide
+          </NavLink>
           <ThemeSwitch compact />
         </div>
         <div className="grid grid-cols-[10px_1fr_32px] items-center gap-2 border-t border-white/10 p-3 text-xs">
@@ -256,6 +294,7 @@ export function Shell({ user, onLogout }: { user: User; onLogout: () => void }) 
           <Routes>
             {areas.has("admin") && <Route path="/admin" element={<AdminConsole user={user} />} />}
             <Route path="/dashboard" element={<Dashboard user={user} />} />
+            <Route path="/guide" element={<QuickGuide user={user} />} />
             <Route path="/account" element={<MyAccount user={user} onSignOut={logout} />} />
             <Route path="/notifications" element={<Notifications user={user} />} />
             {areas.has("analytics") && <Route path="/analytics" element={<Analytics user={user} />} />}

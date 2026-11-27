@@ -8,7 +8,8 @@ export type AccessProfile = {
   scope: string;
   /** Western, Nairobi or Coast for regional staff (ST to SE); empty otherwise. */
   region?: string;
-  menu: Array<{ key: string; label: string }>;
+  /** `hint`: one line on what it is for; `more`: folded under "More" to keep the menu short. */
+  menu: Array<{ key: string; label: string; hint?: string; more?: boolean }>;
   can: string[];
   version: string;
 };
@@ -57,7 +58,7 @@ function parseAccess(value: unknown): AccessProfile | null {
     home_title: String(raw.home_title ?? "Home"),
     home_purpose: String(raw.home_purpose ?? ""),
     scope: String(raw.scope ?? ""),
-    menu: raw.menu.filter((item): item is { key: string; label: string } =>
+    menu: raw.menu.filter((item): item is { key: string; label: string; hint?: string; more?: boolean } =>
       Boolean(item) && typeof (item as { key?: unknown }).key === "string" && typeof (item as { label?: unknown }).label === "string"),
     can: raw.can.filter((item): item is string => typeof item === "string"),
     version: String(raw.version ?? ""),

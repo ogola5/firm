@@ -11,6 +11,7 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.models import (
     Diagnosis, Equipment, EquipmentTypeOwner, Fault, Intervention, KnowledgeReuse, KnowledgeReuseOutcome, ProcedureReview,
     ProcedureUpdate, User, utcnow,
@@ -163,9 +164,15 @@ def _user(db, username: str) -> str:
     return db.scalar(select(User.id).where(User.username == username)) or "USER-automation"
 
 
+def library_specs() -> list[dict]:
+    """The small sample keeps one type (the Line 4 pump, used by the guided demo); the full set has six."""
+    return [spec for spec in LIBRARY if spec["type"] == "PUMP"] if settings.sample_seed else LIBRARY
+
+
 def seed_library(db) -> None:
     now = utcnow()
-    for spec in LIBRARY:
+    specs = library_specs()
+    for spec in specs:
         owner_id = _user(db, spec["owner"])
         if not db.get(EquipmentTypeOwner, spec["type"]):
             db.add(EquipmentTypeOwner(equipment_type=spec["type"], owner_id=owner_id, assigned_by_id=_user(db, "maintenance-manager"),
@@ -175,7 +182,7 @@ def seed_library(db) -> None:
         return
     counter = 0
     procedure_counter = 0
-    for spec in LIBRARY:
+    for spec in specs:
         equipment = db.scalar(select(Equipment).where(Equipment.tag == spec["tag"]))
         if not equipment:
             continue

@@ -170,7 +170,33 @@ def menu(key: str, can: set[str]) -> list[dict]:
         items.append(("sync", "Sync"))
     items.append(("recognition", "Recognition" if "points.view_all" in can else "My points & awards"))
     items.append(("account", "My account"))
-    return [{"key": item_key, "label": label} for item_key, label in items]
+    # Daily items stay in view; the rest fold under "More" so the menu stays short.
+    return [{"key": item_key, "label": label, "hint": MENU_HINTS.get(item_key, ""),
+             "more": item_key in MORE_ITEMS} for item_key, label in items]
+
+
+# One line under each menu item: what it is for, in plain words.
+MENU_HINTS = {
+    "report": "Tell maintenance something is wrong",
+    "home": "What needs you now",
+    "escalations": "Faults brought to an engineer",
+    "analytics": "Trends: response, repair time, repeats",
+    "reports": "Weekly, monthly and yearly summaries",
+    "faults": "Search every fault and what was done",
+    "equipment": "Look up equipment and its history",
+    "library": "What worked, by type of equipment",
+    "knowledge": "All published procedures",
+    "watch": "Equipment that may fail soon, and why",
+    "expertise": "Know-how from experienced staff",
+    "drawings": "Where the site differs from the drawings",
+    "approvals": "Procedures waiting for your review",
+    "admin": "Health, rules, equipment, audit",
+    "people": "Accounts and access requests",
+    "sync": "Work kept on this device until it can be sent",
+    "recognition": "Points and awards for knowledge shared",
+    "account": "Your details, password and display",
+}
+MORE_ITEMS = {"knowledge", "watch", "expertise", "drawings", "sync", "recognition"}
 
 
 def access_version(user: User) -> str:

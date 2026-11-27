@@ -9,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input, NativeSelect, Textarea } from "../../components/ui/form-controls";
 import { EmptyState, Page, PageHeader } from "../../components/ui/page";
+import { Term } from "../help/Help";
 import { spokenTime } from "../../lib/format";
 import { useDebounced } from "../../lib/hooks";
 import { SystemsList } from "./SystemPage";
@@ -118,7 +119,7 @@ export function LibraryIndex({ user }: { user: User }) {
       <PageHeader
         eyebrow={`${user.access.level} · Shared across all sections and regions`}
         title="Library"
-        description="What we have learnt on our own equipment: pick the type of equipment, then the problem. Each page shows likely causes, what worked, what didn't, and who knows it."
+        description={<>What we have learnt on our own equipment: pick the type of equipment, then the problem. Each page shows likely causes, what worked, what didn't, and who knows it. <Term name="library" /></>}
       />
       <div className="mb-4 flex flex-wrap gap-3">
         <div className="relative min-w-[14rem] flex-1">

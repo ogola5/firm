@@ -27,6 +27,12 @@ Technician and engineer accounts are seeded for each section: Systems Automation
 
 See [ROLE_ACCESS_MATRIX.md](ROLE_ACCESS_MATRIX.md) for role scope and visibility rules.
 
+## Demo data: a small sample that grows with use
+
+The live demo starts from a small sample (`SEED_PROFILE=sample`): one example on each page. That means eight faults, one at each stage, three earlier fixes on the Line 4 pump, and a few procedures. Everything else comes from using it. The local Docker stack and the automated tests load the full illustrative history (`SEED_PROFILE=full`). To start the live demo again from the sample, sign in as `developer` and use Admin console → Developer tools → Reset demo data.
+
+Each home page shows a short welcome until you press **Got it**. **Quick guide** in the menu has one printable page for each role.
+
 ## New staff: enrol with a KPC email
 
 1. On the sign-in page, choose **Create an account**. Enter a KPC address (for example `amina.otieno@kpc.co.ke`), your full name, staff number, and the job and section you need. An address outside `@kpc.co.ke` is refused.

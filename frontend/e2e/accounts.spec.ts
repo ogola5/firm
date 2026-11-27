@@ -97,8 +97,9 @@ test("each level gets the home page and menu its account allows", async ({ page 
     await signIn(page, view.user);
     await expect(page.getByRole("heading", { level: 2, name: view.heading }), view.user).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Main" });
-    for (const item of view.menu) await expect(nav.getByRole("link", { name: item, exact: true }), `${view.user}: ${item}`).toBeVisible();
-    for (const item of view.notMenu) await expect(nav.getByRole("link", { name: item, exact: true }), `${view.user}: no ${item}`).toHaveCount(0);
+    // In the menu (less-used items are folded under "More", so present rather than visible).
+    for (const item of view.menu) await expect(nav.getByRole("link", { name: item, exact: true, includeHidden: true }), `${view.user}: ${item}`).toHaveCount(1);
+    for (const item of view.notMenu) await expect(nav.getByRole("link", { name: item, exact: true, includeHidden: true }), `${view.user}: no ${item}`).toHaveCount(0);
     await expect(page.locator("aside").getByText(view.level, { exact: true })).toBeVisible();
   }
 });

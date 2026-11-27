@@ -40,3 +40,5 @@ services:
         value: "true"
       - key: JWT_LIFETIME_HOURS
         value: "12"
+      - key: SEED_PROFILE
+        value: sample   # one small example per page; the system grows from real use ("full" = large illustrative history)

@@ -92,6 +92,15 @@ class Settings(BaseSettings):
     # Where links in emails point.
     app_url: str = "http://localhost:5173"
 
+    # Demo data loaded into an empty database (and by "Reset demo data"):
+    # "sample" = one small example on each page, so the system grows from real use;
+    # "full" = the large illustrative history the automated tests rely on.
+    seed_profile: str = "sample"
+
+    @property
+    def sample_seed(self) -> bool:
+        return self.seed_profile.strip().lower() != "full"
+
     # Rules the System Administrator can change in the admin console (services/system_settings.py).
     # A job nobody has taken for this long is shown to other sections and to the Chief Technician.
     untaken_alert_minutes: int = 15

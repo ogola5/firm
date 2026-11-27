@@ -70,6 +70,14 @@ export async function closedFaultViaApi(
   return { faultId: fault.id, equipment };
 }
 
+/** A link in the side menu; the less-used ones are folded under "More". */
+export async function menuLink(page: Page, name: string) {
+  const nav = page.getByRole("navigation", { name: "Main" });
+  const link = nav.getByRole("link", { name, exact: true });
+  if (!(await link.isVisible())) await nav.getByText("More", { exact: true }).click();
+  return link;
+}
+
 export async function openFault(page: Page, faultId: string) {
   await page.goto(`/faults?mode=history&fault=${encodeURIComponent(faultId)}`);
   await expect(page.getByRole("list", { name: "Progress" })).toBeVisible();

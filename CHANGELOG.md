@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-12-05 — Easier to find your way; start from a small sample of data
+
+- **Welcome on each home page:** three lines on how that page works, with a link to the quick guide. It stays until you press **Got it** (kept on the device).
+- **Shorter menu with descriptions:**
+  - Each item has one line saying what it is for.
+  - Less-used areas (Procedures, Likely to fail, Expert knowledge, Drawing differences, Sync, Recognition) fold under **More**, which opens by itself on those pages.
+- **"?" hints** next to the less obvious terms: Needs you now, anyone free takes it, the write-up check, likely to fail, escalation, sync, the library.
+- **Simpler Chief Technician page:** "Needs you now" first, then **Your section today** in three numbers (not taken yet, being worked on, to check), then the two lists. The flow, the other numbers, escalated faults and knowledge impact fold under **More about your section**.
+- **Quick guide** (`/guide`, in the menu): one printable page for each role, with the daily tasks step by step, tips, and the words you will see.
+- **A small sample of data, then real use:**
+  - `SEED_PROFILE=sample`, the default and set in `render.yaml`, loads one example on each page:
+    - eight faults, one at each stage, plus three earlier fixes on the Line 4 pump;
+    - three procedures: two published, one waiting for review;
+    - three legacy instructions;
+    - one each of the Line 4 system, an expert session, a question, two drawings, a drawing difference and an award.
+  - All demo accounts and the equipment register stay.
+  - `SEED_PROFILE=full` keeps the large illustrative history. The automated tests and the local Docker stack use it.
+  - To switch the live demo to the sample, sign in as the developer → Admin console → Developer tools → Reset demo data.
+
 ## 2026-12-04 — Admin console: two levels, health, rules, equipment register, audit trail, developer tools
 
 - **Two levels:**

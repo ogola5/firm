@@ -8,6 +8,7 @@ import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { NativeSelect } from "../../components/ui/form-controls";
 import { Page, PageHeader } from "../../components/ui/page";
+import { Term } from "../help/Help";
 import { spokenTime } from "../../lib/format";
 import { errorMessage } from "../../lib/query";
 import { api } from "../../offline/api";
@@ -76,7 +77,7 @@ export function WatchList({ user }: { user: User }) {
       <PageHeader
         eyebrow={`${user.access.level} · ${watch.data?.scope ?? user.access.scope}`}
         title="Likely to fail"
-        description="Equipment that may need attention soon, each with the reasons. A guide for preventive checks, not a prediction to blame anyone with."
+        description={<>Equipment that may need attention soon, each with the reasons. A guide for preventive checks, not a prediction to blame anyone with. <Term name="likely-to-fail" label="likely to fail" /></>}
       />
       {orgWide && (
         <div className="mb-4">

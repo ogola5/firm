@@ -16,6 +16,7 @@ import { api, isOfflineError } from "../../offline/api";
 import { queueFaultAction } from "../../offline/outbox";
 import { EMPTY_JOBS, skippedProcedures, useMyJobs, type Job } from "./data";
 import { EscalationBadge } from "../escalation/Escalation";
+import { Term } from "../help/Help";
 
 function JobRow({ job, meta, children }: { job: Job; meta: ReactNode; children: ReactNode }) {
   return (
@@ -39,13 +40,16 @@ function JobRow({ job, meta, children }: { job: Job; meta: ReactNode; children: 
   );
 }
 
-function Section({ title, count, tone = "default", hint, children }: {
-  title: string; count: number; tone?: "default" | "warning"; hint?: string; children: ReactNode;
+function Section({ title, count, tone = "default", hint, term, children }: {
+  title: string; count: number; tone?: "default" | "warning"; hint?: string; term?: string; children: ReactNode;
 }) {
   return (
     <section className="grid gap-3" aria-label={title}>
       <div>
-        <h2 className="m-0 flex items-center gap-2 text-xl">{title} <Badge variant={tone === "warning" ? "warning" : "default"}>{count}</Badge></h2>
+        <div className="flex items-center gap-1">
+          <h2 className="m-0 flex items-center gap-2 text-xl">{title} <Badge variant={tone === "warning" ? "warning" : "default"}>{count}</Badge></h2>
+          {term && <Term name={term} />}
+        </div>
         {hint && <p className="m-0 mt-1 text-sm text-muted-foreground">{hint}</p>}
       </div>
       {children}
@@ -148,7 +152,7 @@ export function MyJobs({ user, before, after }: { user: User; before?: ReactNode
         )}
 
         {returned.length > 0 && (
-          <Section title="Add to your write-up" count={returned.length} tone="warning" hint="Your Chief Technician asked for more detail. The equipment is already working.">
+          <Section title="Add to your write-up" count={returned.length} tone="warning" term="write-up-check" hint="Your Chief Technician asked for more detail. The equipment is already working.">
             {returned.map((job) => (
               <JobRow key={`returned-${job.fault_id}`} job={job} meta={<>“{job.review_comments || "More detail, please."}”</>}>
                 <Button asChild><Link to={`/faults?mode=history&fault=${encodeURIComponent(job.fault_id)}`}>Add to it</Link></Button>
@@ -169,7 +173,7 @@ export function MyJobs({ user, before, after }: { user: User; before?: ReactNode
         )}
 
         {ownNew.length > 0 && (
-          <Section title="New: nobody has taken it yet" count={ownNew.length} hint="Anyone free can take one. The first to take it gets it; your Chief Technician is told.">
+          <Section title="New: nobody has taken it yet" count={ownNew.length} term="open-pickup" hint="Anyone free can take one. The first to take it gets it; your Chief Technician is told.">
             {ownNew.map(newJob)}
           </Section>
         )}

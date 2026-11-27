@@ -42,6 +42,9 @@ test("CT asks the regional SE, the SE takes it to the CE, the CE sees only what 
   const se = await phone(browser);
   await signIn(se, "senior-engineer-mechanical");
   const needs = se.getByLabel("Needs you now");
+  await expect(needs.getByRole("link").first()).toBeVisible();
+  const showAll = needs.getByRole("button", { name: /Show all/ });
+  if (await showAll.isVisible()) await showAll.click(); // new untaken faults are listed too
   await expect(needs.getByRole("link", { name: new RegExp(reference) })).toBeVisible();
   await se.screenshot({ path: `${dir}/2-se-home.png`, fullPage: true });
   await needs.getByRole("link", { name: new RegExp(reference) }).click();
@@ -60,7 +63,11 @@ test("CT asks the regional SE, the SE takes it to the CE, the CE sees only what 
   // 3. Chief Engineer (whole Mechanical section): sees it because it persists.
   const ce = await phone(browser);
   await signIn(ce, "chief-engineer-mechanical");
-  await expect(ce.getByLabel("Needs you now").getByRole("link", { name: new RegExp(reference) })).toBeVisible();
+  const ceNeeds = ce.getByLabel("Needs you now");
+  await expect(ceNeeds.getByRole("link").first()).toBeVisible();
+  const ceShowAll = ceNeeds.getByRole("button", { name: /Show all/ });
+  if (await ceShowAll.isVisible()) await ceShowAll.click();
+  await expect(ceNeeds.getByRole("link", { name: new RegExp(reference) })).toBeVisible();
   await ce.screenshot({ path: `${dir}/4-ce-home.png`, fullPage: true });
   await ce.getByRole("navigation", { name: "Quick" }).getByRole("link", { name: "Escalated" }).click();
   await expect(ce.getByRole("heading", { name: "Escalations" })).toBeVisible();

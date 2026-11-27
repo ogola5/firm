@@ -118,27 +118,22 @@ export function ChiefTechnicianDashboard({ user }: { user: User }) {
   return (
     <Page>
       {header}
-      <div className="mb-4 grid gap-4"><NeedsYouNow /><KnowledgeImpactPanel user={user} /></div>
+      {/* First what needs you, then your section today in three numbers; everything else is folded below. */}
+      <div className="mb-4"><NeedsYouNow /></div>
       {message && <Alert variant="success" className="mb-3">{message}</Alert>}
       {saveCompetencies.isError && <Alert variant="destructive" className="mb-3">{errorMessage(saveCompetencies.error, "Competencies could not be saved.")}</Alert>}
 
-      <ol className="m-0 mb-4 flex list-none flex-wrap items-center gap-1 rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground" aria-label="Fault responsibility flow">
-        {["Operations reports to a section", "Anyone free takes it", "Working again", "Operations confirms", "You check the write-up"].map((step, index) => (
-          <li key={step} className="flex items-center gap-1">
-            {index > 0 && <ChevronRight className="size-4" aria-hidden />}
-            <span className={index % 2 ? "font-bold text-ring" : ""}>{step}</span>
-          </li>
-        ))}
-      </ol>
-
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Not taken yet" value={counts.awaiting_assignment || 0} />
-        <Stat label={`Active in ${user.section}`} value={counts.active_section || 0} />
-        <Stat label="Under investigation" value={counts.investigating || 0} />
-        <Stat label="To check" value={counts.awaiting_review || 0} />
-        <Stat label="Overdue" value={counts.overdue || 0} />
-        <Stat label="Critical unresolved" value={counts.critical || 0} />
-      </div>
+      <section aria-label="Your section today" className="mb-4 grid gap-3">
+        <h2 className="m-0 text-xl">Your section today</h2>
+        <div className="grid grid-cols-3 gap-3">
+          <Stat label="Not taken yet" value={counts.awaiting_assignment || 0} />
+          <Stat label="Being worked on" value={counts.investigating || 0} />
+          <Stat label="To check" value={counts.awaiting_review || 0} />
+        </div>
+        {(counts.overdue || counts.critical) ? (
+          <Alert variant="warning">{[counts.overdue && `${counts.overdue} past the response time`, counts.critical && `${counts.critical} critical not yet working again`].filter(Boolean).join(" · ")}</Alert>
+        ) : null}
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <QueueCard title="To check" description="Write-ups to check (already working again) and hand-overs to another section." rows={reviewFaults} empty="Nothing to check." />
@@ -146,18 +141,36 @@ export function ChiefTechnicianDashboard({ user }: { user: User }) {
           title="Active section work"
           description="Not taken yet, taken and in progress in your section."
           rows={sectionFaults}
-          empty="No active faults are assigned to your section."
+          empty="No active faults in your section."
           footer={<Button variant="link" asChild className="mt-2"><Link to="/faults">Browse section faults</Link></Button>}
         />
       </div>
-      <div className="mt-4">
-        <QueueCard
-          title={`Escalated from ${user.section}`}
-          description="The original fault remains visible with all section findings and evidence."
-          rows={escalatedFaults}
-          empty="No active fault has been escalated from your section."
-        />
-      </div>
+
+      <details className="mt-4 rounded-lg border border-border bg-card">
+        <summary className="cursor-pointer list-none p-5 font-bold">More about your section</summary>
+        <div className="grid gap-4 px-5 pb-5">
+          <ol className="m-0 flex list-none flex-wrap items-center gap-1 rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground" aria-label="Fault responsibility flow">
+            {["Operations reports to a section", "Anyone free takes it", "Working again", "Operations confirms", "You check the write-up"].map((step, index) => (
+              <li key={step} className="flex items-center gap-1">
+                {index > 0 && <ChevronRight className="size-4" aria-hidden />}
+                <span className={index % 2 ? "font-bold text-ring" : ""}>{step}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <Stat label={`Active in ${user.section}`} value={counts.active_section || 0} />
+            <Stat label="Overdue" value={counts.overdue || 0} />
+            <Stat label="Critical unresolved" value={counts.critical || 0} />
+          </div>
+          <QueueCard
+            title={`Escalated from ${user.section}`}
+            description="The original fault remains visible with all section findings and evidence."
+            rows={escalatedFaults}
+            empty="No active fault has been escalated from your section."
+          />
+          <KnowledgeImpactPanel user={user} />
+        </div>
+      </details>
 
       <details className="mt-4 rounded-lg border border-border bg-card">
         <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-5">

@@ -5,6 +5,7 @@ from sqlalchemy import select
 import bcrypt
 import uuid
 
+from app.core.config import settings
 from app.db import SessionLocal
 from app.models import (
     Award, Diagnosis, Drawing, DrawingDifference, DrawingEquipment, Equipment, ExpertAnswer, ExpertQuestion, ExpertSession,
@@ -52,6 +53,9 @@ ILLUSTRATIVE_EQUIPMENT = [
 
 # Demo fault history: the most recent faults cover every workflow stage; older ones are finished.
 RECENT_FAULTS = 24
+# The small sample (SEED_PROFILE=sample): one fault at each stage, a few legacy instructions.
+SAMPLE_FAULTS = 8
+SAMPLE_LEGACY_KNOWLEDGE = 3
 # Equipment indexes (0-based, EQ-001 = 0) that fail more often than the rest in the demo history.
 BAD_ACTORS = (4, 11, 19)
 # Resolved faults (most recent first) that also get a procedure draft in the review workflow.
@@ -128,7 +132,7 @@ def _seed_database():
 
         effects = ["Stopped: Operation stopped or at risk", "Running reduced: Working, but limited", "No effect yet: Needs attention, not urgent"]
         statuses = ["REPORTED", "TRIAGED", "ASSIGNED", "ACKNOWLEDGED", "ON_SITE", "DIAGNOSED", "RESTORED", "CLOSED"]
-        for i in range(105):
+        for i in range(SAMPLE_FAULTS if settings.sample_seed else 105):
             if i < RECENT_FAULTS:
                 # The last few weeks: every stage of the workflow is represented, for the work queues.
                 equipment_index = i % 30
@@ -194,7 +198,7 @@ def _seed_database():
                 add_event(db, fault.id, "FAULT_CLOSE", f"USER-ct-{section_slug}", {}, date + timedelta(minutes=restore_minutes + 60))
         db.commit()
 
-        for i in range(30):
+        for i in range(SAMPLE_LEGACY_KNOWLEDGE if settings.sample_seed else 30):
             equipment = db.query(Equipment).filter(Equipment.id == f"EQ-{(i % 30) + 1:03d}").one()
             db.add(KnowledgeEntry(
                 id=f"KNOW-{i + 1:04d}",
@@ -411,7 +415,10 @@ def _seed_database():
                 continue  # procedure drafts only for the most recent resolved faults
 
             update_id = f"PROC-DEMO-{index + 1:04d}"
-            if index < 9:
+            if settings.sample_seed:
+                # One published, one waiting in the review queue.
+                update_status = "APPROVED" if index == 0 else "SUBMITTED"
+            elif index < 9:
                 update_status = "APPROVED"
             elif index < 12:
                 update_status = "CHIEF_APPROVED"
@@ -574,6 +581,8 @@ def seed_knowledge_capture(db) -> None:
         ("ILL-PS01-I-0150", "Line 1 metering: instrument loops", "D", "Systems Automation", ["FT-101", "PT-102"]),
         ("ILL-PS02-E-0001", "Pump station 2: single-line diagram", "H", "Electrical", ["TX-201"]),
     ]
+    if settings.sample_seed:
+        drawings = [item for item in drawings if item[0] in ("ILL-PS02-E-0412", "ILL-PS02-C-0101")]
     numbers = {}
     for number, title, revision, discipline, tags in drawings:
         drawing = Drawing(id=f"DWG-{number}", number=number, title=title, revision=revision, discipline=discipline,
@@ -593,6 +602,8 @@ def seed_knowledge_capture(db) -> None:
          "TEMPORARY", "VERIFIED", 20),
         ("RTU-201", "ILL-PS02-C-0101", "Radio link moved to spare serial port COM3; the drawing shows COM1.", "PERMANENT", "REPORTED", 6),
     ]
+    if settings.sample_seed:
+        differences = [item for item in differences if item[0] == "RTU-201"]  # one waiting to be verified
     for index, (tag, number, text, permanence, status, days_ago) in enumerate(differences):
         equipment = by_tag.get(tag)
         if not equipment:

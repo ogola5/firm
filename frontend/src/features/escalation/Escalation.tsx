@@ -9,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Field, NativeSelect, Textarea } from "../../components/ui/form-controls";
 import { EmptyState, Page, PageHeader } from "../../components/ui/page";
+import { Term } from "../help/Help";
 import { spokenTime } from "../../lib/format";
 import { errorMessage } from "../../lib/query";
 import { api } from "../../offline/api";
@@ -194,7 +195,7 @@ export function Escalations({ user }: { user: User }) {
       <PageHeader
         eyebrow={`${user.access.level} · ${user.access.scope}`}
         title="Escalations"
-        description="Routine work stays with the Chief Technician. It comes to the regional Senior Engineer when asked, for safety, or when not back in service after 8 hours; to the Chief Engineer only if it persists."
+        description={<>Routine work stays in the section. It comes to the regional Senior Engineer when asked, for safety, or when not working again after the set hours; to the Chief Engineer only if it persists. <Term name="escalation" /></>}
       />
       {queue.isError && <Alert variant="destructive">{errorMessage(queue.error, "Escalations are not available.")}</Alert>}
       {queue.data && !rows.length && <EmptyState>Nothing is escalated right now.</EmptyState>}

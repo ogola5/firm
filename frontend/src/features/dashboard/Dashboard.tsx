@@ -11,12 +11,24 @@ import { SectionPicture } from "./SectionPicture";
 import { WatchPanel } from "../watch/WatchList";
 import { KnowledgeImpactPanel } from "../library/TypeLibrary";
 import { NeedsYouNow } from "./NeedsYouNow";
+import { Welcome } from "../help/Help";
 
 // Charts are only needed by management roles; technicians never download them.
 const ManagementOverview = lazy(() => import("./ManagementOverview").then((m) => ({ default: m.ManagementOverview })));
 
-/** The home page chosen by the account's access profile (server-defined per level). */
+/** The home page chosen by the account's access profile, with a first-visit welcome above it. */
 export function Dashboard({ user }: { user: User }) {
+  return (
+    <>
+      <div className="mx-auto w-full max-w-[1400px] px-3 pt-4 empty:hidden sm:px-4 md:px-7 md:pt-6 [&>section]:mb-0">
+        <Welcome user={user} />
+      </div>
+      <Home user={user} />
+    </>
+  );
+}
+
+function Home({ user }: { user: User }) {
   switch (user.access.home) {
     case "my_reports":
       return <PersonalWorkspace user={user} before={<NeedsYouNow />} />;

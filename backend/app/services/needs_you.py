@@ -114,4 +114,8 @@ def needs_you(db: Session, user: User) -> list[dict]:
             add(BLOCKING, "fault", f"Is it working? {tag} · {fault.symptom}", "Maintenance says it is fixed. Check and confirm.",
                 _fault_link(fault.id), "Confirm", False, fault.reference)
 
-    return sorted(items, key=lambda item: item["priority"])
+    # One line per fault: the most urgent reason (e.g. "Escalated to you" rather than also "New fault").
+    best: dict[str, dict] = {}
+    for item in sorted(items, key=lambda item: item["priority"]):
+        best.setdefault(item["reference"] or item["link"], item)
+    return sorted(best.values(), key=lambda item: item["priority"])

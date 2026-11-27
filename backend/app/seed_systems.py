@@ -10,6 +10,7 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.models import Equipment, System, SystemChange, User, utcnow
 
 SYSTEMS: list[dict] = [
@@ -87,7 +88,9 @@ def _user(db, username: str) -> str:
 
 def seed_systems(db) -> None:
     now = utcnow()
-    for spec in SYSTEMS:
+    # The small sample keeps the Line 4 pump A unit (the guided demo's legacy system); the full set has eight.
+    specs = [spec for spec in SYSTEMS if spec["id"] == "SYS-L4-PUMP-A"] if settings.sample_seed else SYSTEMS
+    for spec in specs:
         system = db.get(System, spec["id"])
         if not system:
             system = System(id=spec["id"], name=spec["name"], station=spec["station"], legacy=int(spec["legacy"]),

@@ -4,7 +4,7 @@
  * history, and form fields that do not make iPhones zoom in.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { signIn, signOut } from "./helpers";
+import { menuLink, signIn, signOut } from "./helpers";
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
@@ -40,9 +40,10 @@ test("More opens the full menu with the account and sign-out", async ({ page }) 
   await signIn(page, "st-electrical");
   await page.getByRole("navigation", { name: "Quick" }).getByRole("button", { name: "More" }).click();
   const menu = page.getByRole("navigation", { name: "Main" });
-  await expect(menu.getByRole("link", { name: "Procedures" })).toBeVisible();
+  await expect(menu.getByRole("link", { name: "Library" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
-  await menu.getByRole("link", { name: "Expert knowledge" }).click();
+  // Less-used areas are folded under "More" inside the menu.
+  await (await menuLink(page, "Expert knowledge")).click();
   await expect(page.getByRole("heading", { name: "Expert knowledge" })).toBeVisible();
   await expect(menu).toBeHidden(); // the menu closes after choosing
   await signOut(page);

@@ -17,6 +17,8 @@ os.environ["DATABASE_URL"] = os.environ.get(
 
 # Tests send reports explicitly; never from the background.
 os.environ["REPORT_SCHEDULER"] = "false"
+# Tests use the full illustrative dataset (a live demo starts from the small sample).
+os.environ.setdefault("SEED_PROFILE", "full")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

@@ -46,6 +46,7 @@ test("authors see their knowledge helped; owners see what needs checking; the CE
   await page.screenshot({ path: `${dir}/3-author-home.png`, fullPage: true });
 
   await signIn(page, "ct-electrical");
+  await page.getByText("More about your section").click(); // folded on the simpler Chief Technician page
   await expect(page.getByLabel("Your knowledge").getByText("Needs checking")).toBeVisible();
 
   await page.goto("/library/MOV");

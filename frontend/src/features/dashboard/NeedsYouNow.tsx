@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { SkeletonLines } from "../../components/ui/skeleton";
 import { cn } from "../../lib/utils";
 import { api } from "../../offline/api";
+import { Term } from "../help/Help";
 
 type Item = { priority: number; kind: string; title: string; detail: string; link: string; action: string; safety: boolean; reference: string };
 
@@ -20,7 +21,10 @@ export function NeedsYouNow() {
   return (
     <Card aria-label="Needs you now" className={cn(items.some((item) => item.safety) && "border-destructive/50")}>
       <CardHeader className="pb-2">
-        <CardTitle className="text-lg">{query.isLoading ? "Needs you now" : items.length ? `Needs you now (${items.length})` : "Nothing waiting for you"}</CardTitle>
+        <div className="flex items-center gap-1">
+          <CardTitle className="text-lg">{query.isLoading ? "Needs you now" : items.length ? `Needs you now (${items.length})` : "Nothing waiting for you"}</CardTitle>
+          <Term name="needs-you" label="Needs you now" />
+        </div>
       </CardHeader>
       <CardContent className="grid gap-2 pt-0">
         {query.isLoading && <SkeletonLines lines={3} />}
