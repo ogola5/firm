@@ -48,6 +48,9 @@ def workflow_summary(faults: list[Fault], db: Session) -> dict:
     }
 
     def section_handoff(section_name: str) -> dict[str, int]:
+        # Older timeline entries still say "Instrumentation": it is part of Systems Automation now.
+        if section_name == "Instrumentation":
+            section_name = "Systems Automation"
         return handoffs.setdefault(section_name, handoff_defaults.copy())
 
     triage_times: list[float] = []

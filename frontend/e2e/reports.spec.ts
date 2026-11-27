@@ -37,7 +37,7 @@ test("a chief technician gets their own section; the CEO gets the headline versi
   await page.goto("/reports?kind=month&section=Electrical");
   const report = page.getByRole("article", { name: "Report" });
   await expect(report.getByText("KPC Maintenance · Mechanical section")).toBeVisible();
-  await expect(page.getByLabel("Section")).toHaveCount(0);
+  await expect(page.getByRole("main").getByLabel("Section", { exact: true })).toHaveCount(0); // no section choice for a CT
 
   await signIn(page, "ceo");
   await page.goto("/reports?kind=year");

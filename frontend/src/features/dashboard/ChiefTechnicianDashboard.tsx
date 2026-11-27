@@ -38,12 +38,13 @@ function FaultQueue({ rows, empty }: { rows: DataRow[]; empty: string }) {
             <strong className="truncate">{String(fault.reference)} · {String(fault.equipment_tag)}</strong>
             <small className="truncate text-muted-foreground">{String(fault.symptom)} · {String(fault.status).replace(/_/g, " ")}</small>
           </span>
-          <span className="flex shrink-0 flex-col items-end gap-1 text-right">
-            <span className="flex gap-1">
+          {/* Long names wrap inside the card instead of pushing the badges out of it. */}
+          <span className="flex min-w-0 max-w-[50%] shrink-0 flex-col items-end gap-1 text-right">
+            <span className="flex flex-wrap justify-end gap-1">
               {fault.overdue === true && <Badge variant="destructive">Overdue</Badge>}
               {String(fault.severity) === "Critical" && <Badge variant="destructive">Critical</Badge>}
             </span>
-            <small className="text-muted-foreground">
+            <small className="break-words text-muted-foreground">
               {fault.handover_review ? "Hand-over to approve" : fault.write_up_to_check ? "Write-up to check" : fault.awaiting_assignment ? "Nobody has taken it yet" : `Taken by ${String(fault.assigned_user_name || fault.assigned_section)}`}
             </small>
           </span>
