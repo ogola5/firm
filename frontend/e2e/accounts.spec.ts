@@ -1,23 +1,13 @@
 /**
- * Company-email accounts, end to end in the browser: enrol with a KPC address,
- * confirm it with the emailed code (demo mailbox), wait for approval, the
+ * Company-email accounts, end to end in the browser: enrol with a KPC address and a
+ * password in one step (no emailed code in the demonstration), wait for approval, the
  * System Administrator decides the role and section, then sign in to the
  * dashboard that role gets and see it on My account.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { signIn } from "./helpers";
 
-const PASSWORD = "Valves2026x";
-
-async function codeFromMailbox(page: Page, email: string): Promise<string> {
-  const mailbox = await page.context().newPage();
-  await mailbox.goto(`/mailbox?email=${encodeURIComponent(email)}`);
-  const subject = mailbox.getByRole("heading", { name: /Your KPC Maintenance code: \d{6}/ }).first();
-  await expect(subject).toBeVisible();
-  const code = (await subject.textContent())!.match(/\d{6}/)![0];
-  await mailbox.close();
-  return code;
-}
+const PASSWORD = "ab12"; // the demonstration rule: 4+ characters, letters and numbers
 
 test("a technician enrols with a KPC email, is approved, and lands on their own dashboard", async ({ page }) => {
   const email = `amina.otieno.${Date.now().toString(36)}@kpc.co.ke`;
@@ -33,17 +23,18 @@ test("a technician enrols with a KPC email, is approved, and lands on their own 
   await page.getByLabel("Your job").selectOption({ label: "Senior Technician (ST)" });
   await page.getByLabel("Your section").selectOption("Electrical");
   await page.getByLabel("Your region").selectOption("Coast");
-  await page.getByRole("button", { name: "Email me a code" }).click();
+  // One step for the demonstration: no emailed code; a short password with letters and numbers.
+  await page.getByLabel("Choose a password").fill("abcd");
+  await page.getByLabel("Type the password again").fill("abcd");
+  await page.getByRole("button", { name: "Create my account" }).click();
   await expect(page.getByText(/Use your KPC email address \(ending @kpc.co.ke\)/)).toBeVisible();
 
   await page.getByLabel("KPC email").fill(email);
-  await page.getByRole("button", { name: "Email me a code" }).click();
-  await expect(page.getByRole("heading", { name: "Confirm your email" })).toBeVisible();
-
-  await page.getByLabel("6-digit code").fill(await codeFromMailbox(page, email));
+  await page.getByRole("button", { name: "Create my account" }).click();
+  await expect(page.getByText("Include numbers")).toBeVisible(); // letters only is not enough
   await page.getByLabel("Choose a password").fill(PASSWORD);
   await page.getByLabel("Type the password again").fill(PASSWORD);
-  await page.getByRole("button", { name: "Confirm" }).click();
+  await page.getByRole("button", { name: "Create my account" }).click();
   await expect(page.getByRole("heading", { name: "Waiting for approval" })).toBeVisible();
 
   // Before approval: the right password, but no way in, and a clear reason.

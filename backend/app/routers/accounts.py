@@ -1,7 +1,8 @@
 """Enrolment with a company email, administrator approval, password reset and "My account".
 
-Flow: start (details + code emailed) -> verify (code + password) -> waiting for approval
--> System Administrator approves with a role and section (or rejects with a reason).
+Flow (demonstration default, no mail service yet): register (details + password) -> waiting for approval
+-> System Administrator approves with a role and section (or rejects with a reason). Switches in the admin
+console: an emailed code first (start -> verify), or accounts that work at once without approval.
 A person only ever *requests* a role; the administrator grants it.
 """
 from __future__ import annotations
@@ -17,8 +18,10 @@ from app.db import db_dep
 from app.deps import current_user
 from app.models import MailOutbox, User, utcnow
 from app.routers.auth import issue_token
-from app.schemas import EmailOnly, EnrolmentDecision, EnrolmentStart, EnrolmentVerify, PasswordChange, PasswordResetComplete
-from app.services import accounts
+from app.schemas import (
+    EmailOnly, EnrolmentDecision, EnrolmentRegister, EnrolmentStart, EnrolmentVerify, PasswordChange, PasswordResetComplete,
+)
+from app.services import accounts, system_settings
 from app.services.access import REGIONAL_ROLES, REGIONS, ROLE_DEFINITIONS, SECTIONS, check_region, permission_descriptions, require_roles, role_definition, user_payload
 from app.services.audit import audit_user_change
 
@@ -61,9 +64,12 @@ def admins(db: Session) -> list[User]:
 # --- enrolment --------------------------------------------------------------------------------
 
 @router.get("/api/v1/enrolment/options")
-def enrolment_options():
+def enrolment_options(db: Session = Depends(db_dep)):
     """Roles a person may request, the sections, and the address and password rules."""
+    system_settings.apply_saved(db)
     return {
+        "email_code": settings.enrolment_email_code,
+        "auto_approve": settings.enrolment_auto_approve,
         "domains": settings.allowed_email_domains,
         "password_min_length": settings.password_min_length,
         "sections": list(SECTIONS),
@@ -77,8 +83,7 @@ def enrolment_options():
     }
 
 
-@router.post("/api/v1/enrolment/start", status_code=status.HTTP_202_ACCEPTED)
-def enrolment_start(req: EnrolmentStart, db: Session = Depends(db_dep)):
+def _details(req: EnrolmentStart) -> tuple[str, str, str, str, str]:
     email = accounts.normalize_email(req.email)
     name = " ".join(req.display_name.split())
     if not (3 <= len(name) <= 100):
@@ -88,6 +93,59 @@ def enrolment_start(req: EnrolmentStart, db: Session = Depends(db_dep)):
         raise HTTPException(status_code=422, detail="This role is assigned by the System Administrator, not requested")
     section = check_role_and_section(req.requested_role, req.requested_section)
     region = check_region(req.requested_role, section, req.requested_region)
+    return email, name, staff_number, section, region
+
+
+def _submitted(db: Session, user: User) -> dict:
+    """The person has a password: wait for the administrator, or (demonstration switch) start at once."""
+    requested = ROLE_DEFINITIONS[user.requested_role]["label"]
+    where = f"{' — ' + user.requested_section if user.requested_section else ''}{', ' + user.requested_region + ' region' if user.requested_region else ''}"
+    if settings.enrolment_auto_approve:
+        user.role, user.section, user.region = user.requested_role, user.requested_section, user.requested_region or ""
+        user.account_status, user.active = accounts.ACTIVE, 1
+        user.decided_at, user.decision_note = utcnow(), "Approved automatically (demonstration setting)"
+        audit_user_change(db, user.id, "ENROLMENT_AUTO_APPROVED", user, {"email": user.email, "role": user.role,
+                                                                      "section": user.section, "region": user.region})
+        return {"account_status": user.account_status,
+                "message": f"Your account is ready as {requested}{where}. Sign in with {user.email} and your password."}
+    user.account_status = accounts.PENDING_APPROVAL
+    for admin in admins(db):
+        accounts.send_mail(db, admin.email, f"Account request: {user.display_name}",
+                           f"{user.display_name} ({user.email}, staff number {user.staff_number}) asks for access as "
+                           f"{requested}{where}.\nReview it under User management → Account requests.")
+    audit_user_change(db, user.id, "ENROLMENT_SUBMITTED", user, {"email": user.email, "requested_role": user.requested_role,
+                                                                "requested_section": user.requested_section})
+    return {"account_status": user.account_status,
+            "message": "Your password is set. The System Administrator will now check your request; you can sign in once it is approved."}
+
+
+@router.post("/api/v1/enrolment/register", status_code=status.HTTP_201_CREATED)
+def enrolment_register(req: EnrolmentRegister, db: Session = Depends(db_dep)):
+    """Create an account in one step: details and a password, no emailed code (demonstration; no mail service yet)."""
+    system_settings.apply_saved(db)
+    if settings.enrolment_email_code:
+        raise HTTPException(status_code=409, detail="Accounts are confirmed by an emailed code. Use “Email me a code”.")
+    email, name, staff_number, section, region = _details(req)
+    existing = accounts.find_by_email(db, email)
+    if existing and existing.account_status != accounts.UNVERIFIED:
+        raise HTTPException(status_code=409, detail="There is already an account with this email. Sign in, or ask the System Administrator.")
+    accounts.check_password(req.password, email, name)
+    user = existing or User(id=str(uuid.uuid4()), email=email, username=email, role="", section="", password_hash="",
+                            active=0, account_status=accounts.UNVERIFIED, created_at=utcnow())
+    user.display_name, user.staff_number, user.job_title = name, staff_number, req.job_title.strip()[:80]
+    user.requested_role, user.requested_section, user.requested_region = req.requested_role, section, region
+    if not existing:
+        db.add(user)
+    accounts.set_password(user, req.password)
+    result = _submitted(db, user)
+    db.commit()
+    return result
+
+
+@router.post("/api/v1/enrolment/start", status_code=status.HTTP_202_ACCEPTED)
+def enrolment_start(req: EnrolmentStart, db: Session = Depends(db_dep)):
+    """With an emailed code (when a mail service is connected): details first, then the code and a password."""
+    email, name, staff_number, section, region = _details(req)
 
     existing = accounts.find_by_email(db, email)
     if existing and existing.account_status != accounts.UNVERIFIED:
@@ -130,19 +188,9 @@ def enrolment_verify(req: EnrolmentVerify, db: Session = Depends(db_dep)):
     accounts.use_code(db, email, accounts.VERIFY_EMAIL, req.code)
     accounts.set_password(user, req.password)
     user.email_verified_at = utcnow()
-    user.account_status = accounts.PENDING_APPROVAL
-    requested = ROLE_DEFINITIONS[user.requested_role]["label"]
-    for admin in admins(db):
-        accounts.send_mail(db, admin.email, f"Account request: {user.display_name}",
-                           f"{user.display_name} ({email}, staff number {user.staff_number}) asks for access as "
-                           f"{requested}{' — ' + user.requested_section if user.requested_section else ''}"
-                           f"{', ' + user.requested_region + ' region' if user.requested_region else ''}.\n"
-                           "Review it under User management → Account requests.")
-    audit_user_change(db, user.id, "ENROLMENT_SUBMITTED", user, {"email": email, "requested_role": user.requested_role,
-                                                                "requested_section": user.requested_section})
+    result = _submitted(db, user)
     db.commit()
-    return {"account_status": user.account_status,
-            "message": "Your email is confirmed. The System Administrator will now check your request; you will get an email when you can sign in."}
+    return result
 
 
 @router.get("/api/v1/enrolment/requests")

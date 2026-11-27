@@ -18,7 +18,14 @@ type Options = {
   sections: string[];
   regions?: string[];
   demo_mailbox: boolean;
+  /** Off for the demonstration (no mail service yet): one step, details and a password. */
+  email_code?: boolean;
+  /** Demonstration switch: the account works at once, no approval. */
+  auto_approve?: boolean;
 };
+
+const passwordSchema = z.object({ password: newPassword, confirm: z.string() })
+  .refine((values) => values.password === values.confirm, { path: ["confirm"], message: "The passwords do not match" });
 
 const detailsSchema = z.object({
   email: companyEmail,
@@ -39,8 +46,9 @@ const verifySchema = z.object({
 }).refine((values) => values.password === values.confirm, { path: ["confirm"], message: "The passwords do not match" });
 type Verify = z.infer<typeof verifySchema>;
 
-function Steps({ step }: { step: 1 | 2 | 3 }) {
-  const names = ["Your details", "Confirm your email", "Approval"];
+function Steps({ step, withCode = true }: { step: 1 | 2 | 3; withCode?: boolean }) {
+  const names = withCode ? ["Your details", "Confirm your email", "Approval"] : ["Your details and password", "Approval"];
+  if (!withCode && step === 3) step = 2;
   return (
     <ol className="mt-4 flex gap-2 p-0 text-xs font-bold" aria-label="Steps">
       {names.map((name, index) => (
@@ -61,8 +69,12 @@ export function Enrol() {
   const options = useQuery({ queryKey: ["enrolment", "options"], queryFn: () => api<Options>("/api/v1/enrolment/options") });
   const [details, setDetails] = useState<Details | null>(null);
   const [done, setDone] = useState("");
+  const [ready, setReady] = useState(false); // the account works at once (demonstration switch)
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [password, setPassword] = useState({ password: "", confirm: "" });
+  const [passwordErrors, setPasswordErrors] = useState<{ password?: string; confirm?: string }>({});
+  const withCode = options.data?.email_code === true;
 
   const detailsForm = useForm<DetailsInput>({
     resolver: zodResolver(detailsSchema),
@@ -82,6 +94,33 @@ export function Enrol() {
       return;
     }
     setError("");
+    if (!withCode) {
+      // One step: details and a password, no emailed code.
+      const checked = passwordSchema.safeParse(password);
+      if (!checked.success) {
+        const issues = checked.error.flatten().fieldErrors;
+        setPasswordErrors({ password: issues.password?.[0], confirm: issues.confirm?.[0] });
+        return;
+      }
+      setPasswordErrors({});
+      try {
+        const result = await api<{ message: string; account_status: string }>("/api/v1/enrolment/register", {
+          method: "POST",
+          body: JSON.stringify({
+            ...parsed,
+            requested_section: role?.section_required ? parsed.requested_section : "",
+            requested_region: role?.region_required ? parsed.requested_region : "",
+            password: password.password,
+          }),
+        });
+        setDetails(parsed);
+        setReady(result.account_status === "ACTIVE");
+        setDone(result.message);
+      } catch (reason) {
+        setError(errorMessage(reason, "Could not create the account. Check your details."));
+      }
+      return;
+    }
     try {
       const result = await api<{ message: string }>("/api/v1/enrolment/start", {
         method: "POST",
@@ -122,14 +161,25 @@ export function Enrol() {
     }
   }
 
+  if (done && ready) {
+    return (
+      <AuthCard title="Your account is ready">
+        <div className="mt-5 grid gap-3 text-sm">
+          <p className="m-0 flex items-start gap-2"><CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" /> {done}</p>
+          <Button asChild><Link to="/">Sign in</Link></Button>
+        </div>
+      </AuthCard>
+    );
+  }
+
   if (done) {
     return (
       <AuthCard title="Waiting for approval">
-        <Steps step={3} />
+        <Steps step={3} withCode={withCode} />
         <div className="mt-5 grid gap-3 text-sm">
-          <p className="m-0 flex items-start gap-2"><CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" /> Your email {details?.email} is confirmed and your password is set.</p>
-          <p className="m-0 flex items-start gap-2"><Clock className="mt-0.5 size-5 shrink-0 text-warning" /> The System Administrator will check your request and confirm your job and section. You will get an email when you can sign in.</p>
-          {options.data?.demo_mailbox && <MailboxLink email={details?.email} />}
+          <p className="m-0 flex items-start gap-2"><CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" /> {withCode ? `Your email ${details?.email} is confirmed and your password is set.` : `Your account ${details?.email} is created and your password is set.`}</p>
+          <p className="m-0 flex items-start gap-2"><Clock className="mt-0.5 size-5 shrink-0 text-warning" /> The System Administrator will check your request and confirm your job and section. Then you can sign in.</p>
+          {withCode && options.data?.demo_mailbox && <MailboxLink email={details?.email} />}
           <Button asChild variant="outline"><Link to="/">Back to sign in</Link></Button>
         </div>
       </AuthCard>
@@ -172,7 +222,7 @@ export function Enrol() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = detailsForm;
   return (
     <AuthCard title="Create an account" subtitle="For KPC staff. Use your KPC email address." wide>
-      <Steps step={1} />
+      <Steps step={1} withCode={withCode} />
       <form className="mt-5 grid gap-4" onSubmit={handleSubmit(start)} noValidate>
         <Field label="KPC email" hint="Ending @kpc.co.ke. Personal addresses cannot be used." error={errors.email?.message}>
           <Input type="email" autoComplete="email" inputMode="email" placeholder="firstname.lastname@kpc.co.ke"
@@ -213,9 +263,23 @@ export function Enrol() {
         <Field label="Job title (optional)" hint="As on your contract, e.g. Senior Technician, Electrical." error={errors.job_title?.message}>
           <Input {...register("job_title")} />
         </Field>
+        {options.data && !withCode && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Choose a password" hint={PASSWORD_HINT} error={passwordErrors.password}>
+              <Input type="password" autoComplete="new-password" aria-invalid={Boolean(passwordErrors.password)}
+                value={password.password} onChange={(event) => setPassword({ ...password, password: event.target.value })} />
+            </Field>
+            <Field label="Type the password again" error={passwordErrors.confirm}>
+              <Input type="password" autoComplete="new-password" aria-invalid={Boolean(passwordErrors.confirm)}
+                value={password.confirm} onChange={(event) => setPassword({ ...password, confirm: event.target.value })} />
+            </Field>
+          </div>
+        )}
         {options.isError && <Alert variant="destructive">Account creation is not available right now. Check your connection.</Alert>}
         {error && <Alert variant="destructive">{error}</Alert>}
-        <Button type="submit" disabled={isSubmitting || !options.data}>{isSubmitting ? "Sending…" : "Email me a code"}</Button>
+        <Button type="submit" disabled={isSubmitting || !options.data}>
+          {isSubmitting ? (withCode ? "Sending…" : "Creating…") : withCode ? "Email me a code" : "Create my account"}
+        </Button>
         <p className="m-0 text-sm">Already have an account? <Link to="/" className="font-bold">Sign in</Link></p>
       </form>
     </AuthCard>

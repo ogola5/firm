@@ -73,7 +73,12 @@ class Settings(BaseSettings):
     email_codes_per_hour: int = 5
     login_attempts_before_lock: int = 5
     login_lock_minutes: int = 15
-    password_min_length: int = 10
+    # Demonstration: short passwords (letters and numbers) so people can try it; raise before real use.
+    password_min_length: int = 4
+    # Demonstration: no emailed code when someone creates an account (no mail service is connected yet).
+    enrolment_email_code: bool = False
+    # Demonstration: when true, a new account works at once with the job asked for (no administrator approval).
+    enrolment_auto_approve: bool = False
 
     # Periodic reports: financial year starts in this month (KPC: July to June).
     financial_year_start_month: int = 7

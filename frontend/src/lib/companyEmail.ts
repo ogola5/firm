@@ -22,8 +22,9 @@ export const companyEmail = z.string().transform((value) => value.trim().toLower
   if (problem) context.addIssue({ code: z.ZodIssueCode.custom, message: problem });
 });
 
-export const PASSWORD_HINT = "At least 10 characters, with letters and numbers. Not your name or email.";
+// Kept simple for the demonstration (the server checks the same; the length is set in the admin console).
+export const PASSWORD_HINT = "At least 4 characters, with letters and numbers (for example abc1).";
 export const newPassword = z.string()
-  .min(10, "At least 10 characters")
+  .min(4, "At least 4 characters")
   .regex(/[A-Za-z]/, "Include letters")
   .regex(/\d/, "Include numbers");

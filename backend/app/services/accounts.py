@@ -52,20 +52,15 @@ def normalize_email(raw: str) -> str:
 
 
 def check_password(password: str, email: str = "", display_name: str = "") -> None:
-    """At least N characters, letters and digits, and not built from the person's name or address."""
+    """Kept simple for the demonstration: at least N characters (4 by default, set in the admin console),
+    with both letters and numbers. Tighten before real use."""
     problems = []
     if len(password) < settings.password_min_length:
         problems.append(f"at least {settings.password_min_length} characters")
     if not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
         problems.append("both letters and numbers")
-    lowered = password.lower()
-    personal = [email.split("@")[0]] + [part for part in re.split(r"[\s.]+", display_name.lower()) if len(part) >= 4]
-    if any(part and len(part) >= 4 and part in lowered for part in personal):
-        problems.append("not your name or email")
-    if lowered in {"password123", "kpc12345678", "demo1234567"}:
-        problems.append("not a common password")
     if problems:
-        raise HTTPException(status_code=422, detail="Password must have " + ", ".join(problems) + ".")
+        raise HTTPException(status_code=422, detail="Password must have " + " and ".join(problems) + ".")
 
 
 def hash_password(password: str) -> str:

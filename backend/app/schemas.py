@@ -41,6 +41,11 @@ class EnrolmentStart(BaseModel):
     requested_region: str = ""
 
 
+class EnrolmentRegister(EnrolmentStart):
+    """One step, with no emailed code (while no mail service is connected)."""
+    password: str
+
+
 class EnrolmentVerify(BaseModel):
     email: str
     code: str

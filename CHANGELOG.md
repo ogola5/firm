@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-12-06 — Simple sign-up for the demonstration
+
+- **One step, no emailed code:** **Create an account** asks for the details and a password together (`POST /api/v1/enrolment/register`). No mail service is connected yet. The emailed-code flow is still there behind a switch.
+- **Simple passwords:** at least 4 characters, with letters and numbers. The name and common-password checks are removed for now. The same rule applies to password changes and resets.
+- **Two switches in Admin console → Rules (Sign-in):**
+  - "Email a code to confirm the address": off by default.
+  - "New accounts work at once, without administrator approval": off by default. Turn it on to let people try the system straight away; they get the job and section they asked for.
+- Tighten all three (password length, emailed code, approval) before real use.
+
 ## 2026-12-05 — Easier to find your way; start from a small sample of data
 
 - **Welcome on each home page:** three lines on how that page works, with a link to the quick guide. It stays until you press **Got it** (kept on the device).

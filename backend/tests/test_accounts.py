@@ -75,10 +75,45 @@ def test_other_addresses_are_refused(raw):
 
 
 def test_password_rules():
-    check_password(GOOD_PASSWORD, "jane.wanjiru@kpc.co.ke", "Jane Wanjiru")
-    for weak in ("short1", "onlyletters", "1234567890", "wanjiru2026x", "jane.wanjiru99"):
+    # Demonstration rule: at least 4 characters, with both letters and numbers.
+    for fine in (GOOD_PASSWORD, "ab12", "jane2026"):
+        check_password(fine, "jane.wanjiru@kpc.co.ke", "Jane Wanjiru")
+    for weak in ("a1", "abc", "onlyletters", "1234567890"):
         with pytest.raises(HTTPException):
             check_password(weak, "jane.wanjiru@kpc.co.ke", "Jane Wanjiru")
+
+
+def test_one_step_sign_up_without_a_code_then_approval_or_at_once():
+    def register(email: str, password: str = "abc1"):
+        return client.post("/api/v1/enrolment/register", json={
+            "email": email, "display_name": "Demo Visitor", "staff_number": "KPC-9001", "requested_role": "technician_st",
+            "requested_section": "Electrical", "requested_region": "Nairobi", "password": password,
+        })
+
+    options = client.get("/api/v1/enrolment/options").json()
+    assert options["email_code"] is False and options["password_min_length"] == 4
+    assert register("visitor.one@kpc.co.ke", "abcd").status_code == 422  # letters only
+    made = register("visitor.one@kpc.co.ke")
+    assert made.status_code == 201 and made.json()["account_status"] == "PENDING_APPROVAL"
+    assert sign_in("visitor.one@kpc.co.ke", "abc1").status_code == 403  # waiting for approval
+    assert register("visitor.one@kpc.co.ke").status_code == 409  # already has an account
+
+    # The demonstration switch: accounts work at once with the job asked for.
+    admin = {"Authorization": f"Bearer {sign_in('demo.admin@kpc.co.ke', 'demo123').json()['access_token']}"}
+    assert client.patch("/api/v1/admin/settings/enrolment_auto_approve", headers=admin, json={"value": True}).status_code == 200
+    try:
+        ready = register("visitor.two@kpc.co.ke")
+        assert ready.status_code == 201 and ready.json()["account_status"] == "ACTIVE"
+        signed_in = sign_in("visitor.two@kpc.co.ke", "abc1")
+        assert signed_in.status_code == 200 and signed_in.json()["user"]["section"] == "Electrical"
+    finally:
+        client.patch("/api/v1/admin/settings/enrolment_auto_approve", headers=admin, json={"reset": True})
+    # With the emailed code switched on, the one-step route is closed.
+    assert client.patch("/api/v1/admin/settings/enrolment_email_code", headers=admin, json={"value": True}).status_code == 200
+    try:
+        assert register("visitor.three@kpc.co.ke").status_code == 409
+    finally:
+        client.patch("/api/v1/admin/settings/enrolment_email_code", headers=admin, json={"reset": True})
 
 
 # --- enrolment ---------------------------------------------------------------------------------
